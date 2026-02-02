@@ -1,0 +1,18 @@
+/* ===========================================================
+   Fundraising MVP Theme Enhancements
+   Includes: animate-fadeIn keyframes for header timestamps
+   =========================================================== */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+/* Include your existing Tailwind directives here */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

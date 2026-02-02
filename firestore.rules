@@ -1,0 +1,400 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+  
+    /* =========================
+    	 🌍 PUBLIC READ — DONATION PAGES (Phase 13)
+       ========================= */
+
+    // Allow unauthenticated users to read campaign details
+    match /campaigns/{campaignId} {
+      allow read: if true;
+    }
+
+    // Allow unauthenticated users to read teams referenced by campaigns
+    match /teams/{teamId} {
+      allow read: if true;
+    }
+
+    /* =========================
+       🔑 CORE HELPERS
+       ========================= */
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasUserDoc() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userDoc() {
+      return hasUserDoc()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+        : null;
+    }
+
+    function userRole() {
+      return hasUserDoc() ? userDoc().data.role : null;
+    }
+
+    function userOrgId() {
+      return hasUserDoc() ? userDoc().data.orgId : null;
+    }
+
+    function isSuperAdmin() {
+      return userRole() == "super-admin";
+    }
+
+    function isOrgAdmin() {
+      return userRole() == "admin";
+    }
+
+    function isCoach() {
+      return userRole() == "coach";
+    }
+
+    function isAthlete() {
+      return userRole() == "athlete";
+    }
+
+    /**
+     * 🔒 Core org gate
+     * - Org members
+     * - OR super-admin operating inside selected org
+     */
+    function canAccessOrg(orgId) {
+      return isSignedIn() && (
+        (hasUserDoc() && userOrgId() == orgId) ||
+        isSuperAdmin()
+      );
+    }
+
+    /* ===========================
+       COACHES
+       =========================== */
+    match /coaches/{coachId} {
+      allow read: if request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgId
+           == resource.data.orgId
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+           in ["admin", "super-admin", "coach"];
+
+      // Writes restricted to admins only (optional, safe default)
+      allow write: if request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+           in ["admin", "super-admin"];
+    }
+
+    /* =========================
+       👤 USERS
+       ========================= */
+    match /users/{uid} {
+
+      // ✅ READ (query-safe)
+      allow read: if isSignedIn();
+
+      // ✅ Allow self-creation ONCE (invite bootstrap)
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role in ["admin", "coach", "athlete"]
+        && request.resource.data.orgId is string;
+
+      // ✅ User can update self (NO role/org escalation)
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && !("role" in request.resource.data)
+        && !("orgId" in request.resource.data);
+
+      // ✅ Admins can manage users
+      allow update, delete: if request.auth != null
+        && (isOrgAdmin() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId);
+    }
+
+    /* =========================
+       🏢 ORGANIZATIONS
+       ========================= */
+    match /organizations/{orgId} {
+      allow read: if isSignedIn() && (
+        userOrgId() == orgId || isSuperAdmin()
+      );
+
+      allow update: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(orgId)
+        && request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly([
+            "donorInviteTemplate",
+            "donorInviteTemplates",
+            "donorInviteSubjects",
+            "orgTimeZone",
+            "dripGlobalEnabled",
+            "dripStartedAt",
+            "updatedAt"
+          ]);
+
+      allow write: if isSuperAdmin();
+    }
+
+    /* =========================
+       🧑‍🤝‍🧑 TEAMS
+       ========================= */
+    match /teams/{teamId} {
+
+      // Org admins & super-admins
+      allow read: if canAccessOrg(resource.data.orgId);
+
+      // Athlete can read their own team (ALL fields, including invite code)
+      allow read: if isSignedIn()
+        && exists(/databases/$(database)/documents/athletes/$(request.auth.uid))
+        && get(/databases/$(database)/documents/athletes/$(request.auth.uid)).data.teamId == teamId;
+
+      // Admin / coach can manage team
+      allow create, update: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(request.resource.data.orgId);
+
+      allow delete: if isSignedIn()
+        && (isOrgAdmin() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId);
+    }
+
+    /* =========================
+       🏃 ATHLETES
+       ========================= */
+    match /athletes/{athleteId} {
+    
+    	allow create: if request.auth != null
+        && request.auth.uid == athleteId
+        && exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteId))
+        && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data.status == "pending"
+        && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data.email == request.auth.token.email;
+
+      // ✅ Any signed-in user may read athlete docs
+      // ✅ Public read when athlete is tied to a public campaign
+      allow read: if isSignedIn()
+        || (resource.data.campaignId is string
+            && get(/databases/$(database)/documents/campaigns/$(resource.data.campaignId)).data.isPublic == true);
+
+      // ✅ Only org admins, coaches, or super-admins may create/update
+      allow create, update: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(request.resource.data.orgId);
+
+      // ✅ Athlete can update their own invite message (no other fields)
+      allow update: if isSignedIn()
+        && request.auth.uid == athleteId
+        && canAccessOrg(resource.data.orgId)
+        && request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly([
+            "inviteMessage",
+            "donorInviteTemplate",
+            "donorInviteTemplates",
+            "drip",
+            "updatedAt"
+          ]);
+    }
+    
+    /* =========================
+   		 🔗 TEAM ATHLETES
+       ========================= */
+    match /teamAthletes/{docId} {
+
+      // Org admins & super-admins
+      allow read: if canAccessOrg(resource.data.orgId);
+
+      // Athlete can read records for their own team
+      allow read: if isSignedIn()
+        && exists(/databases/$(database)/documents/athletes/$(request.auth.uid))
+        && get(/databases/$(database)/documents/athletes/$(request.auth.uid)).data.teamId == resource.data.teamId;
+
+      allow create, update, delete: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId);
+    }
+
+    /* =========================
+       📣 CAMPAIGNS
+       ========================= */
+    match /campaigns/{campaignId} {
+
+      // ✅ Any signed-in user can read campaigns
+      // ✅ Public campaigns readable by anyone
+      // 🔐 Org / team isolation enforced by queries, not rules
+      allow read: if isSignedIn() || resource.data.isPublic == true;
+
+      // ✅ Only admins & super-admins may write
+      allow create, update, delete: if isSignedIn()
+        && (isOrgAdmin() || isSuperAdmin())
+        && canAccessOrg(request.resource.data.orgId);
+    }
+
+    match /campaigns/{campaignId}/comments/{commentId} {
+      allow read: if get(/databases/$(database)/documents/campaigns/$(campaignId)).data.isPublic == true;
+      allow write: if false;
+    }
+
+    match /campaigns/{campaignId}/public_donors/{donorId} {
+      allow read: if get(/databases/$(database)/documents/campaigns/$(campaignId)).data.isPublic == true;
+      allow write: if false;
+    }
+    
+    /* =========================
+       🔗 CAMPAIGN ATHLETES
+       ========================= */
+    match /campaignAthletes/{docId} {
+
+      allow read: if canAccessOrg(resource.data.orgId);
+
+      allow read: if isSignedIn()
+        && exists(/databases/$(database)/documents/athletes/$(request.auth.uid))
+        && get(/databases/$(database)/documents/athletes/$(request.auth.uid)).data.teamId == resource.data.teamId;
+
+      allow create, update, delete: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId);
+    }
+
+    /* =========================
+       💳 DONATIONS
+       ========================= */
+    match /donations/{donationId} {
+
+      // ✅ Org members & super-admins
+      allow read: if isSignedIn()
+        && resource.data != null
+        && canAccessOrg(resource.data.orgId);
+
+      // ✅ Public receipt access by document ID (paid only)
+      allow get: if resource.data != null && resource.data.status == "paid";
+
+      // ✅ Stripe webhook creates donations (Admin SDK bypasses rules)
+      allow create: if false;
+
+      // ❌ No client-side updates
+      allow update, delete: if false;
+    }
+
+    /* =========================
+       💖 DONORS (Org-scoped)
+       ========================= */
+    match /donors/{donorId} {
+      allow read: if resource.data != null
+        && canAccessOrg(resource.data.orgId);
+
+      allow create: if isSignedIn()
+        && request.resource.data.orgId is string
+        && canAccessOrg(request.resource.data.orgId);
+
+      allow update, delete: if resource.data != null
+        && canAccessOrg(resource.data.orgId);
+    }
+
+    /* =========================
+       👥 ATHLETE CONTACTS (PRIVATE)
+       ========================= */
+    match /athlete_contacts/{contactId} {
+      allow read: if isSignedIn()
+        && canAccessOrg(resource.data.orgId)
+        && (isOrgAdmin() || isCoach() || request.auth.uid == resource.data.athleteId);
+
+      allow create: if isSignedIn()
+        && request.resource.data.orgId is string
+        && canAccessOrg(request.resource.data.orgId)
+        && request.resource.data.athleteId is string
+        && (isOrgAdmin() || isCoach() || request.auth.uid == request.resource.data.athleteId);
+
+      allow update, delete: if isSignedIn()
+        && canAccessOrg(resource.data.orgId)
+        && (isOrgAdmin() || isCoach() || request.auth.uid == resource.data.athleteId);
+    }
+
+    /* =========================
+       ✉️ MESSAGES (ORG LOG)
+       ========================= */
+    match /messages/{messageId} {
+      allow read: if isSignedIn()
+        && canAccessOrg(resource.data.orgId);
+
+      allow create: if isSignedIn()
+        && request.resource.data.orgId is string
+        && canAccessOrg(request.resource.data.orgId);
+
+      allow update, delete: if false;
+    }
+    
+    /* =========================
+       📊 DONATION ROLLUPS (ADMIN / COACH READ)
+       ========================= */
+    match /donation_rollups/{rollupId} {
+
+      // Org admins, coaches, and super-admins can read rollups
+      allow read: if isSignedIn()
+        && (
+          isSuperAdmin() ||
+          (userOrgId() == resource.data.orgId &&
+           (isOrgAdmin() || isCoach()))
+        );
+
+      // ❌ No client-side writes (scheduled function only)
+      allow write: if false;
+    }
+
+    /* =========================
+       📩 INVITES
+       ========================= */
+    match /invites/{inviteId} {
+
+      // Anyone can read a pending invite (link open)
+      // Donor invites are not publicly readable
+      allow read: if resource.data.status == "pending"
+        && resource.data.role != "donor";
+
+      // Invited user can read their invite
+      allow read: if isSignedIn()
+        && request.auth.token.email == resource.data.email;
+
+      // Invited user can accept invite
+      allow update: if isSignedIn()
+        && resource.data.status == "pending"
+        && request.resource.data.status == "accepted"
+        && request.resource.data.acceptedAt is timestamp
+        && request.auth.token.email == resource.data.email;
+
+      // Admins can read invites in their org
+      allow read: if isSignedIn()
+        && (isOrgAdmin() || isSuperAdmin())
+        && resource.data.orgId == userOrgId();
+
+      // Admins can create invites
+      allow create: if isSignedIn()
+        && (isOrgAdmin() || isSuperAdmin())
+        && request.resource.data.orgId == userOrgId();
+
+      // Athletes/coaches/admins can create donor invites
+      allow create: if isSignedIn()
+        && request.resource.data.role == "donor"
+        && request.resource.data.type == "donor_invite"
+        && request.resource.data.orgId == userOrgId()
+        && request.resource.data.campaignId is string
+        && request.resource.data.athleteId is string
+        && (isAthlete() || isCoach() || isOrgAdmin() || isSuperAdmin());
+
+      // Admins can delete invites
+      allow delete: if isSignedIn()
+        && (isOrgAdmin() || isSuperAdmin())
+        && resource.data.orgId == userOrgId();
+    }
+
+            /* =========================
+		  	 📬 OUTBOUND MAIL (Mailgun / Email Extension)
+			   ========================= */
+		match /mail/{mailId} {
+  		allow create: if request.auth != null;
+		}
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "projectId": "fundraising-mvp-auth-payments",
+    "generatedAt": "2026-01-02T03:51:05.630Z"
+  },
+  "counts": {
+    "users": 18,
+    "teams": 4,
+    "athletes": 4,
+    "invites": 1,
+    "donations": 1
+  },
+  "issues": {
+    "users": [
+      {
+        "uid": "46AbHXjA26hK21suXH8T0hs6ffk1",
+        "code": "ATHLETE_USER_MISSING_ATHLETEID",
+        "detail": {}
+      },
+      {
+        "uid": "72D0xK3HRg1qCJ4wvFFq",
+        "code": "USER_INVALID_ROLE",
+        "detail": {
+          "role": "donor"
+        }
+      },
+      {
+        "uid": "DaeF3WVcm9UzDajpTTEU",
+        "code": "USER_INVALID_ROLE",
+        "detail": {
+          "role": "donor"
+        }
+      },
+      {
+        "uid": "FVoMHW5UUyX7vOQ8nFFrtqvP0Ll1",
+        "code": "ATHLETE_USER_MISSING_ATHLETEID",
+        "detail": {}
+      },
+      {
+        "uid": "JQO67MxtVHmpDoa1R2OZ",
+        "code": "ATHLETE_USER_MISSING_ATHLETEID",
+        "detail": {}
+      },
+      {
+        "uid": "QI1gODALkQUdX4s34A4x",
+        "code": "USER_INVALID_ROLE",
+        "detail": {
+          "role": "donor"
+        }
+      },
+      {
+        "uid": "fhCHbp3sXlyj7ndncL92",
+        "code": "ATHLETE_USER_MISSING_ATHLETEID",
+        "detail": {}
+      },
+      {
+        "uid": "lKv9JTU5XDjBA3EC3iYA",
+        "code": "ATHLETE_USER_MISSING_ATHLETEID",
+        "detail": {}
+      },
+      {
+        "uid": "nYI7Q86sWdr6FGRIp1bm",
+        "code": "ATHLETE_USER_MISSING_ATHLETEID",
+        "detail": {}
+      },
+      {
+        "uid": "uAxtTuhhgKvktlUsfGmK",
+        "code": "ATHLETE_USER_MISSING_ATHLETEID",
+        "detail": {}
+      },
+      {
+        "uid": "zieycM5tiN6K9tUmkpmO",
+        "code": "ATHLETE_USER_MISSING_ATHLETEID",
+        "detail": {}
+      }
+    ],
+    "teams": [],
+    "athletes": [],
+    "invites": [],
+    "donations": [],
+    "cross": []
+  },
+  "stats": {
+    "usersMissingOrgId": 0,
+    "teamsMissingOrgId": 0,
+    "athletesMissingOrgId": 0,
+    "donationsMissingOrgId": 0,
+    "invalidRoles": 3,
+    "orphanAthletes": 0,
+    "orphanTeams": 0,
+    "teamCodeDupes": 0
+  }
+}

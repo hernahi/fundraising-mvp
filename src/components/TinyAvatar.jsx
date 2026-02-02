@@ -1,0 +1,1 @@
+export default function TinyAvatar(){ return <div>Tiny</div>; }
