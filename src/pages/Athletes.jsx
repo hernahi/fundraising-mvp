@@ -255,9 +255,9 @@ if (isCoach && teamRows.length > 0) {
   // PAGE
   // ---------------------------------------------------
   return (
-    <div className="p-4 md:p-6 space-y-8">
+    <div className="p-4 md:p-6 lg:p-8 space-y-8 md:space-y-10">
       {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 md:gap-5 lg:gap-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">Athletes</h1>
           <p className="text-gray-500 mt-1">
@@ -300,7 +300,7 @@ if (isCoach && teamRows.length > 0) {
 
       {/* BULK ACTION BAR */}
       {selectedIds.length > 0 && (
-        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center bg-yellow-50 border border-yellow-200 p-4 md:p-5 rounded-lg">
           <strong className="text-sm">{selectedIds.length} selected</strong>
 
           <button
@@ -354,7 +354,7 @@ if (isCoach && teamRows.length > 0) {
 
       {/* GRID */}
       {!loading && visibleAthletes.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5 lg:gap-6">
           {visibleAthletes.map((ath) => {
             const teamName =
               teams.find((t) => t.id === ath.teamId)?.name ||
@@ -363,7 +363,7 @@ if (isCoach && teamRows.length > 0) {
             return (
               <div
                 key={ath.id}
-                className="border bg-white rounded-xl shadow hover:shadow-lg transition p-4 md:p-6 flex flex-col items-center text-center"
+                className="border bg-white rounded-xl shadow hover:shadow-lg transition p-4 md:p-5 lg:p-6 flex flex-col items-center text-center"
               >
                 <input
                   type="checkbox"

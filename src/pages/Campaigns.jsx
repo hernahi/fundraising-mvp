@@ -69,8 +69,8 @@ export default function Campaigns() {
   }
 
   return (
-    <div className="p-4 md:p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+    <div className="p-4 md:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 md:gap-4 mb-5 md:mb-6">
         <h1 className="text-2xl font-semibold">Campaigns</h1>
       </div>
 
@@ -79,7 +79,7 @@ export default function Campaigns() {
           No campaigns found for this organization.
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5 lg:gap-6">
           {campaigns.map((c) => {
             const image = safeImageURL(c.imageURL || c.image);
             const title = c.name || "Untitled Campaign";
@@ -93,15 +93,15 @@ export default function Campaigns() {
                   <img
                     src={image}
                     alt={title}
-                    className="w-full h-40 object-cover bg-slate-100"
+                    className="w-full h-40 md:h-44 object-cover bg-slate-100"
                   />
                 ) : (
-                  <div className="w-full h-40 bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
+                  <div className="w-full h-40 md:h-44 bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
                     No Image
                   </div>
                 )}
 
-                <div className="p-4 flex-1 flex flex-col">
+                <div className="p-4 md:p-5 flex-1 flex flex-col">
                   <h2 className="text-lg font-semibold text-slate-900 line-clamp-2">
                     {title}
                   </h2>
@@ -113,7 +113,7 @@ export default function Campaigns() {
                   <div className="mt-4">
                     <Link
                       to={`/campaigns/${c.id}`}
-                      className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                      className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 w-full sm:w-auto"
                     >
                       View Details
                     </Link>

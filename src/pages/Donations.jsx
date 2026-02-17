@@ -322,7 +322,7 @@ export default function Donors() {
   }
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-4 md:p-6 lg:p-8">
       <HeaderActions
         title="Donors"
         addLabel={<Link to="/donors/new">+ Add Donor</Link>}
@@ -337,8 +337,8 @@ export default function Donors() {
         pages.
       </p>
 
-      <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="mt-4 flex flex-col gap-3 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -357,7 +357,7 @@ export default function Donors() {
           </select>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
           <span className="text-xs text-slate-500 uppercase tracking-wide">
             Sort
           </span>
@@ -386,7 +386,7 @@ export default function Donors() {
       ) : visibleDonors.length === 0 ? (
         <ListEmptyState message="No donors found." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5 lg:gap-6">
           {visibleDonors.map((d) => {
             const avatarUrl =
               d.imgUrl || d.photoURL || d.photoUrl || d.avatarUrl || "";
@@ -397,9 +397,9 @@ export default function Donors() {
             return (
               <div
                 key={d.id}
-                className="bg-white rounded-2xl border border-slate-200 p-4 shadow hover:shadow-yellow-300/40 transition-all duration-300"
+                className="bg-white rounded-2xl border border-slate-200 p-4 md:p-5 shadow hover:shadow-yellow-300/40 transition-all duration-300"
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-start md:items-center gap-3">
                   <CardUserAvatar name={d.donorName} imgUrl={avatarUrl} />
 
                   <div className="min-w-0">
@@ -427,7 +427,7 @@ export default function Donors() {
                   />
                 </div>
 
-                <div className="mt-4 flex justify-end">
+                <div className="mt-4 flex justify-end sm:justify-end">
                   {d.hasDonorDoc ? (
                     <Link
                       to={`/donors/${d.id}`}
