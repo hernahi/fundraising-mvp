@@ -135,6 +135,7 @@ export default function AcceptInvite() {
             photoURL: user.photoURL || null,
             role: invite.role,
             orgId: invite.orgId,
+            inviteId: invite.id,
 
             // Required for admin visibility
             status: "active",

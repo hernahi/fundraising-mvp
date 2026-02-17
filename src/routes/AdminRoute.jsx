@@ -7,7 +7,9 @@ export default function AdminRoute({ children }) {
 
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace />;
-  if (profile?.role !== "admin") return <Navigate to="/dashboard" replace />;
+  if (!["admin", "super-admin"].includes(profile?.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return children;
 }

@@ -20,6 +20,7 @@ const logger = require("firebase-functions/logger");
 const Stripe = require("stripe");
 const Mailgun = require("mailgun.js");
 const FormData = require("form-data");
+const crypto = require("crypto");
 
 /* ============================================================
    RBAC HELPERS (users/{uid})
@@ -380,6 +381,34 @@ function parseMailgunEventType(eventData) {
 
 function shouldMarkSuppressed(eventType) {
   return eventType === "failed" || eventType === "bounced" || eventType === "complained";
+}
+
+function isValidMailgunSignature(reqBody) {
+  const signingKey = (process.env.MAILGUN_WEBHOOK_SIGNING_KEY || "").trim();
+  if (!signingKey) {
+    // Backward compatible when signing key is not configured yet.
+    return true;
+  }
+
+  const signature = reqBody?.signature;
+  const timestamp = String(signature?.timestamp || "");
+  const token = String(signature?.token || "");
+  const digest = String(signature?.signature || "");
+  if (!timestamp || !token || !digest) return false;
+
+  const expected = crypto
+    .createHmac("sha256", signingKey)
+    .update(`${timestamp}${token}`)
+    .digest("hex");
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expected, "utf8"),
+      Buffer.from(digest, "utf8")
+    );
+  } catch (_) {
+    return false;
+  }
 }
 
 /* ============================================================
@@ -934,6 +963,11 @@ exports.mailgunEventWebhook = onRequest(async (req, res) => {
   }
 
   try {
+    if (!isValidMailgunSignature(req.body)) {
+      logger.warn("mailgunEventWebhook: invalid signature");
+      return res.status(401).send("invalid signature");
+    }
+
     const eventData = getMailgunEventPayload(req.body);
     if (!eventData) {
       return res.status(400).send("Invalid payload");
@@ -1270,7 +1304,22 @@ exports.testMailgunSend = onCall(
    - If you previously called this from UI, keep the same export name.
    ============================================================ */
 exports.sendCoachInvite = onCall(async (request) => {
-  // You can optionally enforce RBAC here by checking request.auth and users/{uid}.
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Login required");
+  }
+
+  const profile = await getUserProfile(request.auth.uid);
+  if (!profile) {
+    throw new HttpsError("permission-denied", "User profile not found");
+  }
+  if (profile.status && profile.status !== "active") {
+    throw new HttpsError("permission-denied", "User is not active");
+  }
+
+  if (!["coach", "admin", "super-admin"].includes(profile.role)) {
+    throw new HttpsError("permission-denied", "Not allowed to send coach invites");
+  }
+
   const { toEmail, inviteUrl, teamName } = request.data || {};
 
   if (!toEmail || typeof toEmail !== "string") {
