@@ -175,11 +175,11 @@ export default function AthleteDetail() {
     };
   }, [athleteDonations]);
 
-  if (loading) return <div className="p-6">Loading athlete...</div>;
-  if (!athlete) return <div className="p-6">Athlete not found.</div>;
+  if (loading) return <div className="p-4 md:p-6">Loading athlete...</div>;
+  if (!athlete) return <div className="p-4 md:p-6">Athlete not found.</div>;
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 lg:p-8 max-w-6xl mx-auto">
       {/* Header Section */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -195,7 +195,7 @@ export default function AthleteDetail() {
       </div>
 
       {/* Athlete Card */}
-      <div className="bg-white rounded-xl shadow p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7 grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
         {/* Avatar */}
         <div className="flex flex-col items-center">
           <img
@@ -293,12 +293,12 @@ export default function AthleteDetail() {
       </div>
 
       {/* Stats Section */}
-      <div className="mt-10 bg-white rounded-xl shadow p-6">
+      <div className="mt-8 md:mt-10 bg-white rounded-xl shadow p-4 md:p-6">
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
           <FaTrophy /> Performance / Stats
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
           <StatCard label="Campaigns Participated" value={computedStats.campaignCount} />
           <StatCard label="Funds Raised" value={`$${computedStats.totalRaised}`} />
           <StatCard label="Supporters" value={computedStats.supporters} />
@@ -306,9 +306,9 @@ export default function AthleteDetail() {
       </div>
 
       {isSelf && (
-        <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="mt-8 md:mt-10 grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           {/* Invite Donors */}
-          <div className="bg-white rounded-xl shadow p-6">
+          <div className="bg-white rounded-xl shadow p-4 md:p-6">
             <h2 className="text-xl font-semibold mb-2">Invite Donors</h2>
             <p className="text-sm text-gray-600 mb-4">
               Send an invite to supporters. Use one email per line.
@@ -403,7 +403,7 @@ export default function AthleteDetail() {
           </div>
 
           {/* My Donors */}
-          <div className="bg-white rounded-xl shadow p-6">
+          <div className="bg-white rounded-xl shadow p-4 md:p-6">
             <h2 className="text-xl font-semibold mb-2">My Donors</h2>
             <p className="text-sm text-gray-600 mb-4">
               Total raised: ${totalRaisedDollars}

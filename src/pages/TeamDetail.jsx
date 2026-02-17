@@ -252,11 +252,11 @@ export default function TeamDetail() {
     }
   };
 
-  if (loading) return <div className="p-6 text-gray-600 text-lg">Loading team details...</div>;
-  if (!team) return <div className="p-6 text-gray-600 text-lg">Team not found (or access restricted).</div>;
+  if (loading) return <div className="p-4 md:p-6 text-gray-600 text-lg">Loading team details...</div>;
+  if (!team) return <div className="p-4 md:p-6 text-gray-600 text-lg">Team not found (or access restricted).</div>;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       {/* HEADER */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -264,7 +264,7 @@ export default function TeamDetail() {
           <p className="text-gray-500 mt-1">Organization: {team.orgId || "Unknown Org"}</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2 md:gap-3">
           {canManage && (
             <>
               <button
@@ -295,7 +295,7 @@ export default function TeamDetail() {
 
       {/* INVITE BLOCK (coach/admin) */}
       {(isAdmin || isCoach) && team?.joinCode && (
-        <div className="mt-6 rounded-lg border border-slate-200 p-4 bg-slate-50">
+        <div className="mt-6 rounded-lg border border-slate-200 p-4 md:p-5 bg-slate-50">
           <h2 className="font-semibold mb-2">Invite Athletes</h2>
 
           <div className="mt-4 space-y-3">
@@ -370,7 +370,7 @@ export default function TeamDetail() {
       )}
 
       {/* TEAM AVATAR */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
         <img
           src={safeImageURL(team.avatar)}
           alt="Team Avatar"
@@ -392,7 +392,7 @@ export default function TeamDetail() {
         {athletes.length === 0 ? (
           <p className="text-gray-500">No athletes assigned to this team.</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-5">
             {athletes.map((athlete) => (
               <Link
                 key={athlete.id}
@@ -419,7 +419,7 @@ export default function TeamDetail() {
         {campaigns.length === 0 ? (
           <p className="text-gray-500">No campaigns created for this team.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
             {[...campaigns]
               .sort((a, b) => {
                 const aDate = a.endDate?.toDate?.() || a.createdAt?.toDate?.() || 0;
