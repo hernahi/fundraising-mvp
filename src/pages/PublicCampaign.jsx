@@ -372,7 +372,7 @@ export default function PublicCampaign() {
       <div className="public-frame">
         <section className="public-hero">
           <div className="public-hero-inner">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 min-w-0">
               {campaign.imageURL && (
                 <img
                   src={campaign.imageURL}
@@ -380,7 +380,7 @@ export default function PublicCampaign() {
                   className="h-12 w-12 rounded-xl object-contain border border-slate-200 bg-white"
                 />
               )}
-              <div>
+              <div className="min-w-0">
                 <div className="public-eyebrow">
                   {campaign.teamName || "Community Fundraiser"}
                 </div>

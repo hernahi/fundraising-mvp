@@ -17,7 +17,7 @@ const navItem =
 const navActive = "bg-blue-50 text-blue-700";
 const navInactive = "text-gray-700 hover:bg-gray-100";
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   const { profile } = useAuth();
   const { campaigns, activeCampaignId } = useCampaign();
 
@@ -30,7 +30,13 @@ export default function Sidebar() {
   const isAthlete = role === "athlete";
 
   return (
-    <aside className="w-64 border-r bg-white flex flex-col justify-between">
+    <aside
+      className={[
+        "fixed inset-y-0 left-0 z-40 w-64 border-r bg-white flex flex-col justify-between",
+        "transform transition-transform duration-200 ease-in-out lg:static lg:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
+      ].join(" ")}
+    >
       {/* TOP */}
       <div>
         {/* Brand */}
@@ -44,6 +50,7 @@ export default function Sidebar() {
           <NavLink
             to="/"
             end
+            onClick={onClose}
             className={({ isActive }) =>
               `${navItem} ${isActive ? navActive : navInactive}`
             }
@@ -56,6 +63,7 @@ export default function Sidebar() {
             <>
               <NavLink
                 to="/campaigns"
+                onClick={onClose}
                 className={({ isActive }) =>
                   `${navItem} ${isActive ? navActive : navInactive}`
                 }
@@ -66,6 +74,7 @@ export default function Sidebar() {
 
               <NavLink
                 to="/athletes"
+                onClick={onClose}
                 className={({ isActive }) =>
                   `${navItem} ${isActive ? navActive : navInactive}`
                 }
@@ -80,6 +89,7 @@ export default function Sidebar() {
             <>
               <NavLink
                 to={`/athletes/${profile.uid}`}
+                onClick={onClose}
                 className={({ isActive }) =>
                   `${navItem} ${isActive ? navActive : navInactive}`
                 }
@@ -90,6 +100,7 @@ export default function Sidebar() {
 
               <NavLink
                 to="/messages"
+                onClick={onClose}
                 className={({ isActive }) =>
                   `${navItem} ${isActive ? navActive : navInactive}`
                 }
@@ -104,6 +115,7 @@ export default function Sidebar() {
             <>
               <NavLink
                 to="/donors"
+                onClick={onClose}
                 className={({ isActive }) =>
                   `${navItem} ${isActive ? navActive : navInactive}`
                 }
@@ -114,6 +126,7 @@ export default function Sidebar() {
 
               <NavLink
                 to="/coaches"
+                onClick={onClose}
                 className={({ isActive }) =>
                   `${navItem} ${isActive ? navActive : navInactive}`
                 }
@@ -124,6 +137,7 @@ export default function Sidebar() {
 
               <NavLink
                 to="/teams"
+                onClick={onClose}
                 className={({ isActive }) =>
                   `${navItem} ${isActive ? navActive : navInactive}`
                 }
@@ -134,6 +148,7 @@ export default function Sidebar() {
 
               <NavLink
                 to="/messages"
+                onClick={onClose}
                 className={({ isActive }) =>
                   `${navItem} ${isActive ? navActive : navInactive}`
                 }
@@ -144,6 +159,7 @@ export default function Sidebar() {
 
               <NavLink
                 to="/settings"
+                onClick={onClose}
                 className={({ isActive }) =>
                   `${navItem} ${isActive ? navActive : navInactive}`
                 }
@@ -181,6 +197,7 @@ export default function Sidebar() {
 
           <NavLink
             to="/admin/users"
+            onClick={onClose}
             className={({ isActive }) =>
               `${navItem} ${isActive ? navActive : navInactive}`
             }
@@ -191,6 +208,7 @@ export default function Sidebar() {
 
           <NavLink
             to="/admin/invite"
+            onClick={onClose}
             className={({ isActive }) =>
               `${navItem} ${isActive ? navActive : navInactive}`
             }
@@ -202,6 +220,7 @@ export default function Sidebar() {
           {profile?.role === "coach" && (
   <NavLink
     to="/coach/invite"
+    onClick={onClose}
     className={({ isActive }) =>
       `${navItem} ${isActive ? navActive : navInactive}`
     }

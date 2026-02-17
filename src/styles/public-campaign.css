@@ -244,7 +244,26 @@
 }
 
 @media (max-width: 720px) {
+  .public-shell {
+    padding: 20px 12px 32px;
+  }
+
   .public-hero {
     padding: 20px;
+  }
+
+  .public-card,
+  .public-section {
+    padding: 16px;
+  }
+
+  .public-list-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .public-title {
+    line-height: 1.1;
   }
 }

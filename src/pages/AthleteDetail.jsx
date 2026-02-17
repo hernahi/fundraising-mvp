@@ -179,15 +179,15 @@ export default function AthleteDetail() {
   if (!athlete) return <div className="p-6">Athlete not found.</div>;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {/* Header Section */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <FaUser /> {athlete.name}
         </h1>
         <Link
           to={`/athletes/${athlete.id}/edit`}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition w-full sm:w-auto text-center"
         >
           <FaEdit className="inline mr-2" />
           Edit Athlete
@@ -201,7 +201,7 @@ export default function AthleteDetail() {
           <img
             src={safeImageURL(athlete.photoURL)}
             alt="Athlete"
-            className="w-40 h-40 rounded-full object-cover border"
+            className="w-32 h-32 sm:w-40 sm:h-40 rounded-full object-cover border"
           />
           <h2 className="mt-4 text-xl font-medium">{athlete.name}</h2>
           <p className="text-gray-500">{athlete.position || "Athlete"}</p>
@@ -335,7 +335,7 @@ export default function AthleteDetail() {
               disabled={inviteLoading || savingMessage}
             />
 
-            <div className="mt-3 flex items-center justify-between">
+            <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
               <button
                 className="rounded-md border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
                 disabled={savingMessage || inviteLoading}
@@ -417,7 +417,7 @@ export default function AthleteDetail() {
                 {athleteDonations.map((donor) => (
                   <div
                     key={donor.id}
-                    className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                    className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
                   >
                     <div>
                       <div className="font-medium text-slate-800">

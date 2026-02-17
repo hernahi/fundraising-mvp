@@ -1,10 +1,10 @@
-// src/pages/Campaigns.jsx
 import React, { useEffect, useState } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { Link } from "react-router-dom";
+
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import safeImageURL from "../utils/safeImage";
-import { Link } from "react-router-dom";
 
 export default function Campaigns() {
   const { user, profile, loading } = useAuth();
@@ -12,54 +12,48 @@ export default function Campaigns() {
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
 
   const orgId = profile?.orgId || null;
+  const role = (profile?.role || "").toLowerCase();
 
-  // ───────────────────────────────────────────────
-  // Fetch campaigns
-  // ───────────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      if (!user || !orgId) return;
+      if (!user || !orgId) {
+        setLoadingCampaigns(false);
+        return;
+      }
 
       try {
         setLoadingCampaigns(true);
 
-    let campaignsQuery;
+        let campaignsQuery;
 
-    if (profile.role === "coach") {
-      // 1️⃣ Load teams coached by this user
-      const teamsQ = query(
-        collection(db, "teams"),
-        where("orgId", "==", orgId),
-        where("coachId", "==", profile.uid)
-      );
+        if (role === "coach") {
+          const teamsQ = query(
+            collection(db, "teams"),
+            where("orgId", "==", orgId),
+            where("coachId", "==", profile.uid)
+          );
 
-      const teamsSnap = await getDocs(teamsQ);
-      const coachTeamIds = teamsSnap.docs.map((d) => d.id);
+          const teamsSnap = await getDocs(teamsQ);
+          const coachTeamIds = teamsSnap.docs.map((d) => d.id);
 
-      // Coach has no teams → no campaigns
-      if (coachTeamIds.length === 0) {
-        setCampaigns([]);
-        return;
-      }
+          if (coachTeamIds.length === 0) {
+            setCampaigns([]);
+            return;
+          }
 
-      // 2️⃣ Load campaigns that include any of those teams
-      campaignsQuery = query(
-        collection(db, "campaigns"),
-        where("teamIds", "array-contains-any", coachTeamIds.slice(0, 10))
-      );
-    } else {
-      // Admin / Super Admin
-      campaignsQuery = query(
-        collection(db, "campaigns"),
-        where("orgId", "==", orgId)
-      );
-    }
+          campaignsQuery = query(
+            collection(db, "campaigns"),
+            where("teamIds", "array-contains-any", coachTeamIds.slice(0, 10))
+          );
+        } else {
+          campaignsQuery = query(
+            collection(db, "campaigns"),
+            where("orgId", "==", orgId)
+          );
+        }
 
-    const snap = await getDocs(campaignsQuery);
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-    setCampaigns(list);
-
+        const snap = await getDocs(campaignsQuery);
+        setCampaigns(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error("Error loading campaigns:", err);
       } finally {
@@ -68,114 +62,68 @@ export default function Campaigns() {
     }
 
     load();
-  }, [user, orgId]);
+  }, [user, orgId, role, profile?.uid]);
 
-  // ───────────────────────────────────────────────
-  // Loading screen
-  // ───────────────────────────────────────────────
   if (loading || loadingCampaigns) {
-    return (
-      <div style={{ padding: "20px", fontSize: "18px" }}>
-        Loading campaigns...
-      </div>
-    );
+    return <div className="p-4 md:p-6 text-base">Loading campaigns...</div>;
   }
 
-  // ───────────────────────────────────────────────
-  // Empty screen
-  // ───────────────────────────────────────────────
-  if (campaigns.length === 0) {
-    return (
-      <div style={{ padding: "20px" }}>
-        <h2>Campaigns</h2>
-        <p>No campaigns found for this organization.</p>
-      </div>
-    );
-  }
-
-  // ───────────────────────────────────────────────
-  // Display campaigns
-  // ───────────────────────────────────────────────
   return (
-    <div style={{ padding: "20px" }}>
-      <h2 style={{ marginBottom: "20px" }}>Campaigns</h2>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-          gap: "20px",
-        }}
-      >
-        {campaigns.map((c) => {
-          const image = safeImageURL(c.image);
-
-          return (
-            <div
-              key={c.id}
-              style={{
-                border: "1px solid #ddd",
-                borderRadius: "6px",
-                overflow: "hidden",
-                background: "#fff",
-              }}
-            >
-              {/* Campaign image */}
-              {image ? (
-                <img
-                  src={image}
-                  alt={c.name}
-                  style={{
-                    width: "100%",
-                    height: "160px",
-                    objectFit: "cover",
-                    background: "#f1f1f1",
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "160px",
-                    background: "#e5e5e5",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#777",
-                  }}
-                >
-                  No Image
-                </div>
-              )}
-
-              <div style={{ padding: "15px" }}>
-                <h3 style={{ marginTop: 0 }}>{c.name || "Untitled Campaign"}</h3>
-
-                <p style={{ margin: "8px 0", color: "#555" }}>
-                  {c.description || "No description available."}
-                </p>
-
-                <div style={{ marginTop: "10px" }}>
-                  <Link
-                    to={`/campaigns/${c.id}`}
-                    style={{
-                      display: "inline-block",
-                      padding: "8px 14px",
-                      background: "#007bff",
-                      color: "#fff",
-                      textDecoration: "none",
-                      borderRadius: "4px",
-                      fontSize: "14px",
-                    }}
-                  >
-                    View Details
-                  </Link>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+    <div className="p-4 md:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+        <h1 className="text-2xl font-semibold">Campaigns</h1>
       </div>
+
+      {campaigns.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">
+          No campaigns found for this organization.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {campaigns.map((c) => {
+            const image = safeImageURL(c.imageURL || c.image);
+            const title = c.name || "Untitled Campaign";
+
+            return (
+              <article
+                key={c.id}
+                className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm flex flex-col"
+              >
+                {image ? (
+                  <img
+                    src={image}
+                    alt={title}
+                    className="w-full h-40 object-cover bg-slate-100"
+                  />
+                ) : (
+                  <div className="w-full h-40 bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
+                    No Image
+                  </div>
+                )}
+
+                <div className="p-4 flex-1 flex flex-col">
+                  <h2 className="text-lg font-semibold text-slate-900 line-clamp-2">
+                    {title}
+                  </h2>
+
+                  <p className="mt-2 text-sm text-slate-600 line-clamp-3">
+                    {c.description || "No description available."}
+                  </p>
+
+                  <div className="mt-4">
+                    <Link
+                      to={`/campaigns/${c.id}`}
+                      className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    >
+                      View Details
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

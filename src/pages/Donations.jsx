@@ -315,14 +315,14 @@ export default function Donors() {
 
   if (authLoading) {
     return (
-      <div className="p-6">
+      <div className="p-4 md:p-6">
         <ListLoadingSpinner />
       </div>
     );
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <HeaderActions
         title="Donors"
         addLabel={<Link to="/donors/new">+ Add Donor</Link>}
@@ -349,7 +349,7 @@ export default function Donors() {
           <select
             value={activityFilter}
             onChange={(e) => setActivityFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm w-full sm:w-auto"
           >
             <option value="all">All donors</option>
             <option value="with">With donations</option>
@@ -357,14 +357,14 @@ export default function Donors() {
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <span className="text-xs text-slate-500 uppercase tracking-wide">
             Sort
           </span>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm w-full sm:w-auto"
           >
             <option value="recent">Recent activity</option>
             <option value="total">Total donated</option>
@@ -374,7 +374,7 @@ export default function Donors() {
           <button
             type="button"
             onClick={() => exportCsv(sortDonors(normalizedDonors, sortBy), "donors_all")}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 w-full sm:w-auto"
           >
             Export All
           </button>
@@ -399,7 +399,7 @@ export default function Donors() {
                 key={d.id}
                 className="bg-white rounded-2xl border border-slate-200 p-4 shadow hover:shadow-yellow-300/40 transition-all duration-300"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
                   <CardUserAvatar name={d.donorName} imgUrl={avatarUrl} />
 
                   <div className="min-w-0">
@@ -431,12 +431,12 @@ export default function Donors() {
                   {d.hasDonorDoc ? (
                     <Link
                       to={`/donors/${d.id}`}
-                      className="text-sm px-3 py-1.5 rounded-lg border border-yellow-400 text-yellow-600 hover:bg-yellow-400 hover:text-slate-900 transition"
+                      className="text-sm px-3 py-1.5 rounded-lg border border-yellow-400 text-yellow-600 hover:bg-yellow-400 hover:text-slate-900 transition w-full sm:w-auto text-center"
                     >
                       View
                     </Link>
                   ) : (
-                    <span className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 text-slate-400 cursor-not-allowed">
+                    <span className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 text-slate-400 cursor-not-allowed w-full sm:w-auto text-center">
                       View
                     </span>
                   )}

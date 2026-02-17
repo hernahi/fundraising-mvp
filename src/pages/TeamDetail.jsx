@@ -258,36 +258,36 @@ export default function TeamDetail() {
   return (
     <div className="space-y-8">
       {/* HEADER */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{team.name}</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">{team.name}</h1>
           <p className="text-gray-500 mt-1">Organization: {team.orgId || "Unknown Org"}</p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2">
           {canManage && (
             <>
               <button
                 onClick={() => setShowAssignCoach(true)}
-                className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 hover:bg-yellow-500 font-semibold"
+                className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 hover:bg-yellow-500 font-semibold text-sm"
               >
                 Assign Coach
               </button>
 
               <button
                 onClick={() => setShowManageAthletes(true)}
-                className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+                className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm"
               >
                 Manage Athletes
               </button>
             </>
           )}
 
-          <Link to={`/teams/${id}/edit`} className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+          <Link to={`/teams/${id}/edit`} className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm text-center">
             Edit Team
           </Link>
 
-          <Link to={`/athletes/new?teamId=${id}`} className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700">
+          <Link to={`/athletes/new?teamId=${id}`} className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 text-sm text-center">
             Add Athlete
           </Link>
         </div>
@@ -330,7 +330,7 @@ export default function TeamDetail() {
 
           <p className="text-sm text-slate-600 mb-3 mt-4">Share this link or code with athletes so they can join the team.</p>
 
-          <div className="flex items-center gap-4 mb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-3">
             <div>
               <div className="text-xs text-slate-500">Team Code</div>
               <div className="font-mono text-lg">{team.joinCode}</div>
@@ -370,7 +370,7 @@ export default function TeamDetail() {
       )}
 
       {/* TEAM AVATAR */}
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
         <img
           src={safeImageURL(team.avatar)}
           alt="Team Avatar"
@@ -392,7 +392,7 @@ export default function TeamDetail() {
         {athletes.length === 0 ? (
           <p className="text-gray-500">No athletes assigned to this team.</p>
         ) : (
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {athletes.map((athlete) => (
               <Link
                 key={athlete.id}
@@ -419,7 +419,7 @@ export default function TeamDetail() {
         {campaigns.length === 0 ? (
           <p className="text-gray-500">No campaigns created for this team.</p>
         ) : (
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[...campaigns]
               .sort((a, b) => {
                 const aDate = a.endDate?.toDate?.() || a.createdAt?.toDate?.() || 0;
@@ -460,7 +460,7 @@ export default function TeamDetail() {
                         Number(c.publicTotalRaisedCents || 0) / 100
                       ).toLocaleString()}
                     </p>
-                    <div className="flex gap-3 text-sm">
+                    <div className="flex flex-wrap gap-3 text-sm">
                       <Link
                         to={`/campaigns/${c.id}`}
                         className="text-blue-600 hover:underline"

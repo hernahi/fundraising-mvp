@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/config";
 import safeImageURL from "../utils/safeImage";
-import { FaUsers, FaTrophy, FaEdit, FaShareAlt } from "react-icons/fa";
+import { FaEdit, FaShareAlt } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import AssignTeamsToCampaignModal from "../components/AssignTeamsToCampaignModal";
 
@@ -144,12 +144,8 @@ useEffect(() => {
   validateCoachAccess();
 }, [profile?.role, profile?.uid, campaign?.teamIds, campaign?.orgId, navigate]);
 
-  if (loading) return <div className="p-6 text-gray-600">Loading campaign...</div>;
-  if (!campaign) return <div className="p-6 text-red-600">Campaign not found.</div>;
-
-  const raised = campaign.totalRaised || 0;
-  const goal = campaign.goalAmount || 0;
-  const percent = goal > 0 ? Math.min(100, Math.round((raised / goal) * 100)) : 0;
+  if (loading) return <div className="p-4 md:p-6 text-gray-600">Loading campaign...</div>;
+  if (!campaign) return <div className="p-4 md:p-6 text-red-600">Campaign not found.</div>;
 
     return (
     <>
@@ -165,8 +161,8 @@ useEffect(() => {
             className="w-full md:w-64 h-40 object-cover rounded-lg"
           />
 
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-800">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-800 break-words">
               {campaign.name}
             </h1>
 
@@ -195,10 +191,10 @@ useEffect(() => {
               {campaign.description}
             </p>
 
-            <div className="flex items-center gap-4 mt-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2 mt-6">
               <Link
                 to={`/campaigns/${campaign.id}/edit`}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-flex items-center justify-center gap-2 text-sm"
               >
                 <FaEdit /> Edit Campaign
               </Link>
@@ -209,7 +205,7 @@ useEffect(() => {
                     `${window.location.origin}/donate/${campaign.id}`
                   )
                 }
-                className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 flex items-center gap-2"
+                className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 inline-flex items-center justify-center gap-2 text-sm"
               >
                 <FaShareAlt /> Copy Share Link
               </button>
@@ -217,7 +213,7 @@ useEffect(() => {
               {canEditTeams && (
                 <button
                   onClick={() => setShowAssignTeams(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
                 >
                   Assign Teams
                 </button>

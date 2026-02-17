@@ -234,7 +234,7 @@ if (isCoach && teamRows.length > 0) {
   // ---------------------------------------------------
   if (!isSuperAdmin && !isAdmin && !isCoach) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <h1 className="text-2xl font-semibold text-red-600">
           Access Restricted
         </h1>
@@ -255,11 +255,11 @@ if (isCoach && teamRows.length > 0) {
   // PAGE
   // ---------------------------------------------------
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-4 md:p-6 space-y-8">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Athletes</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Athletes</h1>
           <p className="text-gray-500 mt-1">
             View and manage athletes in your organization.
           </p>
@@ -270,12 +270,12 @@ if (isCoach && teamRows.length > 0) {
           </p>
         </div>
 
-        <div className="flex gap-3 items-center">
+        <div className="flex w-full lg:w-auto flex-col sm:flex-row gap-3 items-stretch sm:items-center">
           {/* TEAM FILTER */}
           <select
             value={teamFilter}
             onChange={(e) => setTeamFilter(e.target.value)}
-            className="border rounded-lg px-3 py-2 bg-white"
+            className="border rounded-lg px-3 py-2 bg-white w-full sm:w-auto"
             disabled={isCoach}
           >
             <option value="all">All Teams</option>
@@ -290,7 +290,7 @@ if (isCoach && teamRows.length > 0) {
           {(isAdmin || isCoach) && (
             <Link
               to="/athletes/add"
-              className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow"
+              className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow text-center w-full sm:w-auto"
             >
               + Add Athlete
             </Link>
@@ -300,12 +300,12 @@ if (isCoach && teamRows.length > 0) {
 
       {/* BULK ACTION BAR */}
       {selectedIds.length > 0 && (
-        <div className="flex flex-wrap gap-3 items-center bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-          <strong>{selectedIds.length} selected</strong>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+          <strong className="text-sm">{selectedIds.length} selected</strong>
 
           <button
             onClick={selectAllVisible}
-            className="px-3 py-1 bg-white border rounded"
+            className="px-3 py-2 bg-white border rounded text-sm w-full sm:w-auto"
           >
             Select all
           </button>
@@ -313,7 +313,7 @@ if (isCoach && teamRows.length > 0) {
           <select
             value={assignTeamId}
             onChange={(e) => setAssignTeamId(e.target.value)}
-            className="border rounded px-2 py-1"
+            className="border rounded px-2 py-2 text-sm w-full sm:w-auto"
           >
             <option value="">Assign to team…</option>
             {teams.map((t) => (
@@ -325,14 +325,14 @@ if (isCoach && teamRows.length > 0) {
 
           <button
             onClick={bulkAssign}
-            className="px-4 py-1 bg-blue-600 text-white rounded"
+            className="px-4 py-2 bg-blue-600 text-white rounded text-sm w-full sm:w-auto"
           >
             Assign
           </button>
 
           <button
             onClick={clearSelection}
-            className="px-3 py-1 bg-gray-200 rounded"
+            className="px-3 py-2 bg-gray-200 rounded text-sm w-full sm:w-auto"
           >
             Clear
           </button>
@@ -354,7 +354,7 @@ if (isCoach && teamRows.length > 0) {
 
       {/* GRID */}
       {!loading && visibleAthletes.length > 0 && (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
           {visibleAthletes.map((ath) => {
             const teamName =
               teams.find((t) => t.id === ath.teamId)?.name ||
@@ -363,13 +363,13 @@ if (isCoach && teamRows.length > 0) {
             return (
               <div
                 key={ath.id}
-                className="border bg-white rounded-xl shadow hover:shadow-lg transition p-6 flex flex-col items-center text-center"
+                className="border bg-white rounded-xl shadow hover:shadow-lg transition p-4 md:p-6 flex flex-col items-center text-center"
               >
                 <input
                   type="checkbox"
                   checked={selectedIds.includes(ath.id)}
                   onChange={() => toggleSelect(ath.id)}
-                  className="self-start mb-2"
+                  className="self-start mb-2 h-4 w-4"
                 />
 
                 <img
@@ -401,10 +401,10 @@ if (isCoach && teamRows.length > 0) {
                   {teamName}
                 </p>
 
-                <div className="flex gap-3 mt-6">
+                <div className="grid grid-cols-2 gap-3 mt-6 w-full">
                   <Link
                     to={`/athletes/${ath.id}`}
-                    className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-center text-sm"
                   >
                     View
                   </Link>
@@ -412,7 +412,7 @@ if (isCoach && teamRows.length > 0) {
                   {(isAdmin || isCoach) && (
                     <Link
                       to={`/athletes/${ath.id}/edit`}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-center text-sm"
                     >
                       Edit
                     </Link>
