@@ -630,7 +630,7 @@ export default function Messages() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-7">
       <HeaderActions
         title="Messages"
         addLabel={null}
@@ -728,10 +728,10 @@ export default function Messages() {
       )}
 
       {isAthlete && (
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+        <div className="grid gap-6 md:gap-7 lg:grid-cols-[1.2fr_1fr]">
           <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+              <div className="flex flex-col gap-3 md:gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-800">
                     Contacts
@@ -740,11 +740,11 @@ export default function Messages() {
                     Add at least 20 contacts to start your drip campaign.
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 md:gap-3 sm:justify-end">
                   <select
                     value={contactFilter}
                     onChange={(e) => setContactFilter(e.target.value)}
-                    className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700"
+                    className="w-full sm:w-auto rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-700"
                   >
                     <option value="all">All contacts</option>
                     <option value="bounced">Bounced only</option>
@@ -754,17 +754,17 @@ export default function Messages() {
                     type="button"
                     onClick={dedupeContacts}
                     disabled={dedupeLoading || contacts.length < 2}
-                    className="text-xs text-slate-500 hover:text-slate-700 disabled:opacity-50"
+                    className="whitespace-nowrap rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-50"
                   >
                     {dedupeLoading ? "De-duplicating..." : "De-duplicate"}
                   </button>
-                  <div className="text-sm font-semibold text-slate-700">
+                  <div className="rounded-md bg-slate-100 px-2 py-1 text-sm font-semibold text-slate-700">
                     {counts.total}/20
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] md:grid-cols-[1fr_1.2fr_auto]">
                 <input
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
@@ -780,13 +780,13 @@ export default function Messages() {
                 <button
                   type="button"
                   onClick={addContact}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                  className="w-full sm:w-auto rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
                 >
                   Add
                 </button>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-5 text-sm text-slate-600">
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 text-sm text-slate-600">
                 <div>
                   <div className="text-xs uppercase text-slate-400">
                     Sent
@@ -1135,8 +1135,8 @@ export default function Messages() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+              <div className="flex flex-col gap-3 md:gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-800">
                     Invite Message
@@ -1149,7 +1149,7 @@ export default function Messages() {
                 <button
                   type="button"
                   onClick={resetTemplate}
-                  className="text-xs text-slate-500 hover:text-slate-700"
+                  className="w-full sm:w-auto rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:text-slate-700 hover:bg-slate-50"
                 >
                   Use org template
                 </button>
@@ -1185,12 +1185,12 @@ export default function Messages() {
                 className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
               />
 
-              <div className="mt-3 flex justify-end">
+              <div className="mt-3 flex justify-stretch sm:justify-end">
                 <button
                   type="button"
                   onClick={saveTemplate}
                   disabled={savingTemplate || selectedTemplateKey === "custom"}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  className="w-full sm:w-auto rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                 >
                   {savingTemplate ? "Saving..." : "Save Template"}
                 </button>
@@ -1199,7 +1199,7 @@ export default function Messages() {
           </div>
 
           <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-800">
                   Drip Campaign
@@ -1215,7 +1215,7 @@ export default function Messages() {
               </p>
 
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-slate-800">
                       Auto-send at 6:30 PM
@@ -1287,7 +1287,7 @@ export default function Messages() {
                 )}
               </div>
 
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <button
                   type="button"
                   onClick={() =>
