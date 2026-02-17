@@ -45,6 +45,11 @@ const TEMPLATE_OPTIONS = [
   { key: "custom", label: "Custom Message" },
 ];
 
+const PHASE_LABELS = TEMPLATE_OPTIONS.reduce((acc, item) => {
+  acc[item.key] = item.label;
+  return acc;
+}, {});
+
 const SUBJECTS_BY_TEMPLATE = {
   week1a: "Can you support our fundraiser?",
   week1b: "A quick note from our team",
@@ -279,6 +284,15 @@ export default function Messages() {
       ? eligibleContacts.filter((c) => selectedContactIds.includes(c.id))
       : eligibleContacts;
 
+  const dripLastPhase = athleteRecord?.drip?.lastPhaseSent || "";
+  const dripNextPhase = athleteRecord?.drip?.nextPhase || "";
+  const dripLastSentAt = athleteRecord?.drip?.lastSentAt?.toDate
+    ? athleteRecord.drip.lastSentAt.toDate().toLocaleString()
+    : "Not sent yet";
+  const dripNextSendAt = athleteRecord?.drip?.nextSendAt?.toDate
+    ? athleteRecord.drip.nextSendAt.toDate().toLocaleString()
+    : "Not scheduled yet";
+
   const addContact = async () => {
     const name = contactName.trim();
     const email = contactEmail.trim().toLowerCase();
@@ -417,7 +431,12 @@ export default function Messages() {
   };
 
   const resetTemplate = async () => {
-    const nextTemplate = orgTemplate || DEFAULT_DONOR_INVITE_TEMPLATE;
+    const nextTemplate =
+      selectedTemplateKey === "custom"
+        ? ""
+        : orgWeekTemplates[selectedTemplateKey] ||
+          orgTemplate ||
+          DEFAULT_DONOR_INVITE_TEMPLATE;
     setTemplateDraft(nextTemplate);
     setTemplateDirty(true);
   };
@@ -877,11 +896,30 @@ export default function Messages() {
                   </label>
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
-                  Next send:{" "}
-                  {athleteRecord?.drip?.nextSendAt?.toDate
-                    ? athleteRecord.drip.nextSendAt.toDate().toLocaleString()
-                    : "Not scheduled yet"}
+                  Next send: {dripNextSendAt}
                 </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs text-slate-600">
+                  <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                    <span className="text-slate-400">Last sent phase: </span>
+                    <span className="font-medium text-slate-700">
+                      {PHASE_LABELS[dripLastPhase] || "None yet"}
+                    </span>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                    <span className="text-slate-400">Next phase: </span>
+                    <span className="font-medium text-slate-700">
+                      {PHASE_LABELS[dripNextPhase] || "Pending schedule"}
+                    </span>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-white px-3 py-2 sm:col-span-2">
+                    <span className="text-slate-400">Last sent at: </span>
+                    <span className="font-medium text-slate-700">
+                      {dripLastSentAt}
+                    </span>
+                  </div>
+                </div>
+
                 {!orgDripEnabled && (
                   <p className="mt-2 text-xs text-amber-600">
                     Org auto-send is paused. Turn it on in Settings when ready.
