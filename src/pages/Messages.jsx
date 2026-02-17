@@ -471,7 +471,7 @@ export default function Messages() {
     try {
       setSendLoading(true);
       const fn = httpsCallable(functions, "sendAthleteDripMessage");
-      await fn({
+      const response = await fn({
         campaignId: athleteRecord.campaignId,
         athleteId,
         contactIds,
@@ -479,9 +479,17 @@ export default function Messages() {
         subject,
         phase: templateKey,
       });
+
+      const sent = Number(response?.data?.sent || 0);
+      const failed = Number(response?.data?.failed || 0);
+      if (sent > 0 && failed > 0) {
+        alert(`Sent to ${sent} recipient(s). ${failed} failed.`);
+      } else if (sent > 0) {
+        alert(`Sent to ${sent} recipient(s).`);
+      }
     } catch (err) {
       console.error("Failed to send drip message:", err);
-      alert("Failed to send messages. Please try again.");
+      alert(err?.message || "Failed to send messages. Please try again.");
     } finally {
       setSendLoading(false);
     }

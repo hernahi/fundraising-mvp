@@ -153,6 +153,7 @@ const DRIP_PHASES = [
   { key: "week2", offsetDays: 7 },
   { key: "week3", offsetDays: 14 },
   { key: "week4", offsetDays: 21 },
+  { key: "week5", offsetDays: 28 },
 ];
 
 const DRIP_SUBJECTS = {
@@ -161,6 +162,7 @@ const DRIP_SUBJECTS = {
   week2: "Thank you for supporting our season",
   week3: "We are getting closer to our goal",
   week4: "Last chance to support our fundraiser",
+  week5: "Final week to support our fundraiser",
 };
 
 function getTimeZoneOffsetMs(date, timeZone) {
@@ -248,27 +250,55 @@ async function sendDripToContacts({
   phase,
   isAutomated,
 }) {
+  const validContacts = (contacts || []).filter((contact) => {
+    const email = String(contact?.email || "").trim();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  });
+
+  if (!validContacts.length) {
+    throw new Error("No valid recipient emails found.");
+  }
+
   const { client, domain } = getMailgunClient();
   const from = `Fundraising MVP <no-reply@${domain}>`;
   const now = admin.firestore.FieldValue.serverTimestamp();
+  const htmlBody = templateText
+    .split("\n")
+    .map((line) => (line ? `<p>${line}</p>` : "<br>"))
+    .join("");
 
-  const sends = contacts.map((contact) =>
+  const sends = validContacts.map((contact) =>
     client.messages.create(domain, {
       from,
       to: [contact.email],
       subject,
       text: templateText,
-      html: templateText
-        .split("\n")
-        .map((line) => (line ? `<p>${line}</p>` : "<br>"))
-        .join(""),
+      html: htmlBody,
     })
   );
 
-  await Promise.all(sends);
+  const results = await Promise.allSettled(sends);
+  const sentContacts = [];
+  const failedRecipients = [];
+
+  results.forEach((result, index) => {
+    const contact = validContacts[index];
+    if (result.status === "fulfilled") {
+      sentContacts.push(contact);
+      return;
+    }
+    failedRecipients.push({
+      email: contact?.email || "",
+      reason: result.reason?.message || "send failed",
+    });
+  });
+
+  if (!sentContacts.length) {
+    throw new Error("All selected recipients failed to send.");
+  }
 
   const batch = db.batch();
-  contacts.forEach((contact) => {
+  sentContacts.forEach((contact) => {
     const contactRef = db.collection("athlete_contacts").doc(contact.id);
     batch.set(
       contactRef,
@@ -312,6 +342,21 @@ async function sendDripToContacts({
   );
 
   await batch.commit();
+
+  if (failedRecipients.length > 0) {
+    logger.warn("sendDripToContacts: partial send failure", {
+      campaignId,
+      athleteId,
+      phase,
+      failedCount: failedRecipients.length,
+      failedRecipients: failedRecipients.map((entry) => entry.email),
+    });
+  }
+
+  return {
+    sentCount: sentContacts.length,
+    failedCount: failedRecipients.length,
+  };
 }
 
 /* ============================================================
@@ -808,7 +853,7 @@ exports.sendAthleteDripMessage = onCall(
       throw new HttpsError("failed-precondition", "No eligible contacts to send");
     }
 
-    await sendDripToContacts({
+    const sendResult = await sendDripToContacts({
       db,
       orgId: profile.orgId,
       campaignId,
@@ -821,14 +866,20 @@ exports.sendAthleteDripMessage = onCall(
     });
 
     logger.info("sendAthleteDripMessage: sent", {
-      count: eligibleContacts.length,
+      count: sendResult.sentCount,
+      failedCount: sendResult.failedCount,
       campaignId,
       athleteId,
       uid: request.auth.uid,
       phase: phase || "manual",
     });
 
-    return { ok: true, sent: eligibleContacts.length };
+    return {
+      ok: true,
+      sent: sendResult.sentCount,
+      failed: sendResult.failedCount,
+      requested: contactIds.length,
+    };
   }
 );
 
@@ -947,8 +998,11 @@ exports.runAthleteDrip = onSchedule(
         personalMessage: "",
       });
 
+      const orgSubjects = orgData.donorInviteSubjects || {};
       const subject =
-        DRIP_SUBJECTS[duePhase.key] || "Fundraiser update";
+        orgSubjects[duePhase.key] ||
+        DRIP_SUBJECTS[duePhase.key] ||
+        "Fundraiser update";
 
       const contactsSnap = await db
         .collection("athlete_contacts")
@@ -964,7 +1018,7 @@ exports.runAthleteDrip = onSchedule(
         continue;
       }
 
-      await sendDripToContacts({
+      const sendResult = await sendDripToContacts({
         db,
         orgId: athlete.orgId,
         campaignId: athlete.campaignId,
@@ -1001,7 +1055,8 @@ exports.runAthleteDrip = onSchedule(
       logger.info("runAthleteDrip: sent", {
         athleteId,
         phase: duePhase.key,
-        contacts: contacts.length,
+        contacts: sendResult.sentCount,
+        failedCount: sendResult.failedCount,
       });
     }
   }
