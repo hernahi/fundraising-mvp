@@ -252,7 +252,9 @@ async function sendDripToContacts({
 }) {
   const validContacts = (contacts || []).filter((contact) => {
     const email = String(contact?.email || "").trim();
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const isSuppressed = contact?.status === "bounced" || contact?.status === "complained";
+    return isValidEmail && !isSuppressed;
   });
 
   if (!validContacts.length) {
@@ -274,6 +276,10 @@ async function sendDripToContacts({
       subject,
       text: templateText,
       html: htmlBody,
+      "v:contactId": contact.id,
+      "v:athleteId": athleteId,
+      "v:campaignId": campaignId,
+      "v:orgId": orgId,
     })
   );
 
@@ -357,6 +363,23 @@ async function sendDripToContacts({
     sentCount: sentContacts.length,
     failedCount: failedRecipients.length,
   };
+}
+
+function getMailgunEventPayload(reqBody) {
+  if (!reqBody) return null;
+  if (reqBody["event-data"]) return reqBody["event-data"];
+  if (reqBody.event && reqBody.recipient) return reqBody;
+  return null;
+}
+
+function parseMailgunEventType(eventData) {
+  const type = String(eventData?.event || "").toLowerCase();
+  if (!type) return "unknown";
+  return type;
+}
+
+function shouldMarkSuppressed(eventType) {
+  return eventType === "failed" || eventType === "bounced" || eventType === "complained";
 }
 
 /* ============================================================
@@ -735,7 +758,7 @@ exports.sendDonorInvite = onCall(
 exports.sendAthleteDripMessage = onCall(
   {
     secrets: ["MAILGUN_API_KEY"],
-    timeoutSeconds: 20,
+    timeoutSeconds: 60,
   },
   async (request) => {
     if (!request.auth) {
@@ -846,6 +869,7 @@ exports.sendAthleteDripMessage = onCall(
       const data = snap.data() || {};
       if (data.orgId !== profile.orgId || data.athleteId !== athleteId) return;
       if (data.status === "donated") return;
+      if (data.status === "bounced" || data.status === "complained") return;
       eligibleContacts.push({ id: snap.id, ...data });
     });
 
@@ -853,17 +877,33 @@ exports.sendAthleteDripMessage = onCall(
       throw new HttpsError("failed-precondition", "No eligible contacts to send");
     }
 
-    const sendResult = await sendDripToContacts({
-      db,
-      orgId: profile.orgId,
-      campaignId,
-      athleteId,
-      contacts: eligibleContacts,
-      templateText: bodyText,
-      subject: messageSubject,
-      phase: phase || "manual",
-      isAutomated: false,
-    });
+    let sendResult;
+    try {
+      sendResult = await sendDripToContacts({
+        db,
+        orgId: profile.orgId,
+        campaignId,
+        athleteId,
+        contacts: eligibleContacts,
+        templateText: bodyText,
+        subject: messageSubject,
+        phase: phase || "manual",
+        isAutomated: false,
+      });
+    } catch (err) {
+      logger.error("sendAthleteDripMessage: send failed", {
+        campaignId,
+        athleteId,
+        uid: request.auth.uid,
+        phase: phase || "manual",
+        message: err?.message,
+        stack: err?.stack,
+      });
+      throw new HttpsError(
+        "internal",
+        err?.message || "Failed to send selected messages"
+      );
+    }
 
     logger.info("sendAthleteDripMessage: sent", {
       count: sendResult.sentCount,
@@ -882,6 +922,110 @@ exports.sendAthleteDripMessage = onCall(
     };
   }
 );
+
+/* ============================================================
+   MAILGUN EVENT WEBHOOK
+   - Handles delivered/failed/bounced/complained events
+   - Updates athlete_contacts status so athletes can correct bad emails
+   ============================================================ */
+exports.mailgunEventWebhook = onRequest(async (req, res) => {
+  if (req.method !== "POST") {
+    return res.status(405).send("Method Not Allowed");
+  }
+
+  try {
+    const eventData = getMailgunEventPayload(req.body);
+    if (!eventData) {
+      return res.status(400).send("Invalid payload");
+    }
+
+    const eventType = parseMailgunEventType(eventData);
+    const recipient = String(eventData?.recipient || "").trim().toLowerCase();
+    const userVars = eventData?.["user-variables"] || {};
+    const contactId = String(userVars?.contactId || "").trim();
+    const athleteId = String(userVars?.athleteId || "").trim();
+    const campaignId = String(userVars?.campaignId || "").trim();
+    const orgId = String(userVars?.orgId || "").trim();
+    const eventAt = eventData?.timestamp
+      ? admin.firestore.Timestamp.fromMillis(Number(eventData.timestamp) * 1000)
+      : admin.firestore.FieldValue.serverTimestamp();
+
+    if (!recipient) {
+      return res.status(200).send("No recipient");
+    }
+
+    const db = admin.firestore();
+    const update = {
+      lastDeliveryEvent: eventType,
+      lastDeliveryAt: eventAt,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (eventType === "delivered") {
+      update.status = "sent";
+      update.deliveryStatus = "delivered";
+      update.lastDeliveryError = admin.firestore.FieldValue.delete();
+    } else if (shouldMarkSuppressed(eventType)) {
+      update.status = "bounced";
+      update.deliveryStatus = eventType;
+      update.bounceCount = admin.firestore.FieldValue.increment(1);
+      update.lastDeliveryError =
+        eventData?.["delivery-status"]?.description ||
+        eventData?.reason ||
+        eventData?.severity ||
+        eventType;
+    } else {
+      update.deliveryStatus = eventType;
+    }
+
+    let contactRef = null;
+
+    if (contactId) {
+      contactRef = db.collection("athlete_contacts").doc(contactId);
+      const snap = await contactRef.get();
+      if (!snap.exists) {
+        contactRef = null;
+      }
+    }
+
+    if (!contactRef && recipient && athleteId && orgId) {
+      const querySnap = await db
+        .collection("athlete_contacts")
+        .where("orgId", "==", orgId)
+        .where("athleteId", "==", athleteId)
+        .where("emailLower", "==", recipient)
+        .limit(1)
+        .get();
+      if (!querySnap.empty) {
+        contactRef = querySnap.docs[0].ref;
+      }
+    }
+
+    if (contactRef) {
+      await contactRef.set(update, { merge: true });
+    }
+
+    await db.collection("message_events").add({
+      source: "mailgun",
+      eventType,
+      recipient,
+      contactId: contactId || null,
+      athleteId: athleteId || null,
+      campaignId: campaignId || null,
+      orgId: orgId || null,
+      payload: eventData,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return res.status(200).send("ok");
+  } catch (err) {
+    logger.error("mailgunEventWebhook failed", {
+      message: err?.message,
+      stack: err?.stack,
+    });
+    return res.status(200).send("ignored");
+  }
+});
 
 /* ============================================================
    SCHEDULED ATHLETE DRIP (AUTO)
@@ -1012,23 +1156,40 @@ exports.runAthleteDrip = onSchedule(
 
       const contacts = contactsSnap.docs
         .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((contact) => contact.status !== "donated");
+        .filter(
+          (contact) =>
+            contact.status !== "donated" &&
+            contact.status !== "bounced" &&
+            contact.status !== "complained"
+        );
 
       if (contacts.length === 0) {
         continue;
       }
 
-      const sendResult = await sendDripToContacts({
-        db,
-        orgId: athlete.orgId,
-        campaignId: athlete.campaignId,
-        athleteId,
-        contacts,
-        templateText,
-        subject,
-        phase: duePhase.key,
-        isAutomated: true,
-      });
+      let sendResult;
+      try {
+        sendResult = await sendDripToContacts({
+          db,
+          orgId: athlete.orgId,
+          campaignId: athlete.campaignId,
+          athleteId,
+          contacts,
+          templateText,
+          subject,
+          phase: duePhase.key,
+          isAutomated: true,
+        });
+      } catch (err) {
+        logger.error("runAthleteDrip: send failed", {
+          athleteId,
+          campaignId: athlete.campaignId,
+          phase: duePhase.key,
+          message: err?.message,
+          stack: err?.stack,
+        });
+        continue;
+      }
 
       const afterIndex = schedule.findIndex((p) => p.key === duePhase.key) + 1;
       const next = schedule[afterIndex] || null;

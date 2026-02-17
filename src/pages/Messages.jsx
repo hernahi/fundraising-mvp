@@ -264,10 +264,14 @@ export default function Messages() {
   const counts = useMemo(() => {
     const donated = contacts.filter((c) => c.status === "donated").length;
     const sent = contacts.filter((c) => c.status === "sent").length;
+    const bounced = contacts.filter(
+      (c) => c.status === "bounced" || c.status === "complained"
+    ).length;
     return {
       total: contacts.length,
       donated,
       sent,
+      bounced,
     };
   }, [contacts]);
 
@@ -275,7 +279,13 @@ export default function Messages() {
   const isTestSend = counts.total < 20;
 
   const eligibleContacts = useMemo(
-    () => contacts.filter((c) => c.status !== "donated"),
+    () =>
+      contacts.filter(
+        (c) =>
+          c.status !== "donated" &&
+          c.status !== "bounced" &&
+          c.status !== "complained"
+      ),
     [contacts]
   );
 
@@ -651,7 +661,7 @@ export default function Messages() {
                 </button>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-4 text-sm text-slate-600">
+              <div className="mt-4 grid gap-3 sm:grid-cols-5 text-sm text-slate-600">
                 <div>
                   <div className="text-xs uppercase text-slate-400">
                     Sent
@@ -678,6 +688,14 @@ export default function Messages() {
                 </div>
                 <div>
                   <div className="text-xs uppercase text-slate-400">
+                    Bounced
+                  </div>
+                  <div className="font-semibold text-red-600">
+                    {counts.bounced}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase text-slate-400">
                     Selected
                   </div>
                   <div className="font-semibold text-slate-800">
@@ -696,6 +714,11 @@ export default function Messages() {
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto">
+                  {counts.bounced > 0 && (
+                    <p className="mb-2 text-xs text-amber-700">
+                      {counts.bounced} address(es) bounced. Remove and re-add with the corrected email before sending again.
+                    </p>
+                  )}
                   <table className="min-w-full text-sm">
                     <thead className="bg-slate-50 text-slate-600">
                       <tr>
@@ -742,7 +765,11 @@ export default function Messages() {
                             <input
                               type="checkbox"
                               checked={selectedContactIds.includes(contact.id)}
-                              disabled={contact.status === "donated"}
+                              disabled={
+                                contact.status === "donated" ||
+                                contact.status === "bounced" ||
+                                contact.status === "complained"
+                              }
                               onChange={(e) => {
                                 if (e.target.checked) {
                                   setSelectedContactIds((prev) => [
@@ -766,7 +793,15 @@ export default function Messages() {
                             </div>
                           </td>
                           <td className="px-3 py-2 text-slate-600">
-                            {contact.status || "draft"}
+                            {contact.status === "bounced" ||
+                            contact.status === "complained"
+                              ? "bounced - update email"
+                              : contact.status || "draft"}
+                            {contact.lastDeliveryError ? (
+                              <div className="text-[11px] text-red-600 mt-1">
+                                {String(contact.lastDeliveryError).slice(0, 120)}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="px-3 py-2 text-slate-600">
                             {contact.lastSentAt?.toDate
