@@ -78,6 +78,9 @@ export default function Messages() {
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [selectedContactIds, setSelectedContactIds] = useState([]);
+  const [contactFilter, setContactFilter] = useState("all");
+  const [editingContactId, setEditingContactId] = useState("");
+  const [editingEmail, setEditingEmail] = useState("");
 
   const [orgTemplate, setOrgTemplate] = useState(
     DEFAULT_DONOR_INVITE_TEMPLATE
@@ -294,6 +297,47 @@ export default function Messages() {
       ? eligibleContacts.filter((c) => selectedContactIds.includes(c.id))
       : eligibleContacts;
 
+  const correctedDraftContacts = useMemo(
+    () =>
+      contacts.filter(
+        (c) =>
+          c.status === "draft" &&
+          (Boolean(c.correctedAt) ||
+            Number(c.bounceCount || 0) > 0 ||
+            c.lastDeliveryEvent === "bounced" ||
+            c.lastDeliveryEvent === "failed" ||
+            c.lastDeliveryEvent === "complained")
+      ),
+    [contacts]
+  );
+
+  const visibleContacts = useMemo(() => {
+    if (contactFilter === "bounced") {
+      return contacts.filter(
+        (c) => c.status === "bounced" || c.status === "complained"
+      );
+    }
+
+    if (contactFilter === "corrected") {
+      return correctedDraftContacts;
+    }
+
+    return contacts;
+  }, [contactFilter, contacts, correctedDraftContacts]);
+
+  const visibleEligibleIds = useMemo(
+    () =>
+      visibleContacts
+        .filter(
+          (c) =>
+            c.status !== "donated" &&
+            c.status !== "bounced" &&
+            c.status !== "complained"
+        )
+        .map((c) => c.id),
+    [visibleContacts]
+  );
+
   const dripLastPhase = athleteRecord?.drip?.lastPhaseSent || "";
   const dripNextPhase = athleteRecord?.drip?.nextPhase || "";
   const dripLastSentAt = athleteRecord?.drip?.lastSentAt?.toDate
@@ -302,6 +346,46 @@ export default function Messages() {
   const dripNextSendAt = athleteRecord?.drip?.nextSendAt?.toDate
     ? athleteRecord.drip.nextSendAt.toDate().toLocaleString()
     : "Not scheduled yet";
+
+  const dripStatus = useMemo(() => {
+    if (!athleteRecord?.campaignId) {
+      return {
+        label: "Needs campaign",
+        className: "bg-amber-50 border border-amber-200 text-amber-700",
+      };
+    }
+
+    if (counts.total < 20) {
+      return {
+        label: "Needs contacts",
+        className: "bg-amber-50 border border-amber-200 text-amber-700",
+      };
+    }
+
+    if (!orgDripEnabled) {
+      return {
+        label: "Org paused",
+        className: "bg-slate-50 border border-slate-200 text-slate-700",
+      };
+    }
+
+    if (!athleteRecord?.drip?.autoSendEnabled) {
+      return {
+        label: "Paused (athlete)",
+        className: "bg-slate-50 border border-slate-200 text-slate-700",
+      };
+    }
+
+    return {
+      label: "Active",
+      className: "bg-emerald-50 border border-emerald-200 text-emerald-700",
+    };
+  }, [
+    athleteRecord?.campaignId,
+    athleteRecord?.drip?.autoSendEnabled,
+    counts.total,
+    orgDripEnabled,
+  ]);
 
   const addContact = async () => {
     const name = contactName.trim();
@@ -390,6 +474,38 @@ export default function Messages() {
       await deleteDoc(doc(db, "athlete_contacts", contactId));
     } catch (err) {
       console.error("Failed to delete contact:", err);
+    }
+  };
+
+  const saveContactEmail = async (contact) => {
+    const nextEmail = editingEmail.trim().toLowerCase();
+    if (!nextEmail) {
+      alert("Please enter an email address.");
+      return;
+    }
+
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail);
+    if (!emailOk) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, "athlete_contacts", contact.id), {
+        email: nextEmail,
+        emailLower: nextEmail,
+        status: "draft",
+        deliveryStatus: "corrected",
+        correctedAt: serverTimestamp(),
+        correctedFromEmail: contact.email || "",
+        lastDeliveryError: "",
+        updatedAt: serverTimestamp(),
+      });
+      setEditingContactId("");
+      setEditingEmail("");
+    } catch (err) {
+      console.error("Failed to update contact email:", err);
+      alert("Failed to update email. Please try again.");
     }
   };
 
@@ -625,6 +741,15 @@ export default function Messages() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
+                  <select
+                    value={contactFilter}
+                    onChange={(e) => setContactFilter(e.target.value)}
+                    className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700"
+                  >
+                    <option value="all">All contacts</option>
+                    <option value="bounced">Bounced only</option>
+                    <option value="corrected">Corrected drafts</option>
+                  </select>
                   <button
                     type="button"
                     onClick={dedupeContacts}
@@ -719,6 +844,11 @@ export default function Messages() {
                       {counts.bounced} address(es) bounced. Remove and re-add with the corrected email before sending again.
                     </p>
                   )}
+                  {contactFilter !== "all" && visibleContacts.length === 0 && (
+                    <p className="mb-2 text-xs text-slate-500">
+                      No contacts match the selected filter.
+                    </p>
+                  )}
                   <table className="min-w-full text-sm">
                     <thead className="bg-slate-50 text-slate-600">
                       <tr>
@@ -726,17 +856,24 @@ export default function Messages() {
                           <input
                             type="checkbox"
                             checked={
-                              eligibleContacts.length > 0 &&
-                              selectedContactIds.length ===
-                                eligibleContacts.length
+                              visibleEligibleIds.length > 0 &&
+                              visibleEligibleIds.every((id) =>
+                                selectedContactIds.includes(id)
+                              )
                             }
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedContactIds(
-                                  eligibleContacts.map((c) => c.id)
+                                setSelectedContactIds((prev) =>
+                                  Array.from(
+                                    new Set([...prev, ...visibleEligibleIds])
+                                  )
                                 );
                               } else {
-                                setSelectedContactIds([]);
+                                setSelectedContactIds((prev) =>
+                                  prev.filter(
+                                    (id) => !visibleEligibleIds.includes(id)
+                                  )
+                                );
                               }
                             }}
                           />
@@ -756,7 +893,7 @@ export default function Messages() {
                       </tr>
                     </thead>
                     <tbody>
-                      {contacts.map((contact) => (
+                      {visibleContacts.map((contact) => (
                         <tr
                           key={contact.id}
                           className="border-t border-slate-100"
@@ -788,9 +925,17 @@ export default function Messages() {
                             <div className="font-medium text-slate-800">
                               {contact.name || "Supporter"}
                             </div>
-                            <div className="text-xs text-slate-500">
-                              {contact.email}
-                            </div>
+                            {editingContactId === contact.id ? (
+                              <input
+                                value={editingEmail}
+                                onChange={(e) => setEditingEmail(e.target.value)}
+                                className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-700"
+                              />
+                            ) : (
+                              <div className="text-xs text-slate-500">
+                                {contact.email}
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-slate-600">
                             {contact.status === "bounced" ||
@@ -809,13 +954,45 @@ export default function Messages() {
                               : "N/A"}
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <button
-                              type="button"
-                              onClick={() => removeContact(contact.id)}
-                              className="text-xs text-slate-400 hover:text-red-500"
-                            >
-                              Remove
-                            </button>
+                            <div className="inline-flex items-center gap-2">
+                              {(contact.status === "bounced" ||
+                                contact.status === "complained" ||
+                                editingContactId === contact.id) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (editingContactId === contact.id) {
+                                      saveContactEmail(contact);
+                                      return;
+                                    }
+                                    setEditingContactId(contact.id);
+                                    setEditingEmail(contact.email || "");
+                                  }}
+                                  className="text-xs text-blue-600 hover:text-blue-700"
+                                >
+                                  {editingContactId === contact.id ? "Save" : "Edit"}
+                                </button>
+                              )}
+                              {editingContactId === contact.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingContactId("");
+                                    setEditingEmail("");
+                                  }}
+                                  className="text-xs text-slate-400 hover:text-slate-500"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeContact(contact.id)}
+                                className="text-xs text-slate-400 hover:text-red-500"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -890,9 +1067,16 @@ export default function Messages() {
 
           <div className="space-y-6">
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-800">
-                Drip Campaign
-              </h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-slate-800">
+                  Drip Campaign
+                </h2>
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-wide ${dripStatus.className}`}
+                >
+                  {dripStatus.label}
+                </span>
+              </div>
               <p className="text-sm text-slate-500 mt-1">
                 Select recipients and the message you want to send.
               </p>
@@ -971,6 +1155,16 @@ export default function Messages() {
               </div>
 
               <div className="mt-4 space-y-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedContactIds(correctedDraftContacts.map((c) => c.id))
+                  }
+                  disabled={correctedDraftContacts.length === 0 || sendLoading}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                >
+                  Select Corrected Contacts ({correctedDraftContacts.length})
+                </button>
                 <button
                   type="button"
                   onClick={() => sendDrip(selectedTemplateKey)}
