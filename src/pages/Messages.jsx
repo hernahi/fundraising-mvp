@@ -838,7 +838,7 @@ export default function Messages() {
                   No contacts yet.
                 </div>
               ) : (
-                <div className="mt-4 overflow-x-auto">
+                <div className="mt-4">
                   {counts.bounced > 0 && (
                     <p className="mb-2 text-xs text-amber-700">
                       {counts.bounced} address(es) bounced. Remove and re-add with the corrected email before sending again.
@@ -849,79 +849,37 @@ export default function Messages() {
                       No contacts match the selected filter.
                     </p>
                   )}
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-slate-50 text-slate-600">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-medium">
-                          <input
-                            type="checkbox"
-                            checked={
-                              visibleEligibleIds.length > 0 &&
-                              visibleEligibleIds.every((id) =>
-                                selectedContactIds.includes(id)
-                              )
-                            }
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedContactIds((prev) =>
-                                  Array.from(
-                                    new Set([...prev, ...visibleEligibleIds])
-                                  )
-                                );
-                              } else {
-                                setSelectedContactIds((prev) =>
-                                  prev.filter(
-                                    (id) => !visibleEligibleIds.includes(id)
-                                  )
-                                );
-                              }
-                            }}
-                          />
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium">
-                          Contact
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium">
-                          Status
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium">
-                          Last Sent
-                        </th>
-                        <th className="px-3 py-2 text-right font-medium">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visibleContacts.map((contact) => (
-                        <tr
-                          key={contact.id}
-                          className="border-t border-slate-100"
-                        >
-                          <td className="px-3 py-2">
-                            <input
-                              type="checkbox"
-                              checked={selectedContactIds.includes(contact.id)}
-                              disabled={
-                                contact.status === "donated" ||
-                                contact.status === "bounced" ||
-                                contact.status === "complained"
-                              }
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedContactIds((prev) => [
-                                    ...prev,
-                                    contact.id,
-                                  ]);
-                                } else {
-                                  setSelectedContactIds((prev) =>
-                                    prev.filter((id) => id !== contact.id)
-                                  );
-                                }
-                              }}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
+                  <div className="md:hidden space-y-3">
+                    <label className="mb-2 inline-flex items-center gap-2 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={
+                          visibleEligibleIds.length > 0 &&
+                          visibleEligibleIds.every((id) =>
+                            selectedContactIds.includes(id)
+                          )
+                        }
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedContactIds((prev) =>
+                              Array.from(new Set([...prev, ...visibleEligibleIds]))
+                            );
+                          } else {
+                            setSelectedContactIds((prev) =>
+                              prev.filter((id) => !visibleEligibleIds.includes(id))
+                            );
+                          }
+                        }}
+                      />
+                      Select all visible eligible contacts
+                    </label>
+                    {visibleContacts.map((contact) => (
+                      <div
+                        key={contact.id}
+                        className="rounded-lg border border-slate-200 bg-white p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
                             <div className="font-medium text-slate-800">
                               {contact.name || "Supporter"}
                             </div>
@@ -932,72 +890,247 @@ export default function Messages() {
                                 className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-700"
                               />
                             ) : (
-                              <div className="text-xs text-slate-500">
+                              <div className="text-xs text-slate-500 break-all">
                                 {contact.email}
                               </div>
                             )}
-                          </td>
-                          <td className="px-3 py-2 text-slate-600">
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={selectedContactIds.includes(contact.id)}
+                            disabled={
+                              contact.status === "donated" ||
+                              contact.status === "bounced" ||
+                              contact.status === "complained"
+                            }
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedContactIds((prev) => [
+                                  ...prev,
+                                  contact.id,
+                                ]);
+                              } else {
+                                setSelectedContactIds((prev) =>
+                                  prev.filter((id) => id !== contact.id)
+                                );
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="mt-2 text-xs">
+                          <span className="font-medium text-slate-600">Status: </span>
+                          <span className="text-slate-700">
                             {contact.status === "bounced" ||
                             contact.status === "complained"
                               ? "bounced - update email"
                               : contact.status || "draft"}
-                            {contact.lastDeliveryError ? (
-                              <div className="text-[11px] text-red-600 mt-1">
-                                {String(contact.lastDeliveryError).slice(0, 120)}
-                              </div>
-                            ) : null}
-                          </td>
-                          <td className="px-3 py-2 text-slate-600">
-                            {contact.lastSentAt?.toDate
-                              ? contact.lastSentAt.toDate().toLocaleString()
-                              : "N/A"}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="inline-flex items-center gap-2">
-                              {(contact.status === "bounced" ||
-                                contact.status === "complained" ||
-                                editingContactId === contact.id) && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (editingContactId === contact.id) {
-                                      saveContactEmail(contact);
-                                      return;
-                                    }
-                                    setEditingContactId(contact.id);
-                                    setEditingEmail(contact.email || "");
-                                  }}
-                                  className="text-xs text-blue-600 hover:text-blue-700"
-                                >
-                                  {editingContactId === contact.id ? "Save" : "Edit"}
-                                </button>
-                              )}
-                              {editingContactId === contact.id && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingContactId("");
-                                    setEditingEmail("");
-                                  }}
-                                  className="text-xs text-slate-400 hover:text-slate-500"
-                                >
-                                  Cancel
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => removeContact(contact.id)}
-                                className="text-xs text-slate-400 hover:text-red-500"
-                              >
-                                Remove
-                              </button>
+                          </span>
+                          {contact.lastDeliveryError ? (
+                            <div className="mt-1 text-[11px] text-red-600 break-words">
+                              {String(contact.lastDeliveryError).slice(0, 120)}
                             </div>
-                          </td>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          Last sent:{" "}
+                          {contact.lastSentAt?.toDate
+                            ? contact.lastSentAt.toDate().toLocaleString()
+                            : "N/A"}
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-2">
+                          {(contact.status === "bounced" ||
+                            contact.status === "complained" ||
+                            editingContactId === contact.id) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (editingContactId === contact.id) {
+                                  saveContactEmail(contact);
+                                  return;
+                                }
+                                setEditingContactId(contact.id);
+                                setEditingEmail(contact.email || "");
+                              }}
+                              className="w-full rounded border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700"
+                            >
+                              {editingContactId === contact.id ? "Save" : "Edit"}
+                            </button>
+                          )}
+                          {editingContactId === contact.id && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingContactId("");
+                                setEditingEmail("");
+                              }}
+                              className="w-full rounded border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeContact(contact.id)}
+                            className="w-full rounded border border-red-200 px-3 py-2 text-xs font-semibold text-red-600"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-slate-50 text-slate-600">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium">
+                            <input
+                              type="checkbox"
+                              checked={
+                                visibleEligibleIds.length > 0 &&
+                                visibleEligibleIds.every((id) =>
+                                  selectedContactIds.includes(id)
+                                )
+                              }
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedContactIds((prev) =>
+                                    Array.from(
+                                      new Set([...prev, ...visibleEligibleIds])
+                                    )
+                                  );
+                                } else {
+                                  setSelectedContactIds((prev) =>
+                                    prev.filter(
+                                      (id) => !visibleEligibleIds.includes(id)
+                                    )
+                                  );
+                                }
+                              }}
+                            />
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium">
+                            Contact
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium">
+                            Status
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium">
+                            Last Sent
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium">
+                            Actions
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {visibleContacts.map((contact) => (
+                          <tr
+                            key={contact.id}
+                            className="border-t border-slate-100"
+                          >
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedContactIds.includes(contact.id)}
+                                disabled={
+                                  contact.status === "donated" ||
+                                  contact.status === "bounced" ||
+                                  contact.status === "complained"
+                                }
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedContactIds((prev) => [
+                                      ...prev,
+                                      contact.id,
+                                    ]);
+                                  } else {
+                                    setSelectedContactIds((prev) =>
+                                      prev.filter((id) => id !== contact.id)
+                                    );
+                                  }
+                                }}
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="font-medium text-slate-800">
+                                {contact.name || "Supporter"}
+                              </div>
+                              {editingContactId === contact.id ? (
+                                <input
+                                  value={editingEmail}
+                                  onChange={(e) => setEditingEmail(e.target.value)}
+                                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-700"
+                                />
+                              ) : (
+                                <div className="text-xs text-slate-500">
+                                  {contact.email}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">
+                              {contact.status === "bounced" ||
+                              contact.status === "complained"
+                                ? "bounced - update email"
+                                : contact.status || "draft"}
+                              {contact.lastDeliveryError ? (
+                                <div className="text-[11px] text-red-600 mt-1 break-words">
+                                  {String(contact.lastDeliveryError).slice(0, 120)}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">
+                              {contact.lastSentAt?.toDate
+                                ? contact.lastSentAt.toDate().toLocaleString()
+                                : "N/A"}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <div className="inline-flex items-center gap-2">
+                                {(contact.status === "bounced" ||
+                                  contact.status === "complained" ||
+                                  editingContactId === contact.id) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (editingContactId === contact.id) {
+                                        saveContactEmail(contact);
+                                        return;
+                                      }
+                                      setEditingContactId(contact.id);
+                                      setEditingEmail(contact.email || "");
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-700"
+                                  >
+                                    {editingContactId === contact.id ? "Save" : "Edit"}
+                                  </button>
+                                )}
+                                {editingContactId === contact.id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingContactId("");
+                                      setEditingEmail("");
+                                    }}
+                                    className="text-xs text-slate-400 hover:text-slate-500"
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => removeContact(contact.id)}
+                                  className="text-xs text-slate-400 hover:text-red-500"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
