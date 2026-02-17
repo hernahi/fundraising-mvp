@@ -308,7 +308,7 @@ export default function AthleteDetail() {
       {isSelf && (
         <div className="mt-8 md:mt-10 grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           {/* Invite Donors */}
-          <div className="bg-white rounded-xl shadow p-4 md:p-6">
+          <div className="min-w-0 bg-white rounded-xl shadow p-4 md:p-6">
             <h2 className="text-xl font-semibold mb-2">Invite Donors</h2>
             <p className="text-sm text-gray-600 mb-4">
               Send an invite to supporters. Use one email per line.
@@ -393,9 +393,12 @@ export default function AthleteDetail() {
             </div>
 
             {donateLink && (
-              <div className="mt-4 text-xs text-slate-500">
+              <div className="mt-4 min-w-0 text-xs text-slate-500">
                 Share link:{" "}
-                <a className="text-blue-600 hover:underline" href={donateLink}>
+                <a
+                  className="inline-block max-w-full break-all text-blue-600 hover:underline"
+                  href={donateLink}
+                >
                   {donateLink}
                 </a>
               </div>
@@ -403,7 +406,7 @@ export default function AthleteDetail() {
           </div>
 
           {/* My Donors */}
-          <div className="bg-white rounded-xl shadow p-4 md:p-6">
+          <div className="min-w-0 bg-white rounded-xl shadow p-4 md:p-6">
             <h2 className="text-xl font-semibold mb-2">My Donors</h2>
             <p className="text-sm text-gray-600 mb-4">
               Total raised: ${totalRaisedDollars}
