@@ -1421,6 +1421,26 @@ exports.createCheckoutSession = onCall(
       }
 
       const campaign = snap.data() || {};
+
+      // Integrity guard: if athlete attribution is supplied, enforce org/campaign alignment.
+      if (athleteId) {
+        const athleteSnap = await admin
+          .firestore()
+          .collection("athletes")
+          .doc(athleteId)
+          .get();
+        if (!athleteSnap.exists) {
+          throw new HttpsError("invalid-argument", "Invalid athleteId");
+        }
+        const athlete = athleteSnap.data() || {};
+        if ((athlete.orgId || "") !== (campaign.orgId || "")) {
+          throw new HttpsError("permission-denied", "Athlete org mismatch");
+        }
+        if ((athlete.campaignId || "") !== campaignId) {
+          throw new HttpsError("invalid-argument", "Athlete not assigned to campaign");
+        }
+      }
+
       const campaignName = (campaign.name || campaign.title || "Campaign").toString();
 
       const successUrl = `${baseUrl}/donate-success?campaignId=${campaignId}&session_id={CHECKOUT_SESSION_ID}`;
@@ -1546,6 +1566,7 @@ exports.stripeWebhook = onRequest(
         const athleteRef = athleteId ? db.collection("athletes").doc(athleteId) : null;
         const commentRef = campaignRef ? campaignRef.collection("comments").doc(session.id) : null;
         const amountCents = enforceCents(session.amount_total);
+        const sessionOrgId = session.metadata?.orgId || null;
         const donorEmail =
           session.customer_details?.email ||
           session.customer_email ||
@@ -1572,8 +1593,30 @@ exports.stripeWebhook = onRequest(
           ? db.collection("mail").doc(`receipt_${session.id}`)
           : null;
 
+        let shouldWriteCampaignArtifacts = false;
+        let shouldWriteAthleteArtifacts = false;
+
         await db.runTransaction(async (tx) => {
           const donationSnap = await tx.get(donationRef);
+          const campaignSnap = campaignRef ? await tx.get(campaignRef) : null;
+          const athleteSnap = athleteRef ? await tx.get(athleteRef) : null;
+
+          const campaignExists = !!campaignSnap?.exists;
+          const campaignData = campaignSnap?.data() || {};
+          const campaignOrgMatch =
+            !sessionOrgId || (campaignData.orgId || null) === sessionOrgId;
+
+          const athleteExists = !!athleteSnap?.exists;
+          const athleteData = athleteSnap?.data() || {};
+          const athleteOrgMatch =
+            !sessionOrgId || (athleteData.orgId || null) === sessionOrgId;
+          const athleteCampaignMatch =
+            !campaignId || (athleteData.campaignId || null) === campaignId;
+
+          shouldWriteCampaignArtifacts = campaignExists && campaignOrgMatch;
+          shouldWriteAthleteArtifacts =
+            athleteExists && athleteOrgMatch && athleteCampaignMatch;
+
           const alreadyPaid =
             donationSnap.exists && donationSnap.data()?.status === "paid";
 
@@ -1600,7 +1643,7 @@ exports.stripeWebhook = onRequest(
               { merge: true }
             );
 
-            if (campaignRef) {
+            if (shouldWriteCampaignArtifacts && campaignRef) {
               tx.set(
                 campaignRef,
                 {
@@ -1615,7 +1658,7 @@ exports.stripeWebhook = onRequest(
               );
             }
 
-            if (athleteRef) {
+            if (shouldWriteAthleteArtifacts && athleteRef) {
               tx.set(
                 athleteRef,
                 {
@@ -1633,7 +1676,7 @@ exports.stripeWebhook = onRequest(
           }
         });
 
-        if (commentRef && donorComment) {
+        if (commentRef && donorComment && shouldWriteCampaignArtifacts) {
           try {
             await commentRef.create({
               displayName,
@@ -1649,7 +1692,7 @@ exports.stripeWebhook = onRequest(
           }
         }
 
-        if (campaignRef) {
+        if (campaignRef && shouldWriteCampaignArtifacts) {
           const donorsRef = campaignRef
             .collection("public_donors")
             .doc(session.id);
@@ -1668,11 +1711,11 @@ exports.stripeWebhook = onRequest(
           }
         }
 
-        if (donorEmail && athleteId) {
+        if (donorEmail && athleteId && shouldWriteAthleteArtifacts) {
           const emailLower = String(donorEmail).toLowerCase();
           const contactSnap = await db
             .collection("athlete_contacts")
-            .where("orgId", "==", session.metadata?.orgId || "")
+            .where("orgId", "==", sessionOrgId || "")
             .where("athleteId", "==", athleteId)
             .where("emailLower", "==", emailLower)
             .get();
@@ -1722,6 +1765,8 @@ exports.stripeWebhook = onRequest(
 
         logger.info("stripeWebhook: donation saved", {
           sessionId: session.id,
+          campaignArtifacts: shouldWriteCampaignArtifacts,
+          athleteArtifacts: shouldWriteAthleteArtifacts,
         });
       }
 
@@ -1818,12 +1863,19 @@ exports.reconcileStripeToFirestore = onCall(
 
     // 3) Compare
     const missingInFirestore = [];
+    const presentOutsideRange = [];
     const mismatches = [];
 
     for (const s of stripePaid) {
       const fs = firestoreDocs.get(s.id);
       if (!fs) {
-        missingInFirestore.push(s.id);
+        // Avoid false negatives when createdAt falls outside selected range.
+        const directSnap = await admin.firestore().collection("donations").doc(s.id).get();
+        if (!directSnap.exists) {
+          missingInFirestore.push(s.id);
+        } else {
+          presentOutsideRange.push(s.id);
+        }
         continue;
       }
 
@@ -1878,6 +1930,7 @@ exports.reconcileStripeToFirestore = onCall(
       stripePaidSessions: stripePaid.length,
       firestoreDocsInRange: fsSnap.size,
       missingInFirestore,
+      presentOutsideRange,
       extraInFirestore,
       mismatches,
       note:
