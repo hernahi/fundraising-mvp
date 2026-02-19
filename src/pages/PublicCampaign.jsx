@@ -464,6 +464,14 @@ export default function PublicCampaign() {
                         }
 
                         const fn = httpsCallable(functions, "createCheckoutSession");
+                        // Preserve exact return path while Stripe/webhook finalization completes.
+                        const pendingDonateReturnPath = isAthletePage
+                          ? `/donate/${campaign.id}/athlete/${athleteId}`
+                          : `/donate/${campaign.id}`;
+                        sessionStorage.setItem(
+                          "pendingDonateReturnPath",
+                          pendingDonateReturnPath
+                        );
 
                         const res = await fn({
                           campaignId: campaign.id,

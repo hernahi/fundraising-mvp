@@ -4,7 +4,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 
 const POLL_INTERVAL_MS = 2000; // 2 seconds
-const MAX_ATTEMPTS = 10;       // ~20 seconds total
+const MAX_ATTEMPTS = 20;       // ~40 seconds total
 
 export default function DonateSuccess() {
   const [params] = useSearchParams();
@@ -14,6 +14,16 @@ export default function DonateSuccess() {
 
   const [loading, setLoading] = useState(true);
   const [donation, setDonation] = useState(null);
+
+  const pendingReturnPath =
+    typeof window !== "undefined"
+      ? sessionStorage.getItem("pendingDonateReturnPath") || ""
+      : "";
+
+  const backPath =
+    campaignIdParam && athleteIdParam
+      ? `/donate/${campaignIdParam}/athlete/${athleteIdParam}`
+      : `/donate/${campaignIdParam || ""}`;
 
   useEffect(() => {
     if (!sessionId) {
@@ -31,6 +41,9 @@ export default function DonateSuccess() {
 
         if (snap.exists()) {
           setDonation(snap.data());
+          if (typeof window !== "undefined") {
+            sessionStorage.removeItem("pendingDonateReturnPath");
+          }
           setLoading(false);
           return; // ✅ stop polling
         }
@@ -90,6 +103,16 @@ export default function DonateSuccess() {
           Your donation is being processed.  
           You will receive a confirmation email shortly.
         </p>
+        {campaignIdParam || pendingReturnPath ? (
+          <div className="mt-6">
+            <Link
+              to={backPath !== "/donate/" ? backPath : pendingReturnPath || "/"}
+              className="text-blue-600 underline"
+            >
+              Back to campaign
+            </Link>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -119,10 +142,12 @@ export default function DonateSuccess() {
             campaignId && athleteId
               ? `/donate/${campaignId}/athlete/${athleteId}`
               : `/donate/${campaignId || ""}`;
+          const resolvedBackPath =
+            backPath !== "/donate/" ? backPath : pendingReturnPath || "/";
 
           return (
         <Link
-          to={backPath}
+          to={resolvedBackPath}
           className="text-blue-600 underline"
         >
           Back to campaign
