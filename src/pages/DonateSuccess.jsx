@@ -9,6 +9,8 @@ const MAX_ATTEMPTS = 10;       // ~20 seconds total
 export default function DonateSuccess() {
   const [params] = useSearchParams();
   const sessionId = params.get("session_id");
+  const campaignIdParam = params.get("campaignId");
+  const athleteIdParam = params.get("athleteId");
 
   const [loading, setLoading] = useState(true);
   const [donation, setDonation] = useState(null);
@@ -110,12 +112,23 @@ export default function DonateSuccess() {
       </p>
 
       <div className="mt-6">
+        {(() => {
+          const campaignId = donation.campaignId || campaignIdParam;
+          const athleteId = donation.athleteId || athleteIdParam;
+          const backPath =
+            campaignId && athleteId
+              ? `/donate/${campaignId}/athlete/${athleteId}`
+              : `/donate/${campaignId || ""}`;
+
+          return (
         <Link
-          to={`/donate/${donation.campaignId}`}
+          to={backPath}
           className="text-blue-600 underline"
         >
           Back to campaign
         </Link>
+          );
+        })()}
       </div>
     </div>
   );

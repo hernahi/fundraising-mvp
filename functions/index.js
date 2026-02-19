@@ -220,6 +220,16 @@ function getCampaignStartDate(campaign) {
   return null;
 }
 
+function inferAthleteIdFromReferer(referer, campaignId) {
+  const value = String(referer || "").trim();
+  if (!value || !campaignId) return "";
+  // Matches /donate/{campaignId}/athlete/{athleteId} with optional query/hash suffix.
+  const escapedCampaignId = String(campaignId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`/donate/${escapedCampaignId}/athlete/([^/?#]+)`, "i");
+  const match = value.match(re);
+  return match?.[1] ? decodeURIComponent(match[1]) : "";
+}
+
 function getPhaseSchedule(startDate, timeZone) {
   if (!startDate) return [];
   const baseParts = getDatePartsInTimeZone(startDate, timeZone);
@@ -1368,7 +1378,12 @@ exports.createCheckoutSession = onCall(
     try {
       const data = request.data || {};
       const campaignId = data.campaignId;
-      const athleteId = data.athleteId || "";
+      const athleteIdFromBody = data.athleteId || "";
+      const athleteIdFromReferer = inferAthleteIdFromReferer(
+        request?.rawRequest?.headers?.referer || "",
+        campaignId
+      );
+      const athleteId = athleteIdFromBody || athleteIdFromReferer || "";
       const donorName = data.donorName || "";
       const donorEmail = data.donorEmail || "";
       const donorMessageRaw = data.donorMessage || "";
@@ -1443,11 +1458,24 @@ exports.createCheckoutSession = onCall(
 
       const campaignName = (campaign.name || campaign.title || "Campaign").toString();
 
-      const successUrl = `${baseUrl}/donate-success?campaignId=${campaignId}&session_id={CHECKOUT_SESSION_ID}`;
-      const cancelUrl = `${baseUrl}/donate/${campaignId}`;
+      const successParams = new URLSearchParams({
+        campaignId,
+        session_id: "{CHECKOUT_SESSION_ID}",
+      });
+      if (athleteId) {
+        successParams.set("athleteId", athleteId);
+      }
+      const successUrl = `${baseUrl}/donate-success?${successParams.toString()}`;
+      const cancelUrl = athleteId
+        ? `${baseUrl}/donate/${campaignId}/athlete/${athleteId}`
+        : `${baseUrl}/donate/${campaignId}`;
 
       logger.info("Creating Stripe checkout session", {
         campaignId,
+        athleteIdFromBody,
+        athleteIdFromReferer,
+        athleteId,
+        referer: request?.rawRequest?.headers?.referer || "",
         amountCents,
         baseUrl,
         hasStripeKey: !!process.env.STRIPE_SECRET_KEY,
