@@ -54,7 +54,7 @@ export default function PublicAthlete() {
 
       {team && <h2>{team.name}</h2>}
       {campaign && (
-        <a className="public-donate-btn" href={`/donate/${campaign.id}`}>
+        <a className="public-donate-btn" href={`/donate/${campaign.id}/athlete/${athleteId}`}>
           Donate to Their Campaign
         </a>
       )}

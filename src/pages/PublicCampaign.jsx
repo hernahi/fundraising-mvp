@@ -472,7 +472,7 @@ export default function PublicCampaign() {
                           donorEmail,
                           donorMessage,
                           donorAnonymous: hideName,
-                          athleteId: showAthlete ? athlete.id : "",
+                          athleteId: isAthletePage ? athleteId : "",
                         });
 
                         if (!res.data?.url) {
