@@ -27,7 +27,9 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   );
 
   const isAdmin = role === "admin" || role === "super-admin";
+  const isCoach = role === "coach";
   const isAthlete = role === "athlete";
+  const canManageOrg = isAdmin || isCoach;
 
   return (
     <aside
@@ -59,7 +61,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
             Dashboard
           </NavLink>
 
-          {!isAthlete && (
+          {canManageOrg && (
             <>
               <NavLink
                 to="/campaigns"
@@ -111,7 +113,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
             </>
           )}
 
-          {!isAthlete && (
+          {canManageOrg && (
             <>
               <NavLink
                 to="/donors"
@@ -169,6 +171,19 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
               </NavLink>
             </>
           )}
+
+          {isCoach && (
+            <NavLink
+              to="/coach/invite"
+              onClick={onClose}
+              className={({ isActive }) =>
+                `${navItem} ${isActive ? navActive : navInactive}`
+              }
+            >
+              <UserPlusIcon className="h-5 w-5" />
+              Invite Athletes
+            </NavLink>
+          )}
         </nav>
 
         {/* Active Campaign */}
@@ -216,18 +231,6 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
             <UserPlusIcon className="h-5 w-5" />
             Invite User
           </NavLink>
-
-          {profile?.role === "coach" && (
-  <NavLink
-    to="/coach/invite"
-    onClick={onClose}
-    className={({ isActive }) =>
-      `${navItem} ${isActive ? navActive : navInactive}`
-    }
-  >
-    Invite Athletes
-  </NavLink>
-)}
         </div>
       )}
     </aside>
