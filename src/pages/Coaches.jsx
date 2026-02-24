@@ -96,12 +96,6 @@ export default function Coaches() {
     load();
   }, [profile?.orgId]);
 
-  if (!["admin", "super-admin", "coach"].includes(profile?.role)) {
-    return <div>Access Restricted</div>;
-  }
-
-  if (loading) return <div>Loading coaches...</div>;
-
   const coachTotals = buildCoachTotals({
     rollups,
     campaigns,
@@ -188,6 +182,12 @@ export default function Coaches() {
       </th>
     );
   }
+
+  if (!["admin", "super-admin", "coach"].includes(profile?.role)) {
+    return <div>Access Restricted</div>;
+  }
+
+  if (loading) return <div>Loading coaches...</div>;
 
   return (
     <div className="p-6 space-y-6">
