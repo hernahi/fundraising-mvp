@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useMemo, useState } from "react";
 import {
   HomeIcon,
   MegaphoneIcon,
@@ -30,6 +31,8 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   const isCoach = role === "coach";
   const isAthlete = role === "athlete";
   const canManageOrg = isAdmin || isCoach;
+  const [mainOpen, setMainOpen] = useState(true);
+  const [orgOpen, setOrgOpen] = useState(true);
 
   const quickStartItems = [
     { to: "/teams", label: "1) New Team" },
@@ -37,6 +40,65 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
     { to: "/athletes/add", label: isAdmin ? "3) Add Athlete" : "2) Add Athlete" },
     { to: "/campaigns", label: isAdmin ? "4) New Campaign" : "3) New Campaign" },
   ];
+
+  const mainNavItems = useMemo(() => {
+    const items = [
+      {
+        to: "/",
+        label: "Dashboard",
+        icon: HomeIcon,
+        always: true,
+      },
+    ];
+
+    if (canManageOrg) {
+      items.push(
+        { to: "/campaigns", label: "Campaigns", icon: MegaphoneIcon },
+        { to: "/athletes", label: "Athletes", icon: UsersIcon }
+      );
+    }
+
+    if (isAthlete && profile?.uid) {
+      items.push(
+        {
+          to: `/athletes/${profile.uid}`,
+          label: "My Athlete Page",
+          icon: UsersIcon,
+        },
+        {
+          to: "/messages",
+          label: "Messages",
+          icon: ChatBubbleLeftRightIcon,
+        }
+      );
+    }
+
+    return items;
+  }, [canManageOrg, isAthlete, profile?.uid]);
+
+  const orgNavItems = useMemo(() => {
+    const items = [];
+
+    if (canManageOrg) {
+      items.push(
+        { to: "/donors", label: "Donors", icon: UserGroupIcon },
+        { to: "/coaches", label: "Coaches", icon: UserGroupIcon },
+        { to: "/teams", label: "Teams", icon: ClipboardDocumentListIcon },
+        { to: "/messages", label: "Messages", icon: ChatBubbleLeftRightIcon },
+        { to: "/settings", label: "Settings", icon: Cog6ToothIcon }
+      );
+    }
+
+    if (isCoach) {
+      items.push({
+        to: "/coach/invite",
+        label: "Invite Athletes",
+        icon: UserPlusIcon,
+      });
+    }
+
+    return items;
+  }, [canManageOrg, isCoach]);
 
   return (
     <aside
@@ -55,7 +117,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
         </div>
 
         {canManageOrg && (
-          <div className="px-4 py-3 border-b bg-slate-50/70">
+          <div className="px-4 py-3 border-b bg-slate-50/70 lg:sticky lg:top-0 lg:z-10">
             <div className="text-xs font-semibold text-gray-600 mb-2">
               QUICK START
             </div>
@@ -75,141 +137,60 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
         )}
 
         {/* Navigation */}
-        <nav className="mt-4 space-y-1 px-2">
-          <NavLink
-            to="/"
-            end
-            onClick={onClose}
-            className={({ isActive }) =>
-              `${navItem} ${isActive ? navActive : navInactive}`
-            }
+        <nav className="mt-4 space-y-2 px-2 overflow-y-auto">
+          <button
+            type="button"
+            onClick={() => setMainOpen((v) => !v)}
+            className="w-full px-3 py-2 text-left text-xs font-semibold tracking-wide text-gray-500 rounded-md hover:bg-gray-100 lg:cursor-default lg:hover:bg-transparent"
           >
-            <HomeIcon className="h-5 w-5" />
-            Dashboard
-          </NavLink>
-
-          {canManageOrg && (
-            <>
-              <NavLink
-                to="/campaigns"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `${navItem} ${isActive ? navActive : navInactive}`
-                }
-              >
-                <MegaphoneIcon className="h-5 w-5" />
-                Campaigns
-              </NavLink>
-
-              <NavLink
-                to="/athletes"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `${navItem} ${isActive ? navActive : navInactive}`
-                }
-              >
-                <UsersIcon className="h-5 w-5" />
-                Athletes
-              </NavLink>
-            </>
+            MAIN {mainOpen ? "▲" : "▼"}
+          </button>
+          {(mainOpen || !mobileOpen) && (
+            <div className="space-y-1">
+              {mainNavItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === "/"}
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `${navItem} ${isActive ? navActive : navInactive}`
+                  }
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
           )}
 
-          {isAthlete && profile?.uid && (
+          {(canManageOrg || isCoach) && (
             <>
-              <NavLink
-                to={`/athletes/${profile.uid}`}
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `${navItem} ${isActive ? navActive : navInactive}`
-                }
+              <button
+                type="button"
+                onClick={() => setOrgOpen((v) => !v)}
+                className="w-full px-3 py-2 text-left text-xs font-semibold tracking-wide text-gray-500 rounded-md hover:bg-gray-100 lg:cursor-default lg:hover:bg-transparent"
               >
-                <UsersIcon className="h-5 w-5" />
-                My Athlete Page
-              </NavLink>
-
-              <NavLink
-                to="/messages"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `${navItem} ${isActive ? navActive : navInactive}`
-                }
-              >
-                <ChatBubbleLeftRightIcon className="h-5 w-5" />
-                Messages
-              </NavLink>
+                ORGANIZATION {orgOpen ? "▲" : "▼"}
+              </button>
+              {(orgOpen || !mobileOpen) && (
+                <div className="space-y-1">
+                  {orgNavItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        `${navItem} ${isActive ? navActive : navInactive}`
+                      }
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
             </>
-          )}
-
-          {canManageOrg && (
-            <>
-              <NavLink
-                to="/donors"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `${navItem} ${isActive ? navActive : navInactive}`
-                }
-              >
-                <UserGroupIcon className="h-5 w-5" />
-                Donors
-              </NavLink>
-
-              <NavLink
-                to="/coaches"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `${navItem} ${isActive ? navActive : navInactive}`
-                }
-              >
-                <UserGroupIcon className="h-5 w-5" />
-                Coaches
-              </NavLink>
-
-              <NavLink
-                to="/teams"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `${navItem} ${isActive ? navActive : navInactive}`
-                }
-              >
-                <ClipboardDocumentListIcon className="h-5 w-5" />
-                Teams
-              </NavLink>
-
-              <NavLink
-                to="/messages"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `${navItem} ${isActive ? navActive : navInactive}`
-                }
-              >
-                <ChatBubbleLeftRightIcon className="h-5 w-5" />
-                Messages
-              </NavLink>
-
-              <NavLink
-                to="/settings"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `${navItem} ${isActive ? navActive : navInactive}`
-                }
-              >
-                <Cog6ToothIcon className="h-5 w-5" />
-                Settings
-              </NavLink>
-            </>
-          )}
-
-          {isCoach && (
-            <NavLink
-              to="/coach/invite"
-              onClick={onClose}
-              className={({ isActive }) =>
-                `${navItem} ${isActive ? navActive : navInactive}`
-              }
-            >
-              <UserPlusIcon className="h-5 w-5" />
-              Invite Athletes
-            </NavLink>
           )}
         </nav>
 
