@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { buildCoachTotals } from "../utils/coachAttribution";
@@ -26,98 +26,83 @@ export default function Coaches() {
 
     async function load() {
       setLoading(true);
+      try {
+        const coachesSnap = await getDocs(
+          query(collection(db, "coaches"), where("orgId", "==", profile.orgId))
+        );
 
-      // 1️⃣ Load coaches
-      const coachesSnap = await getDocs(
-        query(
-          collection(db, "coaches"),
-          where("orgId", "==", profile.orgId)
-        )
-      );
+        const coachRows = coachesSnap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
 
-      const coachRows = coachesSnap.docs.map(d => ({
-        id: d.id,
-        ...d.data(),
-      }));
+        // Avoid broad users queries that can fail org-scoped rules.
+        const coachUids = coachRows.map((c) => c.uid).filter(Boolean);
+        const usersMap = {};
+        await Promise.all(
+          coachUids.slice(0, 50).map(async (uid) => {
+            try {
+              const userSnap = await getDoc(doc(db, "users", uid));
+              if (userSnap.exists()) {
+                usersMap[uid] = userSnap.data();
+              }
+            } catch (_) {
+              // Skip unreadable user docs so one doc does not break the page.
+            }
+          })
+        );
 
-      // 1️⃣ Load user profiles for coaches (JOIN by uid)
-      const coachUids = coachRows.map(c => c.uid).filter(Boolean);
-
-      // Firestore "in" queries are limited to 10 items (OK for MVP)
-      let usersMap = {};
-      if (coachUids.length > 0) {
-        const usersSnap = await getDocs(
+        const rollupsSnap = await getDocs(
           query(
-            collection(db, "users"),
-            where("uid", "in", coachUids.slice(0, 10))
+            collection(db, "donation_rollups"),
+            where("orgId", "==", profile.orgId)
           )
         );
 
-        usersSnap.docs.forEach(d => {
-          usersMap[d.data().uid] = d.data();
-        });
+        const campaignsSnap = await getDocs(
+          query(collection(db, "campaigns"), where("orgId", "==", profile.orgId))
+        );
+
+        const teamsSnap = await getDocs(
+          query(collection(db, "teams"), where("orgId", "==", profile.orgId))
+        );
+
+        setUsersByUid(usersMap);
+        setCoaches(coachRows);
+        setRollups(rollupsSnap.docs.map((d) => d.data()));
+        setCampaigns(
+          campaignsSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+        );
+        setTeams(
+          teamsSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+        );
+      } catch (err) {
+        console.error("Failed to load coaches page data:", err);
+      } finally {
+        setLoading(false);
       }
-
-      setUsersByUid(usersMap);
-
-      // 2️⃣ Load rollups (for performance summary)
-      const rollupsSnap = await getDocs(
-        query(
-          collection(db, "donation_rollups"),
-          where("orgId", "==", profile.orgId)
-        )
-      );
-
-      const rollupRows = rollupsSnap.docs.map(d => d.data());
-
-      // 3️⃣ Load campaigns (for attribution)
-      const campaignsSnap = await getDocs(
-        query(
-          collection(db, "campaigns"),
-          where("orgId", "==", profile.orgId)
-        )
-      );
-
-      const campaignRows = campaignsSnap.docs.map(d => ({
-        id: d.id,
-        ...d.data(),
-      }));
-
-      // 4️⃣ Load teams (for attribution)
-      const teamsSnap = await getDocs(
-        query(
-          collection(db, "teams"),
-          where("orgId", "==", profile.orgId)
-        )
-      );
-
-const teamRows = teamsSnap.docs.map(d => ({
-  id: d.id,
-  ...d.data(),
-}));
-
-      setCoaches(coachRows);
-      setRollups(rollupRows);
-      setCampaigns(campaignRows);
-      setTeams(teamRows);
-      setLoading(false);
     }
 
     load();
-  
   }, [profile?.orgId]);
 
   if (!["admin", "super-admin", "coach"].includes(profile?.role)) {
     return <div>Access Restricted</div>;
   }
 
-  if (loading) return <div>Loading coaches…</div>;
+  if (loading) return <div>Loading coaches...</div>;
 
   const coachTotals = buildCoachTotals({
-  rollups,
-  campaigns,
-  teams,
-});
+    rollups,
+    campaigns,
+    teams,
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -151,33 +136,22 @@ const teamRows = teamsSnap.docs.map(d => ({
           </tr>
         </thead>
         <tbody>
-          {coaches.map(c => {
-    const totals = coachTotals[c.uid] || { amount: 0, count: 0 };
-    const user = usersByUid[c.uid] || {};
+          {coaches.map((c) => {
+            const totals = coachTotals[c.uid] || { amount: 0 };
+            const user = usersByUid[c.uid] || {};
 
             return (
               <tr key={c.id} className="border-t">
-              {/* Coach */}
-              <td className="p-2">{user.displayName || "Coach"}</td>
-
-              {/* Email */}
-              <td className="p-2">{user.email || "-"}</td>
-
-              {/* Teams (computed from teams collection) */}
-              <td className="p-2 text-right">
-                {teams.filter(t => t.coachId === c.uid).length}
-              </td>
-
-              {/* Funds Raised */}
-              <td className="p-2 text-right">
-                {centsToDollars(totals.amount)}
-              </td>
-
-              {/* Status (from users collection) */}
-              <td className="p-2 text-center">
-                <StatusBadge status={user.status || "active"} />
-              </td>
-            </tr>
+                <td className="p-2">{user.displayName || "Coach"}</td>
+                <td className="p-2">{user.email || "-"}</td>
+                <td className="p-2 text-right">
+                  {teams.filter((t) => t.coachId === c.uid).length}
+                </td>
+                <td className="p-2 text-right">{centsToDollars(totals.amount)}</td>
+                <td className="p-2 text-center">
+                  <StatusBadge status={user.status || "active"} />
+                </td>
+              </tr>
             );
           })}
         </tbody>
