@@ -13,6 +13,7 @@ import CampaignDetail from "./pages/CampaignDetail";
 import CampaignOverview from "./pages/CampaignOverview";
 import EditCampaign from "./pages/EditCampaign";
 import Teams from "./pages/Teams";
+import AddTeam from "./pages/AddTeam";
 import TeamDetail from "./pages/TeamDetail";
 import EditTeam from "./pages/EditTeam";
 import Athletes from "./pages/Athletes";
@@ -73,6 +74,7 @@ export default function App() {
 
       {/* Teams */}
       <Route path="teams" element={<Teams />} />
+      <Route path="teams/new" element={<AddTeam />} />
       <Route path="teams/:teamId" element={<TeamDetail />} />
       <Route path="teams/:teamId/edit" element={<EditTeam />} />
 
