@@ -15,6 +15,9 @@ export default function AddTeam() {
   const [name, setName] = useState("");
   const [orgId, setOrgId] = useState(profile?.orgId || "");
   const [description, setDescription] = useState("");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [notes, setNotes] = useState("");
   const [avatar, setAvatar] = useState("");
   const [avatarPreview, setAvatarPreview] = useState("");
 
@@ -53,6 +56,9 @@ export default function AddTeam() {
         name,
         orgId,
         description,
+        address: address.trim(),
+        phone: phone.trim(),
+        notes: notes.trim(),
         avatar: avatar || "",
         createdAt: new Date().toISOString(),
       });
@@ -153,6 +159,47 @@ export default function AddTeam() {
             className="w-full mt-1 p-3 border rounded-lg h-32"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+
+        {/* ADDRESS (OPTIONAL) */}
+        <div>
+          <label className="text-sm font-medium text-gray-700">
+            Team Address (Optional)
+          </label>
+          <input
+            type="text"
+            className="w-full mt-1 p-3 border rounded-lg"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="123 Main St, City, ST 00000"
+          />
+        </div>
+
+        {/* PHONE (OPTIONAL) */}
+        <div>
+          <label className="text-sm font-medium text-gray-700">
+            Team Phone (Optional)
+          </label>
+          <input
+            type="text"
+            className="w-full mt-1 p-3 border rounded-lg"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="(555) 555-5555"
+          />
+        </div>
+
+        {/* NOTES (OPTIONAL) */}
+        <div>
+          <label className="text-sm font-medium text-gray-700">
+            Notes (Optional)
+          </label>
+          <textarea
+            className="w-full mt-1 p-3 border rounded-lg h-28"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Any extra context about this team..."
           />
         </div>
 

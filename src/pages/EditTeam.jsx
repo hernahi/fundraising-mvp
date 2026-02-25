@@ -23,6 +23,9 @@ export default function EditTeam() {
   const [name, setName] = useState("");
   const [orgId, setOrgId] = useState("");
   const [description, setDescription] = useState("");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [notes, setNotes] = useState("");
   const [avatar, setAvatar] = useState("");        // stored URL
   const [avatarPreview, setAvatarPreview] = useState(""); // preview on screen
 
@@ -48,6 +51,9 @@ export default function EditTeam() {
         setName(data.name || "");
         setOrgId(data.orgId || "");
         setDescription(data.description || "");
+        setAddress(data.address || "");
+        setPhone(data.phone || "");
+        setNotes(data.notes || "");
         setAvatar(data.avatar || "");
         setAvatarPreview(safeImageURL(data.avatar));
       } catch (e) {
@@ -93,6 +99,9 @@ export default function EditTeam() {
       await updateDoc(ref, {
         name,
         description,
+        address: address.trim(),
+        phone: phone.trim(),
+        notes: notes.trim(),
         avatar,
         ...(profile?.role === "admin" && { orgId }), // admin-only
       });
@@ -199,6 +208,47 @@ export default function EditTeam() {
             className="w-full mt-1 p-3 border rounded-lg h-32"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+
+        {/* ADDRESS (OPTIONAL) */}
+        <div>
+          <label className="text-sm font-medium text-gray-700">
+            Team Address (Optional)
+          </label>
+          <input
+            type="text"
+            className="w-full mt-1 p-3 border rounded-lg"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="123 Main St, City, ST 00000"
+          />
+        </div>
+
+        {/* PHONE (OPTIONAL) */}
+        <div>
+          <label className="text-sm font-medium text-gray-700">
+            Team Phone (Optional)
+          </label>
+          <input
+            type="text"
+            className="w-full mt-1 p-3 border rounded-lg"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="(555) 555-5555"
+          />
+        </div>
+
+        {/* NOTES (OPTIONAL) */}
+        <div>
+          <label className="text-sm font-medium text-gray-700">
+            Notes (Optional)
+          </label>
+          <textarea
+            className="w-full mt-1 p-3 border rounded-lg h-28"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Any extra context about this team..."
           />
         </div>
 

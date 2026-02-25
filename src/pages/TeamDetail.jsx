@@ -385,6 +385,29 @@ export default function TeamDetail() {
         </div>
       </div>
 
+      {/* TEAM CONTACT & NOTES */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4 md:p-5">
+        <h2 className="text-lg font-semibold mb-3">Team Contact & Notes</h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div>
+            <div className="text-slate-500">Address</div>
+            <div className="text-slate-800">{team.address || "Not provided"}</div>
+          </div>
+          <div>
+            <div className="text-slate-500">Phone</div>
+            <div className="text-slate-800">{team.phone || "Not provided"}</div>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="text-slate-500 text-sm">Notes</div>
+          <div className="text-slate-800 text-sm whitespace-pre-wrap">
+            {team.notes || "No notes added."}
+          </div>
+        </div>
+      </section>
+
       {/* ATHLETES */}
       <section>
         <h2 className="text-2xl font-semibold mb-3">Athletes</h2>
