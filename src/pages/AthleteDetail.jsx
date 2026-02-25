@@ -18,6 +18,7 @@ import { httpsCallable } from "firebase/functions";
 import { db, functions } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import safeImageURL from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 import { FaEdit, FaTrophy, FaUser } from "react-icons/fa";
 
 export default function AthleteDetail() {
@@ -199,9 +200,12 @@ export default function AthleteDetail() {
         {/* Avatar */}
         <div className="flex flex-col items-center">
           <img
-            src={safeImageURL(athlete.photoURL)}
+            src={safeImageURL(
+              athlete.photoURL,
+              avatarFallback({ label: athlete.name || "Athlete", type: "athlete", size: 192 })
+            )}
             alt="Athlete"
-            className="w-32 h-32 sm:w-40 sm:h-40 rounded-full object-cover border"
+            className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover border"
           />
           <h2 className="mt-4 text-xl font-medium">{athlete.name}</h2>
           <p className="text-gray-500">{athlete.position || "Athlete"}</p>

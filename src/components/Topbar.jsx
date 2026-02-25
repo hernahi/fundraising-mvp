@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { useCampaign } from "../context/CampaignContext";
 import { db } from "../firebase/config";
 import safeImage from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 
 export default function Topbar({ onOpenMobileMenu = () => {} }) {
   const {
@@ -35,7 +36,10 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
     loadOrgs();
   }, [isSuperAdmin]);
 
-  const avatarSrc = safeImage(profile?.photoURL || user?.photoURL || "");
+  const avatarSrc = safeImage(
+    profile?.photoURL || user?.photoURL || "",
+    avatarFallback({ label: profile?.name || user?.displayName || "User", type: "user", size: 96 })
+  );
 
   return (
     <header className="h-16 w-full border-b bg-white flex items-center">

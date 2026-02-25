@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import safeImageURL from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 import { FaArrowLeft, FaSave, FaUser } from "react-icons/fa";
 
 export default function EditAthlete() {
@@ -137,9 +138,12 @@ export default function EditAthlete() {
         <div className="mt-4">
           <label className="block font-medium mb-2">Preview Image</label>
           <img
-            src={safeImageURL(athlete.photoURL)}
+            src={safeImageURL(
+              athlete.photoURL,
+              avatarFallback({ label: athlete.name || "Athlete", type: "athlete", size: 192 })
+            )}
             alt="Preview"
-            className="w-32 h-32 rounded-full object-cover border"
+            className="w-24 h-24 rounded-full object-cover border"
           />
         </div>
 

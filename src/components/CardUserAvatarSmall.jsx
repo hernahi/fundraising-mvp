@@ -12,6 +12,7 @@ export default function CardUserAvatarSmall({ user = {}, size = 32, className = 
     imgUrl,
     image,
     profileImage,
+    role = "",
   } = user;
 
   // Normalize all possible name fields
@@ -31,9 +32,16 @@ export default function CardUserAvatarSmall({ user = {}, size = 32, className = 
     profileImage ||
     "";
 
+  const entity =
+    role === "coach"
+      ? "coach"
+      : role === "athlete"
+      ? "athlete"
+      : "user";
+
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <AvatarCore src={finalSrc} name={finalName} size={size} />
+      <AvatarCore src={finalSrc} name={finalName} size={size} entity={entity} />
       <span className="text-sm font-medium text-slate-800 truncate">
         {finalName}
       </span>

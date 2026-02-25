@@ -150,7 +150,12 @@ export default function CoachDetail() {
         
         {/* HEADER */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center gap-5">
-          <AvatarCircle name={coach.name} imgUrl={avatarUrl} size="xl" />
+          <AvatarCircle
+            name={coach.name}
+            imgUrl={avatarUrl}
+            size="lg"
+            entity="coach"
+          />
 
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-semibold text-slate-900 truncate">

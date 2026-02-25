@@ -1,19 +1,20 @@
 // src/pages/AddTeam.jsx
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { safeImageURL } from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 
 export default function AddTeam() {
-  const { profile } = useAuth();
+  const { profile, isSuperAdmin, activeOrgId } = useAuth();
   const navigate = useNavigate();
 
   const [name, setName] = useState("");
-  const [orgId, setOrgId] = useState(profile?.orgId || "");
+  const [orgId, setOrgId] = useState(activeOrgId || profile?.orgId || "");
   const [description, setDescription] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
@@ -22,6 +23,12 @@ export default function AddTeam() {
   const [avatarPreview, setAvatarPreview] = useState("");
 
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isSuperAdmin) {
+      setOrgId(profile?.orgId || activeOrgId || "");
+    }
+  }, [isSuperAdmin, profile?.orgId, activeOrgId]);
 
   // ---------------------------------------------------
   // Image Upload (local preview only — storage later)
@@ -44,7 +51,8 @@ export default function AddTeam() {
       return;
     }
 
-    if (!orgId.trim()) {
+    const effectiveOrgId = (isSuperAdmin ? orgId : (profile?.orgId || activeOrgId || orgId)).trim();
+    if (!effectiveOrgId) {
       alert("Organization ID is required.");
       return;
     }
@@ -53,14 +61,14 @@ export default function AddTeam() {
       setSaving(true);
 
       await addDoc(collection(db, "teams"), {
-        name,
-        orgId,
-        description,
+        name: name.trim(),
+        orgId: effectiveOrgId,
+        description: description.trim(),
         address: address.trim(),
         phone: phone.trim(),
         notes: notes.trim(),
         avatar: avatar || "",
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(),
       });
 
       navigate("/teams");
@@ -110,9 +118,12 @@ export default function AddTeam() {
         {/* IMAGE PREVIEW */}
         <div className="flex flex-col items-center">
           <img
-            src={safeImageURL(avatarPreview)}
+            src={safeImageURL(
+              avatarPreview,
+              avatarFallback({ label: name || "Team", type: "team", size: 192 })
+            )}
             alt="Team Avatar Preview"
-            className="w-28 h-28 rounded-full object-cover border shadow bg-white"
+            className="w-20 h-20 rounded-full object-cover border shadow bg-white"
           />
 
           <label className="mt-4 cursor-pointer text-blue-600 hover:underline">
@@ -144,10 +155,16 @@ export default function AddTeam() {
           </label>
           <input
             type="text"
-            className="w-full mt-1 p-3 border rounded-lg"
+            disabled={!isSuperAdmin}
+            className="w-full mt-1 p-3 border rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
             value={orgId}
             onChange={(e) => setOrgId(e.target.value)}
           />
+          {!isSuperAdmin && (
+            <p className="mt-1 text-xs text-gray-500">
+              Org is locked to your admin account.
+            </p>
+          )}
         </div>
 
         {/* DESCRIPTION */}

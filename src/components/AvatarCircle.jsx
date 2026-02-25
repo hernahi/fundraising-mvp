@@ -1,33 +1,35 @@
 import safeImageURL from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 
 export default function AvatarCircle({
   src,
+  imgUrl,
+  name,
   email,
   size = 32,
+  entity = "user",
 }) {
-  const imageUrl = safeImageURL(src);
-
-  // Fallback: letter avatar
-  if (!imageUrl) {
-    const letter = email?.[0]?.toUpperCase() || "?";
-
-    return (
-      <div
-        className="rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-semibold"
-        style={{ width: size, height: size }}
-        aria-label="avatar fallback"
-      >
-        {letter}
-      </div>
-    );
-  }
+  const numericSize =
+    typeof size === "string"
+      ? size === "xl"
+        ? 72
+        : size === "lg"
+        ? 56
+        : size === "md"
+        ? 40
+        : 32
+      : Number(size || 32);
+  const label = name || email || "User";
+  const fallback = avatarFallback({ label, type: entity, size: numericSize * 3 });
+  const imageUrl = safeImageURL(src || imgUrl, fallback);
+  const alt = `${entity} avatar`;
 
   return (
-    <img
-      src={imageUrl}
-      alt="User avatar"
+      <img
+        src={imageUrl}
+      alt={alt}
       className="rounded-full object-cover"
-      style={{ width: size, height: size }}
+      style={{ width: numericSize, height: numericSize }}
     />
   );
 }

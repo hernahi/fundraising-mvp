@@ -15,6 +15,7 @@ import {
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { safeImageURL } from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 
 // ---------------------------------------------------
 // ATHLETE STATUS HELPERS (Phase 12.3.3)
@@ -375,12 +376,10 @@ if (isCoach && teamRows.length > 0) {
                 <img
                   src={safeImageURL(
                     ath.avatar,
-                    `https://ui-avatars.com/api/?background=0f172a&color=fff&size=256&name=${encodeURIComponent(
-                      ath.name || "Athlete"
-                    )}`
+                    avatarFallback({ label: ath.name || "Athlete", type: "athlete", size: 160 })
                   )}
                   alt={ath.name}
-                  className="w-24 h-24 rounded-full object-cover border shadow bg-gray-50"
+                  className="w-20 h-20 rounded-full object-cover border shadow bg-gray-50"
                 />
 
                 <h3 className="text-xl font-semibold mt-4">

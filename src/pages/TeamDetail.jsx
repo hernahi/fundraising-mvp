@@ -16,6 +16,7 @@ import { db } from "../firebase/config";
 
 import { useAuth } from "../context/AuthContext";
 import { safeImageURL } from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 
 import AssignCoachToTeamModal from "../components/AssignCoachToTeamModal";
 import AssignTeamAthletesModal from "../components/AssignTeamAthletesModal";
@@ -372,9 +373,12 @@ export default function TeamDetail() {
       {/* TEAM AVATAR */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
         <img
-          src={safeImageURL(team.avatar)}
+          src={safeImageURL(
+            team.avatar,
+            avatarFallback({ label: team.name || "Team", type: "team", size: 192 })
+          )}
           alt="Team Avatar"
-          className="w-28 h-28 rounded-full border object-cover bg-white shadow"
+          className="w-20 h-20 rounded-full border object-cover bg-white shadow"
         />
         <div>
           <p className="text-gray-600">{team.description || "No team description added yet."}</p>
@@ -423,9 +427,12 @@ export default function TeamDetail() {
                 className="p-4 rounded-lg bg-white shadow hover:shadow-md transition border"
               >
                 <img
-                  src={safeImageURL(athlete.avatar)}
+                  src={safeImageURL(
+                    athlete.avatar,
+                    avatarFallback({ label: athlete.name || "Athlete", type: "athlete", size: 128 })
+                  )}
                   alt={athlete.name}
-                  className="w-20 h-20 rounded-full object-cover mx-auto"
+                  className="w-16 h-16 rounded-full object-cover mx-auto"
                 />
                 <h3 className="text-center mt-3 font-medium">{athlete.name}</h3>
                 <p className="text-center text-gray-500 text-sm">{athlete.position || ""}</p>

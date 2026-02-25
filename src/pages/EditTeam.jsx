@@ -11,10 +11,11 @@ import {
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { safeImageURL } from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 
 export default function EditTeam() {
   const { teamId } = useParams();
-  const { profile } = useAuth();
+  const { profile, isSuperAdmin, activeOrgId } = useAuth();
   const navigate = useNavigate();
 
   const [team, setTeam] = useState(null);
@@ -49,7 +50,7 @@ export default function EditTeam() {
         setTeam(data);
 
         setName(data.name || "");
-        setOrgId(data.orgId || "");
+        setOrgId(data.orgId || activeOrgId || profile?.orgId || "");
         setDescription(data.description || "");
         setAddress(data.address || "");
         setPhone(data.phone || "");
@@ -97,13 +98,13 @@ export default function EditTeam() {
       const ref = doc(db, "teams", teamId);
 
       await updateDoc(ref, {
-        name,
-        description,
+        name: name.trim(),
+        description: description.trim(),
         address: address.trim(),
         phone: phone.trim(),
         notes: notes.trim(),
         avatar,
-        ...(profile?.role === "admin" && { orgId }), // admin-only
+        ...(isSuperAdmin && { orgId: orgId.trim() }), // super-admin only
       });
 
       navigate(`/teams/${teamId}`);
@@ -156,9 +157,12 @@ export default function EditTeam() {
         {/* IMAGE PREVIEW */}
         <div className="flex flex-col items-center">
           <img
-            src={avatarPreview}
+            src={safeImageURL(
+              avatarPreview,
+              avatarFallback({ label: name || "Team", type: "team", size: 192 })
+            )}
             alt="Team Avatar"
-            className="w-28 h-28 rounded-full object-cover border shadow bg-white"
+            className="w-20 h-20 rounded-full object-cover border shadow bg-white"
           />
 
           <label className="mt-4 cursor-pointer text-blue-600 hover:underline">
@@ -192,7 +196,7 @@ export default function EditTeam() {
           </label>
           <input
             type="text"
-            disabled={profile?.role !== "admin"}
+            disabled={!isSuperAdmin}
             className="w-full mt-1 p-3 border rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
             value={orgId}
             onChange={(e) => setOrgId(e.target.value)}

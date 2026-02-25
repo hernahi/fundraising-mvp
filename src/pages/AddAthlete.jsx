@@ -5,6 +5,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { db } from "../firebase/config";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext";
+import safeImageURL from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 
 export default function AddAthlete() {
   const { push } = useToast();
@@ -112,9 +114,12 @@ export default function AddAthlete() {
 
           {form.imgUrl && (
             <img
-              src={form.imgUrl}
+              src={safeImageURL(
+                form.imgUrl,
+                avatarFallback({ label: form.name || "Athlete", type: "athlete", size: 160 })
+              )}
               alt="preview"
-              className="mt-3 w-24 h-24 rounded-full object-cover border border-slate-200"
+              className="mt-3 w-20 h-20 rounded-full object-cover border border-slate-200"
             />
           )}
 
