@@ -123,6 +123,10 @@ service cloud.firestore {
         userOrgId() == orgId || isSuperAdmin()
       );
 
+      // Admins and super-admins may create organization records.
+      allow create: if isSignedIn()
+        && (isOrgAdmin() || isSuperAdmin());
+
       allow update: if isSignedIn()
         && (isOrgAdmin() || isCoach() || isSuperAdmin())
         && canAccessOrg(orgId)

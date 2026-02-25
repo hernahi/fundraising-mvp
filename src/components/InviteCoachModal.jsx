@@ -6,17 +6,19 @@ import { db, functions } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 
 export default function InviteCoachModal({ onClose }) {
-  const { profile, user } = useAuth();
+  const { profile, user, activeOrgId, isSuperAdmin } = useAuth();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const inviteOrgId = (activeOrgId || profile?.orgId || "").trim();
+
   // Guard: profile not ready
-  if (!profile?.orgId || !profile?.uid) {
+  if (!inviteOrgId || !user?.uid) {
     return (
       <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
         <div className="bg-white p-6 rounded w-96">
           <p className="text-red-600 text-sm">
-            Unable to load profile. Please try again.
+            Unable to resolve organization. Select an organization and try again.
           </p>
           <button
             className="mt-4 px-4 py-2 border rounded"
@@ -48,7 +50,7 @@ export default function InviteCoachModal({ onClose }) {
       const inviteRef = await addDoc(collection(db, "invites"), {
         email: email.toLowerCase().trim(),
         role: "coach",
-        orgId: profile.orgId,
+        orgId: inviteOrgId,
         status: "pending",
         invitedBy: user.uid,
         createdAt: serverTimestamp(),
@@ -81,6 +83,10 @@ export default function InviteCoachModal({ onClose }) {
         <h2 className="text-lg font-semibold">Invite Coach</h2>
 
         {error && <div className="text-sm text-red-600">{error}</div>}
+        <div className="text-xs text-slate-500">
+          Coach will be onboarded under org: <span className="font-medium">{inviteOrgId}</span>
+          {isSuperAdmin ? " (from active org selection)" : ""}
+        </div>
 
         <input
           type="email"

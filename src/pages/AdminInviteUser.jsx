@@ -63,7 +63,8 @@ If you were not expecting this email, you can ignore it.
 `;
 
 export default function AdminInviteUser() {
-  const { profile } = useAuth();
+  const { profile, user, activeOrgId, isSuperAdmin } = useAuth();
+  const inviteOrgId = (activeOrgId || profile?.orgId || "").trim();
 
   const [form, setForm] = useState({
     email: "",
@@ -75,7 +76,7 @@ export default function AdminInviteUser() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
-  if (profile?.role !== "admin") {
+  if (!["admin", "super-admin"].includes(profile?.role || "")) {
     return <div className="p-6 text-red-500">Access denied</div>;
   }
 
@@ -86,14 +87,18 @@ export default function AdminInviteUser() {
     setSuccess(false);
 
     try {
+      if (!inviteOrgId) {
+        throw new Error("No active organization selected.");
+      }
+
       // 1️⃣ Create invite
       const inviteRef = await addDoc(collection(db, "invites"), {
-        email: form.email,
+        email: form.email.trim().toLowerCase(),
         role: form.role,
-        orgId: profile.orgId,
+        orgId: inviteOrgId,
         teamId: form.teamId || null,
         status: "pending",
-        invitedBy: profile.uid,
+        invitedBy: user?.uid || profile?.uid || "",
         createdAt: serverTimestamp(),
       });
 
@@ -129,6 +134,10 @@ export default function AdminInviteUser() {
   return (
     <div className="p-6 max-w-lg mx-auto bg-white rounded-xl shadow">
       <h1 className="text-xl font-bold mb-4">Invite New User</h1>
+      <p className="text-sm text-slate-600 mb-4">
+        Invites default to org: <span className="font-medium">{inviteOrgId || "none selected"}</span>
+        {isSuperAdmin ? " (active org selector in top bar)" : ""}
+      </p>
 
       <form onSubmit={submit} className="space-y-4">
         <div>
