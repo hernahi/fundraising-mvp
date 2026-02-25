@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import {
   collection,
   query,
@@ -106,6 +107,9 @@ function formatTime(tsLike) {
 export default function DashboardHome() {
   const { profile } = useAuth();
   const { activeCampaignId, campaigns } = useCampaign();
+  const role = (profile?.role || "").toLowerCase();
+  const isCoach = role === "coach";
+  const isAdmin = role === "admin" || role === "super-admin";
 
   /* ==============================
      Stats (existing)
@@ -126,6 +130,13 @@ export default function DashboardHome() {
 
   const [hasMoreActivity, setHasMoreActivity] = useState(false);
   const [activityCursor, setActivityCursor] = useState(null);
+  const [coachFlowLoading, setCoachFlowLoading] = useState(false);
+  const [coachFlow, setCoachFlow] = useState({
+    teamCount: 0,
+    athleteCount: 0,
+    assignedCampaignCount: 0,
+    contactCount: 0,
+  });
 
   const activeCampaign = useMemo(() => {
     return campaigns?.find((c) => c.id === activeCampaignId) || null;
@@ -154,6 +165,92 @@ export default function DashboardHome() {
     setHasMoreActivity(false);
     setActivityError("");
   }, []);
+
+  useEffect(() => {
+    if (!profile?.orgId || (!isCoach && !isAdmin)) return;
+
+    let cancelled = false;
+
+    async function loadCoachFlow() {
+      setCoachFlowLoading(true);
+      try {
+        // Teams scope: coaches see their teams; admins see org teams.
+        const teamsQ =
+          isCoach && profile?.uid
+            ? query(
+                collection(db, "teams"),
+                where("orgId", "==", profile.orgId),
+                where("coachId", "==", profile.uid)
+              )
+            : query(collection(db, "teams"), where("orgId", "==", profile.orgId));
+
+        const teamsSnap = await getDocs(teamsQ);
+        const teamRows = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const teamIds = teamRows.map((t) => t.id);
+
+        let athleteCount = 0;
+        if (teamIds.length === 1) {
+          const athletesSnap = await getDocs(
+            query(
+              collection(db, "athletes"),
+              where("orgId", "==", profile.orgId),
+              where("teamId", "==", teamIds[0])
+            )
+          );
+          athleteCount = athletesSnap.size;
+        } else if (teamIds.length > 1 && teamIds.length <= 10) {
+          const athletesSnap = await getDocs(
+            query(
+              collection(db, "athletes"),
+              where("orgId", "==", profile.orgId),
+              where("teamId", "in", teamIds)
+            )
+          );
+          athleteCount = athletesSnap.size;
+        } else if (teamIds.length > 10 || isAdmin) {
+          const athletesSnap = await getDocs(
+            query(collection(db, "athletes"), where("orgId", "==", profile.orgId))
+          );
+          athleteCount = isCoach
+            ? athletesSnap.docs.filter((d) => teamIds.includes(d.data()?.teamId)).length
+            : athletesSnap.size;
+        }
+
+        // Use in-memory campaigns from context to avoid extra indexed queries.
+        const scopedCampaigns = (campaigns || []).filter((c) => {
+          if (!c) return false;
+          const directTeam = c.teamId && teamIds.includes(c.teamId);
+          const multiTeam =
+            Array.isArray(c.teamIds) && c.teamIds.some((id) => teamIds.includes(id));
+          return isAdmin ? true : directTeam || multiTeam;
+        });
+        const assignedCampaignCount = scopedCampaigns.length;
+
+        const contactsSnap = await getDocs(
+          query(collection(db, "athlete_contacts"), where("orgId", "==", profile.orgId))
+        );
+
+        if (!cancelled) {
+          setCoachFlow({
+            teamCount: teamRows.length,
+            athleteCount,
+            assignedCampaignCount,
+            contactCount: contactsSnap.size,
+          });
+        }
+      } catch (err) {
+        console.error("Coach flow load failed:", err);
+      } finally {
+        if (!cancelled) setCoachFlowLoading(false);
+      }
+    }
+
+    loadCoachFlow();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.orgId, profile?.uid, isCoach, isAdmin, campaigns]);
 
   const buildDonationsQuery = useCallback(
     (cursorDoc = null) => {
@@ -347,6 +444,84 @@ const exportDonationsCSV = async () => {
           )}
         </p>
       </div>
+
+      {(isCoach || isAdmin) && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="px-4 py-3 border-b border-slate-200">
+            <h2 className="text-sm font-semibold text-slate-900">Coach Onboarding Flow</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Follow this sequence to onboard your team quickly.
+            </p>
+          </div>
+
+          {coachFlowLoading ? (
+            <div className="px-4 py-4 text-sm text-slate-500">Loading onboarding status...</div>
+          ) : (
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              {[
+                {
+                  key: "team",
+                  label: "1. Create Team",
+                  done: coachFlow.teamCount > 0,
+                  detail: `${coachFlow.teamCount} team${coachFlow.teamCount === 1 ? "" : "s"}`,
+                  to: "/teams",
+                  cta: "Open Teams",
+                },
+                {
+                  key: "invite",
+                  label: "2. Invite Athletes",
+                  done: coachFlow.athleteCount > 0,
+                  detail: `${coachFlow.athleteCount} athlete${coachFlow.athleteCount === 1 ? "" : "s"}`,
+                  to: isCoach ? "/coach/invite" : "/athletes/add",
+                  cta: isCoach ? "Invite Athletes" : "Add Athlete",
+                },
+                {
+                  key: "campaign",
+                  label: "3. Assign Campaign",
+                  done: coachFlow.assignedCampaignCount > 0,
+                  detail: `${coachFlow.assignedCampaignCount} campaign${coachFlow.assignedCampaignCount === 1 ? "" : "s"}`,
+                  to: "/campaigns",
+                  cta: "Open Campaigns",
+                },
+                {
+                  key: "messages",
+                  label: "4. Launch Messages",
+                  done: coachFlow.contactCount > 0,
+                  detail: `${coachFlow.contactCount} contact${coachFlow.contactCount === 1 ? "" : "s"}`,
+                  to: "/messages",
+                  cta: "Open Messages",
+                },
+              ].map((step) => (
+                <div
+                  key={step.key}
+                  className="rounded-lg border border-slate-200 p-3 flex flex-col gap-2 bg-slate-50/40"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium text-slate-800">{step.label}</div>
+                    <span
+                      className={[
+                        "text-[11px] px-2 py-1 rounded-full",
+                        step.done
+                          ? "bg-green-100 text-green-700"
+                          : "bg-amber-100 text-amber-700",
+                      ].join(" ")}
+                    >
+                      {step.done ? "Done" : "Pending"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-600">{step.detail}</div>
+                  <Link
+                    to={step.to}
+                    className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    {step.cta}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Analytics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
