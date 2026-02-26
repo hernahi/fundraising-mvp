@@ -104,6 +104,30 @@ function formatTime(tsLike) {
   }
 }
 
+function parseDateLike(value) {
+  if (!value) return null;
+  if (typeof value?.toDate === "function") return value.toDate();
+  if (value?.seconds) return new Date(value.seconds * 1000);
+  if (value instanceof Date) return value;
+  const asDate = new Date(value);
+  return Number.isNaN(asDate.getTime()) ? null : asDate;
+}
+
+function toDayKey(date) {
+  if (!(date instanceof Date)) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function dayDiff(start, end) {
+  if (!start || !end) return 0;
+  const s = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  const e = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+  return Math.max(0, Math.round((e - s) / 86400000));
+}
+
 export default function DashboardHome() {
   const { profile } = useAuth();
   const { activeCampaignId, campaigns } = useCampaign();
@@ -233,6 +257,23 @@ export default function DashboardHome() {
       Math.round((Number(stats.fundsRaised || 0) / goalAmount) * 100)
     );
   }, [stats.fundsRaised, goalAmount]);
+
+  const campaignStartDate = useMemo(() => {
+    return (
+      parseDateLike(activeCampaign?.startDate) ||
+      parseDateLike(activeCampaign?.startsAt) ||
+      parseDateLike(activeCampaign?.createdAt) ||
+      null
+    );
+  }, [activeCampaign]);
+
+  const campaignEndDate = useMemo(() => {
+    return (
+      parseDateLike(activeCampaign?.endDate) ||
+      parseDateLike(activeCampaign?.endsAt) ||
+      null
+    );
+  }, [activeCampaign]);
 
   const resetActivity = useCallback(() => {
     setRecentActivity([]);
@@ -621,6 +662,51 @@ export default function DashboardHome() {
             topGift,
           },
         });
+      } else if (type === "timeline") {
+        const dayMap = new Map();
+        donations.forEach((d) => {
+          const dt =
+            parseDateLike(d.createdAt) ||
+            parseDateLike(d.createdAtMs) ||
+            parseDateLike(d.updatedAt);
+          if (!dt) return;
+          const key = toDayKey(dt);
+          dayMap.set(key, (dayMap.get(key) || 0) + normalizeDonationAmount(d.amount));
+        });
+
+        const points = Array.from(dayMap.entries())
+          .map(([day, amount]) => ({ day, amount }))
+          .sort((a, b) => a.day.localeCompare(b.day));
+
+        const peak = points.reduce(
+          (best, p) => (!best || p.amount > best.amount ? p : best),
+          null
+        );
+        const valley = points.reduce(
+          (best, p) => (!best || p.amount < best.amount ? p : best),
+          null
+        );
+
+        const today = new Date();
+        const elapsedDays = campaignStartDate ? dayDiff(campaignStartDate, today) : null;
+        const totalDays =
+          campaignStartDate && campaignEndDate ? dayDiff(campaignStartDate, campaignEndDate) : null;
+        const remainingDays = campaignEndDate ? dayDiff(today, campaignEndDate) : null;
+
+        setInsightData({
+          title: "Campaign Timeline",
+          subtitle: activeCampaign?.name || "",
+          timeline: {
+            start: campaignStartDate,
+            end: campaignEndDate,
+            elapsedDays,
+            totalDays,
+            remainingDays,
+            points,
+            peak,
+            valley,
+          },
+        });
       } else {
         const remaining = Math.max(0, goalAmount - raisedTotal);
         setInsightData({
@@ -640,7 +726,14 @@ export default function DashboardHome() {
     } finally {
       setInsightLoading(false);
     }
-  }, [profile?.orgId, activeCampaignId, goalAmount, activeCampaign?.name]);
+  }, [
+    profile?.orgId,
+    activeCampaignId,
+    goalAmount,
+    activeCampaign?.name,
+    campaignStartDate,
+    campaignEndDate,
+  ]);
 
   /* ==============================
      Fetch ONCE per campaign change
@@ -801,6 +894,18 @@ export default function DashboardHome() {
           onClick={() => openInsight("athletes")}
           subtext="In this campaign"
         />
+        <AnalyticsCard
+          title="Campaign Timeline"
+          value={
+            campaignStartDate && campaignEndDate
+              ? `${toDayKey(campaignStartDate)} to ${toDayKey(campaignEndDate)}`
+              : campaignStartDate
+              ? `Started ${toDayKey(campaignStartDate)}`
+              : "Dates not set"
+          }
+          onClick={() => openInsight("timeline")}
+          subtext="Start/end and daily trend"
+        />
       </div>
 
       {insightOpen && (
@@ -886,6 +991,73 @@ export default function DashboardHome() {
                   <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Raised</div><div className="text-xl font-semibold">{formatCurrency(insightData?.progress?.raised || 0)}</div></div>
                   <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Remaining</div><div className="text-xl font-semibold">{formatCurrency(insightData?.progress?.remaining || 0)}</div></div>
                   <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Progress</div><div className="text-xl font-semibold">{insightData?.progress?.percent || 0}%</div></div>
+                </div>
+              )}
+
+              {!insightLoading && !insightError && insightType === "timeline" && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="rounded border border-slate-200 p-3">
+                      <div className="text-xs text-slate-500">Start Date</div>
+                      <div className="text-sm font-semibold">
+                        {insightData?.timeline?.start ? insightData.timeline.start.toLocaleDateString() : "Not set"}
+                      </div>
+                    </div>
+                    <div className="rounded border border-slate-200 p-3">
+                      <div className="text-xs text-slate-500">End Date</div>
+                      <div className="text-sm font-semibold">
+                        {insightData?.timeline?.end ? insightData.timeline.end.toLocaleDateString() : "Not set"}
+                      </div>
+                    </div>
+                    <div className="rounded border border-slate-200 p-3">
+                      <div className="text-xs text-slate-500">Days</div>
+                      <div className="text-sm font-semibold">
+                        {insightData?.timeline?.totalDays != null ? `${insightData.timeline.totalDays} total` : "N/A"}
+                        {insightData?.timeline?.remainingDays != null ? ` · ${insightData.timeline.remainingDays} left` : ""}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded border border-slate-200 p-3">
+                    <div className="text-xs text-slate-500 mb-2">Daily Donations Trend</div>
+                    {(insightData?.timeline?.points || []).length === 0 ? (
+                      <div className="text-sm text-slate-500">No donation activity yet for this campaign.</div>
+                    ) : (
+                      <>
+                        <div className="h-36 flex items-end gap-1">
+                          {(insightData.timeline.points || []).slice(-45).map((p) => {
+                            const maxAmount = Math.max(
+                              ...insightData.timeline.points.map((x) => Number(x.amount || 0)),
+                              1
+                            );
+                            const h = Math.max(8, Math.round((Number(p.amount || 0) / maxAmount) * 100));
+                            return (
+                              <div
+                                key={p.day}
+                                className="flex-1 bg-slate-800/85 rounded-t"
+                                style={{ height: `${h}%` }}
+                                title={`${p.day}: ${formatCurrency(p.amount)}`}
+                              />
+                            );
+                          })}
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-slate-700">
+                          <div>
+                            Peak:{" "}
+                            <span className="font-medium">
+                              {insightData?.timeline?.peak?.day || "N/A"} ({formatCurrency(insightData?.timeline?.peak?.amount || 0)})
+                            </span>
+                          </div>
+                          <div>
+                            Valley:{" "}
+                            <span className="font-medium">
+                              {insightData?.timeline?.valley?.day || "N/A"} ({formatCurrency(insightData?.timeline?.valley?.amount || 0)})
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
