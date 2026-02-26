@@ -61,6 +61,10 @@ service cloud.firestore {
       );
     }
 
+    function orgIdUnchanged() {
+      return !("orgId" in resource.data) || request.resource.data.orgId == resource.data.orgId;
+    }
+
     /* ===========================
        COACHES
        =========================== */
@@ -71,8 +75,21 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
            in ["admin", "super-admin", "coach"];
 
-      // Writes restricted to admins only (optional, safe default)
-      allow write: if request.auth != null
+      // Writes restricted to admins only
+      allow create: if request.auth != null
+        && request.resource.data.orgId is string
+        && canAccessOrg(request.resource.data.orgId)
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+           in ["admin", "super-admin"];
+
+      allow update: if request.auth != null
+        && orgIdUnchanged()
+        && canAccessOrg(resource.data.orgId)
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+           in ["admin", "super-admin"];
+
+      allow delete: if request.auth != null
+        && canAccessOrg(resource.data.orgId)
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
            in ["admin", "super-admin"];
     }
@@ -110,7 +127,12 @@ service cloud.firestore {
         && !("orgId" in request.resource.data);
 
       // ✅ Admins can manage users
-      allow update, delete: if request.auth != null
+      allow update: if request.auth != null
+        && (isOrgAdmin() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId)
+        && orgIdUnchanged();
+
+      allow delete: if request.auth != null
         && (isOrgAdmin() || isSuperAdmin())
         && canAccessOrg(resource.data.orgId);
     }
@@ -158,9 +180,14 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/athletes/$(request.auth.uid)).data.teamId == teamId;
 
       // Admin / coach can manage team
-      allow create, update: if isSignedIn()
+      allow create: if isSignedIn()
         && (isOrgAdmin() || isCoach() || isSuperAdmin())
         && canAccessOrg(request.resource.data.orgId);
+
+      allow update: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId)
+        && orgIdUnchanged();
 
       allow delete: if isSignedIn()
         && (isOrgAdmin() || isSuperAdmin())
@@ -185,9 +212,14 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/campaigns/$(resource.data.campaignId)).data.isPublic == true);
 
       // ✅ Only org admins, coaches, or super-admins may create/update
-      allow create, update: if isSignedIn()
+      allow create: if isSignedIn()
         && (isOrgAdmin() || isCoach() || isSuperAdmin())
         && canAccessOrg(request.resource.data.orgId);
+
+      allow update: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId)
+        && orgIdUnchanged();
 
       // ✅ Athlete can update their own invite message (no other fields)
       allow update: if isSignedIn()
@@ -216,7 +248,16 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/athletes/$(request.auth.uid))
         && get(/databases/$(database)/documents/athletes/$(request.auth.uid)).data.teamId == resource.data.teamId;
 
-      allow create, update, delete: if isSignedIn()
+      allow create: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(request.resource.data.orgId);
+
+      allow update: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId)
+        && orgIdUnchanged();
+
+      allow delete: if isSignedIn()
         && (isOrgAdmin() || isCoach() || isSuperAdmin())
         && canAccessOrg(resource.data.orgId);
     }
@@ -233,9 +274,18 @@ service cloud.firestore {
         || (isSignedIn() && canAccessOrg(resource.data.orgId));
 
       // ✅ Only admins & super-admins may write
-      allow create, update, delete: if isSignedIn()
+      allow create: if isSignedIn()
         && (isOrgAdmin() || isSuperAdmin())
         && canAccessOrg(request.resource.data.orgId);
+
+      allow update: if isSignedIn()
+        && (isOrgAdmin() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId)
+        && orgIdUnchanged();
+
+      allow delete: if isSignedIn()
+        && (isOrgAdmin() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId);
     }
 
     match /campaigns/{campaignId}/comments/{commentId} {
@@ -259,7 +309,16 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/athletes/$(request.auth.uid))
         && get(/databases/$(database)/documents/athletes/$(request.auth.uid)).data.teamId == resource.data.teamId;
 
-      allow create, update, delete: if isSignedIn()
+      allow create: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(request.resource.data.orgId);
+
+      allow update: if isSignedIn()
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
+        && canAccessOrg(resource.data.orgId)
+        && orgIdUnchanged();
+
+      allow delete: if isSignedIn()
         && (isOrgAdmin() || isCoach() || isSuperAdmin())
         && canAccessOrg(resource.data.orgId);
     }
@@ -295,7 +354,11 @@ service cloud.firestore {
         && request.resource.data.orgId is string
         && canAccessOrg(request.resource.data.orgId);
 
-      allow update, delete: if resource.data != null
+      allow update: if resource.data != null
+        && canAccessOrg(resource.data.orgId)
+        && orgIdUnchanged();
+
+      allow delete: if resource.data != null
         && canAccessOrg(resource.data.orgId);
     }
 
@@ -313,7 +376,12 @@ service cloud.firestore {
         && request.resource.data.athleteId is string
         && (isOrgAdmin() || isCoach() || request.auth.uid == request.resource.data.athleteId);
 
-      allow update, delete: if isSignedIn()
+      allow update: if isSignedIn()
+        && canAccessOrg(resource.data.orgId)
+        && (isOrgAdmin() || isCoach() || request.auth.uid == resource.data.athleteId)
+        && orgIdUnchanged();
+
+      allow delete: if isSignedIn()
         && canAccessOrg(resource.data.orgId)
         && (isOrgAdmin() || isCoach() || request.auth.uid == resource.data.athleteId);
     }
@@ -368,7 +436,8 @@ service cloud.firestore {
         && resource.data.status == "pending"
         && request.resource.data.status == "accepted"
         && request.resource.data.acceptedAt is timestamp
-        && request.auth.token.email == resource.data.email;
+        && request.auth.token.email == resource.data.email
+        && orgIdUnchanged();
 
       // Admins can read invites in their org
       allow read: if isSignedIn()
