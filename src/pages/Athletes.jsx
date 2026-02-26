@@ -360,50 +360,63 @@ if (isCoach && teamRows.length > 0) {
             const teamName =
               teams.find((t) => t.id === ath.teamId)?.name ||
               "Unassigned";
+            const athleteName = ath.name || ath.displayName || "Unnamed Athlete";
+            const raised = Number(ath.donations || ath.totalRaised || 0);
+            const goal = Number(ath.goal || ath.personalGoal || 0);
 
             return (
               <div
                 key={ath.id}
-                className="border bg-white rounded-xl shadow hover:shadow-lg transition p-4 md:p-5 lg:p-6 flex flex-col items-center text-center"
+                className="border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 rounded-xl shadow-sm hover:-translate-y-0.5 hover:shadow-md hover:border-slate-400 transition p-4"
               >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(ath.id)}
-                  onChange={() => toggleSelect(ath.id)}
-                  className="self-start mb-2 h-4 w-4"
-                />
-
-                <img
-                  src={safeImageURL(
-                    ath.avatar,
-                    avatarFallback({ label: ath.name || "Athlete", type: "athlete", size: 160 })
-                  )}
-                  alt={ath.name}
-                  className="w-20 h-20 rounded-full object-cover border shadow bg-gray-50"
-                />
-
-                <h3 className="text-xl font-semibold mt-4">
-                  {ath.name || ath.displayName || "Unnamed Athlete"}
-                </h3>
-
-                <div className="mt-2 flex gap-2 justify-center items-center">
+                <div className="flex items-start justify-between gap-3">
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-500">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(ath.id)}
+                      onChange={() => toggleSelect(ath.id)}
+                      className="h-4 w-4"
+                    />
+                    Select
+                  </label>
                   <StatusBadge status={getAthleteStatus(ath)} />
+                </div>
 
+                <div className="mt-3 flex items-center gap-3 min-w-0">
+                  <img
+                    src={safeImageURL(
+                      ath.avatar,
+                      avatarFallback({ label: athleteName, type: "athlete", size: 120 })
+                    )}
+                    alt={athleteName}
+                    className="w-14 h-14 rounded-full object-cover border bg-gray-50 shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-slate-900 truncate">
+                      {athleteName}
+                    </h3>
+                    <p className="text-sm text-slate-500 truncate">{teamName}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <span className="px-2 py-1 rounded-full border border-slate-300 text-slate-600">
+                    Raised ${raised.toLocaleString()}
+                  </span>
+                  <span className="px-2 py-1 rounded-full border border-slate-300 text-slate-600">
+                    {goal > 0 ? `Goal $${goal.toLocaleString()}` : "No goal"}
+                  </span>
                   {!ath.teamId && (
-                    <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                    <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-800">
                       Unassigned
                     </span>
                   )}
                 </div>
 
-                <p className="text-gray-500 mt-1 text-sm">
-                  {teamName}
-                </p>
-
-                <div className="grid grid-cols-2 gap-3 mt-6 w-full">
+                <div className="grid grid-cols-2 gap-2 mt-4 w-full">
                   <Link
                     to={`/athletes/${ath.id}`}
-                    className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-center text-sm"
+                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 text-center text-sm"
                   >
                     View
                   </Link>
@@ -411,7 +424,7 @@ if (isCoach && teamRows.length > 0) {
                   {(isAdmin || isCoach) && (
                     <Link
                       to={`/athletes/${ath.id}/edit`}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-center text-sm"
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-center text-sm"
                     >
                       Edit
                     </Link>
