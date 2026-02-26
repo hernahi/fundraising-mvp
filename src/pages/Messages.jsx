@@ -102,6 +102,8 @@ export default function Messages() {
   const [templateDirty, setTemplateDirty] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState("week1a");
+  const [logChannelFilter, setLogChannelFilter] = useState("all");
+  const [logWindowFilter, setLogWindowFilter] = useState("all");
 
   const [athleteRecord, setAthleteRecord] = useState(null);
   const [sendLoading, setSendLoading] = useState(false);
@@ -386,6 +388,50 @@ export default function Messages() {
     orgDripEnabled,
   ]);
 
+  const messageStats = useMemo(() => {
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    let email = 0;
+    let sms = 0;
+    let week = 0;
+
+    messages.forEach((m) => {
+      const channel = String(m.channel || "").toLowerCase();
+      if (channel === "email") email += 1;
+      if (channel === "sms") sms += 1;
+
+      const ts =
+        m.createdAt?.toDate?.()?.getTime?.() ||
+        (m.createdAt?.seconds ? m.createdAt.seconds * 1000 : 0);
+      if (ts >= weekAgo) week += 1;
+    });
+
+    return {
+      total: messages.length,
+      email,
+      sms,
+      week,
+    };
+  }, [messages]);
+
+  const filteredMessages = useMemo(() => {
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+    return messages.filter((m) => {
+      const channel = String(m.channel || "").toLowerCase();
+      const ts =
+        m.createdAt?.toDate?.()?.getTime?.() ||
+        (m.createdAt?.seconds ? m.createdAt.seconds * 1000 : 0);
+
+      const channelOk =
+        logChannelFilter === "all" || channel === logChannelFilter;
+      const windowOk = logWindowFilter === "all" || ts >= weekAgo;
+
+      return channelOk && windowOk;
+    });
+  }, [logChannelFilter, logWindowFilter, messages]);
+
   const addContact = async () => {
     const name = contactName.trim();
     const email = contactEmail.trim().toLowerCase();
@@ -644,6 +690,41 @@ export default function Messages() {
             Last synced: {lastUpdated}
           </div>
         ) : null}
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 px-3 py-3 shadow-sm">
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">
+            Total Messages
+          </div>
+          <div className="mt-1 text-xl font-semibold text-slate-800">
+            {messageStats.total}
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 px-3 py-3 shadow-sm">
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">
+            Email
+          </div>
+          <div className="mt-1 text-xl font-semibold text-slate-800">
+            {messageStats.email}
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 px-3 py-3 shadow-sm">
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">
+            SMS
+          </div>
+          <div className="mt-1 text-xl font-semibold text-slate-800">
+            {messageStats.sms}
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 px-3 py-3 shadow-sm">
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">
+            Last 7 Days
+          </div>
+          <div className="mt-1 text-xl font-semibold text-slate-800">
+            {messageStats.week}
+          </div>
+        </div>
       </div>
 
       {(isCoach || isAdmin) && (
@@ -1107,7 +1188,7 @@ export default function Messages() {
                                       setEditingContactId(contact.id);
                                       setEditingEmail(contact.email || "");
                                     }}
-                                    className="text-xs text-blue-600 hover:text-blue-700"
+                                    className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
                                   >
                                     {editingContactId === contact.id ? "Save" : "Edit"}
                                   </button>
@@ -1119,7 +1200,7 @@ export default function Messages() {
                                       setEditingContactId("");
                                       setEditingEmail("");
                                     }}
-                                    className="text-xs text-slate-400 hover:text-slate-500"
+                                    className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
                                   >
                                     Cancel
                                   </button>
@@ -1127,7 +1208,7 @@ export default function Messages() {
                                 <button
                                   type="button"
                                   onClick={() => removeContact(contact.id)}
-                                  className="text-xs text-slate-400 hover:text-red-500"
+                                  className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100"
                                 >
                                   Remove
                                 </button>
@@ -1332,14 +1413,73 @@ export default function Messages() {
         </div>
       )}
 
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Message Log</h2>
+            <p className="text-sm text-slate-500">
+              Review sent outreach across your current scope.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setLogChannelFilter("all")}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                logChannelFilter === "all"
+                  ? "border-slate-800 bg-slate-800 text-white"
+                  : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => setLogChannelFilter("email")}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                logChannelFilter === "email"
+                  ? "border-slate-800 bg-slate-800 text-white"
+                  : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              Email
+            </button>
+            <button
+              type="button"
+              onClick={() => setLogChannelFilter("sms")}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                logChannelFilter === "sms"
+                  ? "border-slate-800 bg-slate-800 text-white"
+                  : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              SMS
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setLogWindowFilter((prev) => (prev === "week" ? "all" : "week"))
+              }
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                logWindowFilter === "week"
+                  ? "border-slate-800 bg-slate-800 text-white"
+                  : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              This Week
+            </button>
+          </div>
+        </div>
+      </div>
+
       {loadingMessages ? (
         <ListLoadingSpinner />
-      ) : messages.length === 0 ? (
+      ) : filteredMessages.length === 0 ? (
         <ListEmptyState message="No outreach messages have been logged yet." />
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
           <ul className="divide-y">
-            {messages.map((m) => (
+            {filteredMessages.map((m) => (
               <li
                 key={m.id}
                 className="px-4 py-4 flex gap-3 hover:bg-slate-50 transition"
