@@ -96,13 +96,19 @@ export default function Donors() {
   const donationStats = useMemo(() => {
     const next = {};
     donationRows.forEach((data) => {
+      const donorEmail = String(
+        data.donorEmail || data.donor?.email || ""
+      ).trim().toLowerCase();
+      const donorName = String(
+        data.donorName || data.donor?.name || ""
+      ).trim();
       const donorKey =
         data.donorId ||
         data.donor?.id ||
         data.donor?.uid ||
-        data.donorEmail ||
-        data.donorName ||
-        data.id;
+        (donorEmail ? `email:${donorEmail}` : "") ||
+        (donorName ? `name:${donorName}` : "") ||
+        `unresolved:${data.id}`;
 
       const amount = Number(data.amount || 0);
       const createdAt =
@@ -126,10 +132,8 @@ export default function Donors() {
 
       current.total += amount;
       current.count += 1;
-      current.donorName =
-        current.donorName || data.donorName || data.donor?.name || "";
-      current.donorEmail =
-        current.donorEmail || data.donorEmail || data.donor?.email || "";
+      current.donorName = current.donorName || donorName;
+      current.donorEmail = current.donorEmail || donorEmail;
 
       if (
         createdAt &&
@@ -461,18 +465,12 @@ export default function Donors() {
                 </div>
 
                 <div className="mt-4 flex justify-end sm:justify-end">
-                  {d.hasDonorDoc ? (
-                    <Link
-                      to={`/donors/${d.id}`}
-                      className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition w-full sm:w-auto text-center"
-                    >
-                      View
-                    </Link>
-                  ) : (
-                    <span className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 text-slate-400 cursor-not-allowed w-full sm:w-auto text-center">
-                      View
-                    </span>
-                  )}
+                  <Link
+                    to={`/donors/${encodeURIComponent(d.id)}`}
+                    className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition w-full sm:w-auto text-center"
+                  >
+                    View
+                  </Link>
                 </div>
               </div>
             );

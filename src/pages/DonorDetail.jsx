@@ -9,7 +9,6 @@ import {
   query,
   where,
   getDocs,
-  orderBy,
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
@@ -17,7 +16,8 @@ import safeImageURL from "../utils/safeImage";
 import { useAuth } from "../context/AuthContext";
 
 export default function DonorDetail() {
-  const { donorId } = useParams();
+  const { donorId: donorIdParam } = useParams();
+  const donorId = decodeURIComponent(donorIdParam || "");
   const { profile, activeOrgId, loading: authLoading } = useAuth();
   const orgId = activeOrgId || profile?.orgId;
   const canEditNotes = ["admin", "super-admin", "coach"].includes(
@@ -31,6 +31,91 @@ export default function DonorDetail() {
   const [loading, setLoading] = useState(true);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [hasDonorDoc, setHasDonorDoc] = useState(false);
+
+  const loadLookupMaps = async (nextOrgId) => {
+    const [teamsSnap, athletesSnap] = await Promise.all([
+      getDocs(query(collection(db, "teams"), where("orgId", "==", nextOrgId))),
+      getDocs(
+        query(collection(db, "athletes"), where("orgId", "==", nextOrgId))
+      ),
+    ]);
+
+    const nextTeamMap = new Map();
+    teamsSnap.forEach((teamDoc) => {
+      nextTeamMap.set(teamDoc.id, {
+        id: teamDoc.id,
+        ...teamDoc.data(),
+      });
+    });
+
+    const nextAthleteMap = new Map();
+    athletesSnap.forEach((athleteDoc) => {
+      nextAthleteMap.set(athleteDoc.id, {
+        id: athleteDoc.id,
+        ...athleteDoc.data(),
+      });
+    });
+
+    setTeamMap(nextTeamMap);
+    setAthleteMap(nextAthleteMap);
+  };
+
+  const loadDonationHistoryFallback = async (nextOrgId, lookupKey) => {
+    let fallbackQuery = null;
+    if (lookupKey.startsWith("email:")) {
+      fallbackQuery = query(
+        collection(db, "donations"),
+        where("orgId", "==", nextOrgId),
+        where("donorEmail", "==", lookupKey.slice(6))
+      );
+    } else if (lookupKey.startsWith("name:")) {
+      fallbackQuery = query(
+        collection(db, "donations"),
+        where("orgId", "==", nextOrgId),
+        where("donorName", "==", lookupKey.slice(5))
+      );
+    } else {
+      fallbackQuery = query(
+        collection(db, "donations"),
+        where("orgId", "==", nextOrgId),
+        where("donorEmail", "==", lookupKey)
+      );
+    }
+
+    const donationSnap = await getDocs(fallbackQuery);
+    const donationList = donationSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => {
+        const aTs = a.createdAt?.toDate?.()?.getTime?.() || 0;
+        const bTs = b.createdAt?.toDate?.()?.getTime?.() || 0;
+        return bTs - aTs;
+      });
+
+    if (donationList.length === 0) {
+      return null;
+    }
+
+    const first = donationList[0];
+    const donorName =
+      first.donorName ||
+      first.donor?.name ||
+      (lookupKey.startsWith("name:") ? lookupKey.slice(5) : "") ||
+      "Anonymous Donor";
+    const donorEmail =
+      first.donorEmail ||
+      first.donor?.email ||
+      (lookupKey.startsWith("email:") ? lookupKey.slice(6) : "");
+
+    return {
+      donorData: {
+        donorName,
+        donorEmail,
+        orgId: nextOrgId,
+      },
+      donationList,
+    };
+  };
 
   useEffect(() => {
     if (authLoading) return;
@@ -46,15 +131,29 @@ export default function DonorDetail() {
         const donorSnap = await getDoc(donorRef);
 
         if (!donorSnap.exists()) {
-          setDonor(null);
-          setLoading(false);
+          const fallback = await loadDonationHistoryFallback(orgId, donorId);
+          if (!fallback) {
+            setDonor(null);
+            setDonations([]);
+            setHasDonorDoc(false);
+            setNotesDraft("");
+            return;
+          }
+
+          await loadLookupMaps(orgId);
+          setDonor(fallback.donorData);
+          setDonations(fallback.donationList);
+          setHasDonorDoc(false);
+          setNotesDraft("");
           return;
         }
 
         const donorData = donorSnap.data();
         if (donorData?.orgId && donorData.orgId !== orgId) {
           setDonor(null);
-          setLoading(false);
+          setDonations([]);
+          setHasDonorDoc(false);
+          setNotesDraft("");
           return;
         }
 
@@ -62,45 +161,23 @@ export default function DonorDetail() {
         const q = query(
           donationsRef,
           where("orgId", "==", orgId),
-          where("donorId", "==", donorId),
-          orderBy("createdAt", "desc")
+          where("donorId", "==", donorId)
         );
 
         const donationSnap = await getDocs(q);
-        const donationList = donationSnap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
-
-        const [teamsSnap, athletesSnap] = await Promise.all([
-          getDocs(
-            query(collection(db, "teams"), where("orgId", "==", orgId))
-          ),
-          getDocs(
-            query(collection(db, "athletes"), where("orgId", "==", orgId))
-          ),
-        ]);
-
-        const nextTeamMap = new Map();
-        teamsSnap.forEach((teamDoc) => {
-          nextTeamMap.set(teamDoc.id, {
-            id: teamDoc.id,
-            ...teamDoc.data(),
+        const donationList = donationSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => {
+            const aTs = a.createdAt?.toDate?.()?.getTime?.() || 0;
+            const bTs = b.createdAt?.toDate?.()?.getTime?.() || 0;
+            return bTs - aTs;
           });
-        });
 
-        const nextAthleteMap = new Map();
-        athletesSnap.forEach((athleteDoc) => {
-          nextAthleteMap.set(athleteDoc.id, {
-            id: athleteDoc.id,
-            ...athleteDoc.data(),
-          });
-        });
+        await loadLookupMaps(orgId);
 
         setDonor(donorData);
         setDonations(donationList);
-        setTeamMap(nextTeamMap);
-        setAthleteMap(nextAthleteMap);
+        setHasDonorDoc(true);
         setNotesDraft(donorData?.notes || "");
       } catch (error) {
         console.error("Error loading donor:", error);
@@ -148,8 +225,10 @@ export default function DonorDetail() {
     donor.photoURL || donor.photoUrl || donor.imgUrl || null
   );
 
+  const canEditDonorNotes = canEditNotes && hasDonorDoc;
+
   const saveNotes = async () => {
-    if (!canEditNotes || !donorId) return;
+    if (!canEditDonorNotes || !donorId) return;
     setSavingNotes(true);
     try {
       await updateDoc(doc(db, "donors", donorId), {
@@ -237,7 +316,7 @@ export default function DonorDetail() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-800">Notes</h2>
-          {canEditNotes && (
+          {canEditDonorNotes && (
             <button
               type="button"
               onClick={saveNotes}
@@ -249,7 +328,7 @@ export default function DonorDetail() {
           )}
         </div>
 
-        {canEditNotes ? (
+        {canEditDonorNotes ? (
           <textarea
             value={notesDraft}
             onChange={(e) => setNotesDraft(e.target.value)}
@@ -259,7 +338,9 @@ export default function DonorDetail() {
           />
         ) : (
           <p className="mt-3 text-sm text-slate-600">
-            {donor.notes?.trim() || "No notes yet."}
+            {hasDonorDoc
+              ? donor.notes?.trim() || "No notes yet."
+              : "Notes are unavailable for donation-history-only donors."}
           </p>
         )}
       </div>
