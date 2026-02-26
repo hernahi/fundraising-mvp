@@ -109,6 +109,18 @@ export default function CoachDetail() {
     return String(user?.status || "active").toLowerCase();
   }, [user?.status]);
 
+  const coachUid = useMemo(() => coach?.uid || coach?.id || "", [coach?.uid, coach?.id]);
+
+  const coachedTeams = useMemo(() => {
+    if (!coachUid) return [];
+    const linked = teamOptions.filter((t) => t.coachId === coachUid);
+    if (form.teamId && !linked.some((t) => t.id === form.teamId)) {
+      const selected = teamOptions.find((t) => t.id === form.teamId);
+      if (selected) return [...linked, selected];
+    }
+    return linked;
+  }, [coachUid, teamOptions, form.teamId]);
+
   const createdLabel = useMemo(() => {
     const ts = coach?.createdAt?.toDate?.();
     return ts ? ts.toLocaleDateString() : "N/A";
@@ -120,8 +132,7 @@ export default function CoachDetail() {
     try {
       const selectedTeam = teamOptions.find((t) => t.id === form.teamId);
       const nextTeamName = selectedTeam?.name || "";
-      const coachUid = coach.uid || coach.id;
-      const previousTeamId = coach.teamId || null;
+      const nextCoachUid = coach.uid || coach.id;
       const nextTeamId = form.teamId || null;
 
       await updateDoc(doc(db, "coaches", coach.id), {
@@ -132,33 +143,19 @@ export default function CoachDetail() {
         updatedAt: serverTimestamp(),
       });
 
-      if (coachUid && user?.id) {
-        await updateDoc(doc(db, "users", coachUid), {
+      if (nextCoachUid && user?.id) {
+        await updateDoc(doc(db, "users", nextCoachUid), {
           displayName: form.name.trim(),
           email: form.email.trim(),
           updatedAt: serverTimestamp(),
         });
       }
 
-      if (coachUid && nextTeamId) {
+      if (nextCoachUid && nextTeamId) {
         await updateDoc(doc(db, "teams", nextTeamId), {
-          coachId: coachUid,
+          coachId: nextCoachUid,
           updatedAt: serverTimestamp(),
         });
-      }
-
-      if (coachUid && previousTeamId && previousTeamId !== nextTeamId) {
-        const previousTeamRef = doc(db, "teams", previousTeamId);
-        const previousTeamSnap = await getDoc(previousTeamRef);
-        if (
-          previousTeamSnap.exists() &&
-          (previousTeamSnap.data()?.coachId || null) === coachUid
-        ) {
-          await updateDoc(previousTeamRef, {
-            coachId: null,
-            updatedAt: serverTimestamp(),
-          });
-        }
       }
 
       setCoach((prev) =>
@@ -181,6 +178,15 @@ export default function CoachDetail() {
             }
           : prev
       );
+      if (nextTeamId && nextCoachUid) {
+        setTeamOptions((prev) =>
+          prev.map((t) =>
+            t.id === nextTeamId
+              ? { ...t, coachId: nextCoachUid, updatedAt: new Date() }
+              : t
+          )
+        );
+      }
     } catch (err) {
       console.error("Failed to update coach profile:", err);
     } finally {
@@ -368,8 +374,26 @@ export default function CoachDetail() {
 
           <div className="pt-3 border-t border-slate-100 text-sm text-slate-600 space-y-1">
             <div>Coach ID: {coach.id}</div>
-            <div>User UID: {coach.uid || coach.id}</div>
+            <div>User UID: {coachUid}</div>
             <div>Athletes in assigned team: {athleteCount}</div>
+            <div>Teams coached: {coachedTeams.length}</div>
+            {coachedTeams.length > 0 && (
+              <div className="pt-1">
+                <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
+                  Coached Team Names
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {coachedTeams.map((team) => (
+                    <span
+                      key={team.id}
+                      className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700"
+                    >
+                      {team.name || team.teamName || team.id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
