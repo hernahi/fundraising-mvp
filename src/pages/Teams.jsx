@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   collection,
+  doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -38,8 +40,11 @@ export default function Teams() {
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState([]);
   const [countsByTeam, setCountsByTeam] = useState({});
+  const [coachMap, setCoachMap] = useState({});
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [assignmentFilter, setAssignmentFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("name");
 
   const role = profile?.role || "";
   const isSuperAdmin = role === "super-admin";
@@ -63,6 +68,7 @@ export default function Teams() {
       setError("");
       setLoading(true);
       setCountsByTeam({});
+      setCoachMap({});
 
       try {
         if (!resolvedOrgId) {
@@ -93,6 +99,30 @@ export default function Teams() {
         if (!cancelled) {
           setTeams(rows);
           setLoading(false);
+        }
+
+        const uniqueCoachIds = Array.from(
+          new Set(rows.map((t) => t.coachId).filter(Boolean))
+        );
+        if (uniqueCoachIds.length > 0) {
+          const nextCoachMap = {};
+          await Promise.all(
+            uniqueCoachIds.map(async (coachId) => {
+              try {
+                const snap = await getDoc(doc(db, "users", coachId));
+                if (snap.exists()) {
+                  const data = snap.data();
+                  nextCoachMap[coachId] =
+                    data.displayName || data.name || data.email || coachId;
+                } else {
+                  nextCoachMap[coachId] = coachId;
+                }
+              } catch {
+                nextCoachMap[coachId] = coachId;
+              }
+            })
+          );
+          if (!cancelled) setCoachMap(nextCoachMap);
         }
 
         // Load counts in background (still within this effect)
@@ -126,14 +156,37 @@ export default function Teams() {
 
   const visibleTeams = useMemo(() => {
     const q = (search || "").trim().toLowerCase();
-    if (!q) return teams;
+    let rows = teams;
 
-    return teams.filter((t) => {
-      const name = (t.name || "").toLowerCase();
-      const code = (t.code || "").toLowerCase();
-      return name.includes(q) || code.includes(q);
+    if (assignmentFilter === "assigned") {
+      rows = rows.filter((t) => !!t.coachId);
+    } else if (assignmentFilter === "unassigned") {
+      rows = rows.filter((t) => !t.coachId);
+    }
+
+    if (q) {
+      rows = rows.filter((t) => {
+        const name = (t.name || "").toLowerCase();
+        const code = (t.code || "").toLowerCase();
+        const coachName = (coachMap[t.coachId] || "").toLowerCase();
+        return name.includes(q) || code.includes(q) || coachName.includes(q);
+      });
+    }
+
+    return [...rows].sort((a, b) => {
+      if (sortBy === "athletes") {
+        const aCount = countsByTeam[a.id]?.athletes || 0;
+        const bCount = countsByTeam[b.id]?.athletes || 0;
+        return bCount - aCount;
+      }
+      if (sortBy === "campaigns") {
+        const aCount = countsByTeam[a.id]?.campaigns || 0;
+        const bCount = countsByTeam[b.id]?.campaigns || 0;
+        return bCount - aCount;
+      }
+      return String(a.name || "").localeCompare(String(b.name || ""));
     });
-  }, [teams, search]);
+  }, [teams, search, assignmentFilter, sortBy, countsByTeam, coachMap]);
 
   return (
     <div className="p-4 md:p-6">
@@ -159,9 +212,27 @@ export default function Teams() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search teams (name or code)…"
+            placeholder="Search teams (name, code, coach)…"
             className="w-full sm:w-72 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-gray-200"
           />
+          <select
+            value={assignmentFilter}
+            onChange={(e) => setAssignmentFilter(e.target.value)}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+          >
+            <option value="all">All teams</option>
+            <option value="assigned">Coach assigned</option>
+            <option value="unassigned">Unassigned</option>
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+          >
+            <option value="name">Sort: Name</option>
+            <option value="athletes">Sort: Athletes</option>
+            <option value="campaigns">Sort: Campaigns</option>
+          </select>
 
           {isAdmin && (
             <Link
@@ -249,7 +320,11 @@ export default function Teams() {
 
                   <div className="mt-2 text-xs text-gray-500">
                     Coach:{" "}
-                    {t.coachId ? <span className="font-mono">{t.coachId}</span> : <span className="text-gray-400">None</span>}
+                    {t.coachId ? (
+                      <span>{coachMap[t.coachId] || t.coachId}</span>
+                    ) : (
+                      <span className="text-gray-400">None</span>
+                    )}
                   </div>
                 </Link>
               );
