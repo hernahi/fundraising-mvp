@@ -128,6 +128,15 @@ function dayDiff(start, end) {
   return Math.max(0, Math.round((e - s) / 86400000));
 }
 
+function formatShortDate(dateLike) {
+  const date = parseDateLike(dateLike);
+  if (!date) return "";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default function DashboardHome() {
   const { profile } = useAuth();
   const { activeCampaignId, campaigns } = useCampaign();
@@ -898,13 +907,17 @@ export default function DashboardHome() {
           title="Campaign Timeline"
           value={
             campaignStartDate && campaignEndDate
-              ? `${toDayKey(campaignStartDate)} to ${toDayKey(campaignEndDate)}`
+              ? `${formatShortDate(campaignStartDate)} - ${formatShortDate(campaignEndDate)}`
               : campaignStartDate
-              ? `Started ${toDayKey(campaignStartDate)}`
-              : "Dates not set"
+              ? `Started ${formatShortDate(campaignStartDate)}`
+              : "No dates set"
           }
           onClick={() => openInsight("timeline")}
-          subtext="Start/end and daily trend"
+          subtext={
+            campaignStartDate && campaignEndDate
+              ? `${dayDiff(campaignStartDate, campaignEndDate)} day window`
+              : "Start/end and daily trend"
+          }
         />
       </div>
 
