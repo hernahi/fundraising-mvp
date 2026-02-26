@@ -138,6 +138,76 @@ export default function DashboardHome() {
     contactCount: 0,
   });
 
+  const fetchStats = useCallback(async () => {
+    if (!profile?.orgId || !activeCampaignId) {
+      setStats({
+        activeCampaigns: 0,
+        totalAthletes: 0,
+        totalDonors: 0,
+        fundsRaised: 0,
+      });
+      return;
+    }
+
+    try {
+      const donationsSnap = await getDocs(
+        query(
+          collection(db, "donations"),
+          where("orgId", "==", profile.orgId),
+          where("campaignId", "==", activeCampaignId)
+        )
+      );
+
+      let fundsRaised = 0;
+      const donorKeys = new Set();
+      const athleteIdsFromDonations = new Set();
+
+      donationsSnap.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        if (data.status && data.status !== "paid") return;
+
+        fundsRaised += normalizeDonationAmount(data.amount);
+
+        const donorKey =
+          (data.donorEmail || "").toString().trim().toLowerCase() ||
+          (data.donorName || "").toString().trim().toLowerCase();
+        if (donorKey) donorKeys.add(donorKey);
+
+        if (data.athleteId) athleteIdsFromDonations.add(data.athleteId);
+      });
+
+      let totalAthletes = 0;
+      try {
+        const campaignAthletesSnap = await getDocs(
+          query(
+            collection(db, "campaignAthletes"),
+            where("orgId", "==", profile.orgId),
+            where("campaignId", "==", activeCampaignId)
+          )
+        );
+        totalAthletes = campaignAthletesSnap.size;
+      } catch (err) {
+        // Fallback when campaignAthletes is unavailable/missing for legacy data.
+        totalAthletes = athleteIdsFromDonations.size;
+      }
+
+      setStats({
+        activeCampaigns: 1,
+        totalAthletes,
+        totalDonors: donorKeys.size,
+        fundsRaised,
+      });
+    } catch (err) {
+      console.error("Dashboard stats load failed:", err);
+      setStats({
+        activeCampaigns: 0,
+        totalAthletes: 0,
+        totalDonors: 0,
+        fundsRaised: 0,
+      });
+    }
+  }, [profile?.orgId, activeCampaignId]);
+
   const activeCampaign = useMemo(() => {
     return campaigns?.find((c) => c.id === activeCampaignId) || null;
   }, [campaigns, activeCampaignId]);
@@ -420,6 +490,10 @@ const exportDonationsCSV = async () => {
     resetActivity();
     fetchRecentActivity({ mode: "reset" });
   }, [profile?.orgId, activeCampaignId, resetActivity, fetchRecentActivity]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   /* ==============================
      Render
