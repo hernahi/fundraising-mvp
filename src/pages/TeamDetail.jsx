@@ -258,7 +258,7 @@ export default function TeamDetail() {
   if (!team) return <div className="p-4 md:p-6 text-gray-600 text-lg">Team not found (or access restricted).</div>;
 
   return (
-    <div className="space-y-6 md:space-y-8">
+    <div className="p-4 md:p-6 lg:p-8 max-w-6xl mx-auto space-y-6 md:space-y-8">
       <Link
         to="/teams"
         className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
@@ -267,7 +267,7 @@ export default function TeamDetail() {
       </Link>
 
       {/* HEADER */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">{team.name}</h1>
           <p className="text-gray-500 mt-1">Organization: {team.orgId || "Unknown Org"}</p>
@@ -278,25 +278,25 @@ export default function TeamDetail() {
             <>
               <button
                 onClick={() => setShowAssignCoach(true)}
-                className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 hover:bg-yellow-500 font-semibold text-sm"
+                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-medium text-sm"
               >
                 Assign Coach
               </button>
 
               <button
                 onClick={() => setShowManageAthletes(true)}
-                className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm"
+                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm"
               >
                 Manage Athletes
               </button>
             </>
           )}
 
-          <Link to={`/teams/${id}/edit`} className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm text-center">
+          <Link to={`/teams/${id}/edit`} className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm text-center shadow-sm">
             Edit Team
           </Link>
 
-          <Link to={`/athletes/new?teamId=${id}`} className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 text-sm text-center">
+          <Link to={`/athletes/new?teamId=${id}`} className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm text-center">
             Add Athlete
           </Link>
         </div>
@@ -304,7 +304,7 @@ export default function TeamDetail() {
 
       {/* INVITE BLOCK (coach/admin) */}
       {(isAdmin || isCoach) && team?.joinCode && (
-        <div className="mt-6 rounded-lg border border-slate-200 p-4 md:p-5 bg-slate-50">
+        <div className="mt-6 rounded-2xl border border-slate-200 p-4 md:p-5 bg-white shadow-sm">
           <h2 className="font-semibold mb-2">Invite Athletes</h2>
 
           <div className="mt-4 space-y-3">
@@ -315,7 +315,7 @@ export default function TeamDetail() {
               value={inviteEmails}
               onChange={(e) => setInviteEmails(e.target.value)}
               placeholder="athlete1@email.com&#10;athlete2@email.com"
-              className="w-full rounded-md border border-slate-300 p-2 text-sm"
+              className="w-full rounded-md border border-slate-200 bg-slate-50 p-2 text-sm"
             />
 
             {activeCampaign ? (
@@ -352,11 +352,11 @@ export default function TeamDetail() {
 
               {isAdmin && (
                 <>
-                  <button onClick={resetJoinCode} className="px-3 py-1 text-sm rounded bg-slate-200">
+                  <button onClick={resetJoinCode} className="px-3 py-1 text-sm rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
                     Reset Code
                   </button>
 
-                  <button onClick={toggleJoinEnabled} className="px-3 py-1 text-sm rounded bg-slate-200">
+                  <button onClick={toggleJoinEnabled} className="px-3 py-1 text-sm rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
                     {team.joinEnabled ? "Disable" : "Enable"}
                   </button>
                 </>
@@ -379,7 +379,7 @@ export default function TeamDetail() {
       )}
 
       {/* TEAM AVATAR */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
         <img
           src={safeImageURL(
             team.avatar,
@@ -398,7 +398,7 @@ export default function TeamDetail() {
       </div>
 
       {/* TEAM CONTACT & NOTES */}
-      <section className="rounded-lg border border-slate-200 bg-white p-4 md:p-5">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
         <h2 className="text-lg font-semibold mb-3">Team Contact & Notes</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -421,7 +421,7 @@ export default function TeamDetail() {
       </section>
 
       {/* ATHLETES */}
-      <section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
         <h2 className="text-2xl font-semibold mb-3">Athletes</h2>
 
         {athletes.length === 0 ? (
@@ -432,7 +432,7 @@ export default function TeamDetail() {
               <Link
                 key={athlete.id}
                 to={`/athletes/${athlete.id}`}
-                className="p-4 rounded-lg bg-white shadow hover:shadow-md transition border"
+                className="p-4 rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:border-slate-400"
               >
                 <img
                   src={safeImageURL(
@@ -451,7 +451,7 @@ export default function TeamDetail() {
       </section>
 
       {/* CAMPAIGNS */}
-      <section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
         <h2 className="text-2xl font-semibold mb-3">Campaign History</h2>
 
         {campaigns.length === 0 ? (
@@ -479,7 +479,7 @@ export default function TeamDetail() {
                 return (
                   <div
                     key={c.id}
-                    className="p-4 rounded-lg bg-white shadow hover:shadow-md transition border flex flex-col gap-3"
+                    className="p-4 rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:border-slate-400 flex flex-col gap-3"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold text-lg">{title}</h3>
