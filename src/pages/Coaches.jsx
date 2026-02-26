@@ -114,7 +114,13 @@ export default function Coaches() {
       const user = usersByUid[c.uid] || {};
       const role = resolveCoachRole(user, c);
       const status = resolveCoachStatus(user, c);
-      const teamsCount = teams.filter((t) => t.coachId === c.uid).length;
+      const assignedTeamIds = new Set(
+        teams.filter((t) => t.coachId === c.uid).map((t) => t.id)
+      );
+      if (c.teamId && teams.some((t) => t.id === c.teamId)) {
+        assignedTeamIds.add(c.teamId);
+      }
+      const teamsCount = assignedTeamIds.size;
       const raisedCents = Number((coachTotals[c.uid] || { amount: 0 }).amount || 0);
       const name = user.displayName || c.name || "Coach";
       const email = user.email || c.email || "-";

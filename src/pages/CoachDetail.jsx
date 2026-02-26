@@ -121,11 +121,13 @@ export default function CoachDetail() {
       const selectedTeam = teamOptions.find((t) => t.id === form.teamId);
       const nextTeamName = selectedTeam?.name || "";
       const coachUid = coach.uid || coach.id;
+      const previousTeamId = coach.teamId || null;
+      const nextTeamId = form.teamId || null;
 
       await updateDoc(doc(db, "coaches", coach.id), {
         name: form.name.trim(),
         email: form.email.trim(),
-        teamId: form.teamId || null,
+        teamId: nextTeamId,
         team: nextTeamName || null,
         updatedAt: serverTimestamp(),
       });
@@ -138,13 +140,34 @@ export default function CoachDetail() {
         });
       }
 
+      if (coachUid && nextTeamId) {
+        await updateDoc(doc(db, "teams", nextTeamId), {
+          coachId: coachUid,
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      if (coachUid && previousTeamId && previousTeamId !== nextTeamId) {
+        const previousTeamRef = doc(db, "teams", previousTeamId);
+        const previousTeamSnap = await getDoc(previousTeamRef);
+        if (
+          previousTeamSnap.exists() &&
+          (previousTeamSnap.data()?.coachId || null) === coachUid
+        ) {
+          await updateDoc(previousTeamRef, {
+            coachId: null,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
       setCoach((prev) =>
         prev
           ? {
               ...prev,
               name: form.name.trim(),
               email: form.email.trim(),
-              teamId: form.teamId || null,
+              teamId: nextTeamId,
               team: nextTeamName || null,
             }
           : prev
