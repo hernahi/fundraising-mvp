@@ -348,13 +348,6 @@ export default function Donors() {
             <FaPlus className="text-xs" />
             Add Donor
           </button>
-          <button
-            type="button"
-            onClick={() => exportCsv(visibleDonors, "donors_filtered")}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Export CSV
-          </button>
         </div>
       </div>
       <p className="mt-2 text-sm text-slate-500">
