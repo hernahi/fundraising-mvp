@@ -6,6 +6,7 @@ import safeImageURL from "../utils/safeImage";
 import { FaArrowLeft, FaEdit, FaShareAlt } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import AssignTeamsToCampaignModal from "../components/AssignTeamsToCampaignModal";
+import AnalyticsCard from "../components/AnalyticsCard";
 
 export default function CampaignDetail() {
   const { campaignId } = useParams();
@@ -231,32 +232,23 @@ useEffect(() => {
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5 lg:gap-6">
-          {/* Teams */}
-          <div className="bg-white rounded-xl shadow p-4 md:p-6">
-            <div className="text-sm text-gray-500">Participating Teams</div>
-            <div className="text-3xl font-bold text-gray-800 mt-2">
-              {teamCount}
-            </div>
-          </div>
+          <AnalyticsCard
+            title="Participating Teams"
+            value={teamCount}
+            subtext="Assigned to this campaign"
+          />
 
-          {/* Athletes */}
-          <div className="bg-white rounded-xl shadow p-4 md:p-6">
-            <div className="text-sm text-gray-500">Participating Athletes</div>
-            <div className="text-3xl font-bold text-gray-800 mt-2">
-              {athleteCount}
-            </div>
-          </div>
+          <AnalyticsCard
+            title="Participating Athletes"
+            value={athleteCount}
+            subtext="Across assigned teams"
+          />
 
-          {/* Placeholder for Phase 13 */}
-          <div className="bg-white rounded-xl shadow p-4 md:p-6 opacity-60">
-            <div className="text-sm text-gray-500">Funds Raised</div>
-            <div className="text-3xl font-bold text-gray-400 mt-2">
-              $0
-            </div>
-            <div className="text-xs text-gray-400 mt-1">
-              Coming soon
-            </div>
-          </div>
+          <AnalyticsCard
+            title="Funds Raised"
+            value="$0"
+            subtext="Live total coming next pass"
+          />
         </div>
       </div>
 
