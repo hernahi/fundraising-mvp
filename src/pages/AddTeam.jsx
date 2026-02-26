@@ -83,14 +83,14 @@ export default function AddTeam() {
   // ---------------------------------------------------
   // Admin-only access
   // ---------------------------------------------------
-  if (profile?.role !== "admin") {
+  if (!["admin", "super-admin"].includes(profile?.role || "")) {
     return (
       <div className="p-8">
         <h1 className="text-2xl font-semibold text-red-600">
           Access Restricted
         </h1>
         <p className="mt-2 text-gray-600">
-          Only administrators can create new teams.
+          Only administrators and super-admins can create new teams.
         </p>
         <Link
           to="/teams"
