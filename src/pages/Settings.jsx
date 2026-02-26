@@ -16,15 +16,19 @@ import { db } from "../firebase/config";
 import AvatarCircle from "../components/AvatarCircle";
 
 export default function Settings() {
-  const { profile } = useAuth();
-  const [inviteTemplate, setInviteTemplate] = useState("");
-  const [loadingTemplate, setLoadingTemplate] = useState(false);
-  const [savingTemplate, setSavingTemplate] = useState(false);
+  const { profile, user } = useAuth();
   const [orgTimeZone, setOrgTimeZone] = useState("");
   const [timeZoneDraft, setTimeZoneDraft] = useState("");
   const [savingTimeZone, setSavingTimeZone] = useState(false);
   const [orgDripEnabled, setOrgDripEnabled] = useState(false);
   const [savingDrip, setSavingDrip] = useState(false);
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    emailNotifications: true,
+    smsNotifications: false,
+    weeklyDigest: false,
+    defaultCampaignSort: "recent",
+  });
 
   const name =
     profile?.displayName || profile?.name || profile?.email || "User";
@@ -51,16 +55,14 @@ export default function Settings() {
   );
 
   useEffect(() => {
-    async function loadTemplate() {
+    async function loadOrgSettings() {
       if (!isOrgAdmin || !profile?.orgId) return;
 
       try {
-        setLoadingTemplate(true);
         const ref = doc(db, "organizations", profile.orgId);
         const snap = await getDoc(ref);
         if (snap.exists()) {
           const data = snap.data() || {};
-          setInviteTemplate(data.donorInviteTemplate || "");
           const nextTimeZone =
             data.orgTimeZone || data.timeZone || data.timezone || "";
           setOrgTimeZone(nextTimeZone);
@@ -77,14 +79,33 @@ export default function Settings() {
           }
         }
       } catch (err) {
-        console.error("Failed to load donor invite template:", err);
-      } finally {
-        setLoadingTemplate(false);
+        console.error("Failed to load org settings:", err);
       }
     }
 
-    loadTemplate();
+    loadOrgSettings();
   }, [isOrgAdmin, profile?.orgId]);
+
+  useEffect(() => {
+    async function loadUserPreferences() {
+      const uid = user?.uid || profile?.uid;
+      if (!uid) return;
+      try {
+        const userSnap = await getDoc(doc(db, "users", uid));
+        if (!userSnap.exists()) return;
+        const data = userSnap.data() || {};
+        const prefs = data.preferences || {};
+        setNotificationPrefs((prev) => ({
+          ...prev,
+          ...prefs,
+        }));
+      } catch (err) {
+        console.error("Failed to load user preferences:", err);
+      }
+    }
+
+    loadUserPreferences();
+  }, [profile?.uid, user?.uid]);
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
@@ -145,21 +166,98 @@ export default function Settings() {
               value={roleLower === "admin" ? "Administrator" : role}
             />
           </dl>
-          <p className="mt-4 text-xs text-slate-500">
-            Workspace settings (org name, branding, etc.) will be configurable
-            from this screen in a future phase.
-          </p>
         </div>
 
-        {/* PLACEHOLDER FOR FUTURE TOGGLES */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-800 mb-3">
             Notifications &amp; Preferences
           </h2>
-          <p className="text-sm text-slate-600">
-            Email and SMS notification preferences, campaign defaults, and
-            other personal settings will appear here in a later release.
-          </p>
+          <div className="space-y-4">
+            <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <span className="text-slate-700">Email Notifications</span>
+              <input
+                type="checkbox"
+                checked={Boolean(notificationPrefs.emailNotifications)}
+                onChange={(e) =>
+                  setNotificationPrefs((prev) => ({
+                    ...prev,
+                    emailNotifications: e.target.checked,
+                  }))
+                }
+              />
+            </label>
+            <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <span className="text-slate-700">SMS Notifications</span>
+              <input
+                type="checkbox"
+                checked={Boolean(notificationPrefs.smsNotifications)}
+                onChange={(e) =>
+                  setNotificationPrefs((prev) => ({
+                    ...prev,
+                    smsNotifications: e.target.checked,
+                  }))
+                }
+              />
+            </label>
+            <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <span className="text-slate-700">Weekly Digest</span>
+              <input
+                type="checkbox"
+                checked={Boolean(notificationPrefs.weeklyDigest)}
+                onChange={(e) =>
+                  setNotificationPrefs((prev) => ({
+                    ...prev,
+                    weeklyDigest: e.target.checked,
+                  }))
+                }
+              />
+            </label>
+            <div>
+              <label className="text-xs uppercase tracking-wide text-slate-400">
+                Default Campaign Sort
+              </label>
+              <select
+                value={notificationPrefs.defaultCampaignSort || "recent"}
+                onChange={(e) =>
+                  setNotificationPrefs((prev) => ({
+                    ...prev,
+                    defaultCampaignSort: e.target.value,
+                  }))
+                }
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+              >
+                <option value="recent">Recent</option>
+                <option value="name">Name</option>
+                <option value="goal">Goal Amount</option>
+              </select>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={savingPrefs}
+                onClick={async () => {
+                  const uid = user?.uid || profile?.uid;
+                  if (!uid) return;
+                  try {
+                    setSavingPrefs(true);
+                    await updateDoc(doc(db, "users", uid), {
+                      preferences: {
+                        ...notificationPrefs,
+                      },
+                      updatedAt: serverTimestamp(),
+                    });
+                  } catch (err) {
+                    console.error("Failed to save user preferences:", err);
+                  } finally {
+                    setSavingPrefs(false);
+                  }
+                }}
+                className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+              >
+                {savingPrefs ? "Saving..." : "Save Preferences"}
+              </button>
+            </div>
+          </div>
         </div>
 
         {isOrgAdmin && (
@@ -284,71 +382,6 @@ export default function Settings() {
           </div>
         )}
 
-        {isOrgAdmin && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-800 mb-3">
-              Donor Invite Template
-            </h2>
-            <p className="text-xs text-slate-500 mb-3">
-              This template is the default message athletes start with. They can
-              personalize it before sending. Supported tokens:
-              {" "}
-              <span className="font-mono">
-                {"{{athleteName}}"}
-              </span>
-              ,{" "}
-              <span className="font-mono">
-                {"{{teamName}}"}
-              </span>
-              ,{" "}
-              <span className="font-mono">
-                {"{{campaignName}}"}
-              </span>
-              ,{" "}
-              <span className="font-mono">
-                {"{{donateUrl}}"}
-              </span>
-              ,{" "}
-              <span className="font-mono">
-                {"{{personalMessage}}"}
-              </span>
-              .
-            </p>
-            <textarea
-              className="w-full min-h-[180px] rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"
-              value={inviteTemplate}
-              onChange={(e) => setInviteTemplate(e.target.value)}
-              placeholder={`Hi there,\n\n{{athleteName}} is fundraising with {{teamName}} for {{campaignName}}.\nEvery gift helps cover the season and keeps the team strong.\n\n{{personalMessage}}\n\nDonate here: {{donateUrl}}\n\nThank you for supporting our community.`}
-              disabled={loadingTemplate || savingTemplate}
-            />
-            <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-slate-400">
-                {loadingTemplate ? "Loading template..." : " "}
-              </span>
-              <button
-                className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                disabled={savingTemplate || loadingTemplate || !profile?.orgId}
-                onClick={async () => {
-                  if (!profile?.orgId) return;
-                  try {
-                    setSavingTemplate(true);
-                    const ref = doc(db, "organizations", profile.orgId);
-                    await updateDoc(ref, {
-                      donorInviteTemplate: inviteTemplate.trim(),
-                      updatedAt: serverTimestamp(),
-                    });
-                  } catch (err) {
-                    console.error("Failed to save donor invite template:", err);
-                  } finally {
-                    setSavingTemplate(false);
-                  }
-                }}
-              >
-                {savingTemplate ? "Saving..." : "Save Template"}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
