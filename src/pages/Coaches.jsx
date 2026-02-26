@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { buildCoachTotals } from "../utils/coachAttribution";
@@ -9,8 +18,16 @@ function centsToDollars(cents) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
 }
 
+function resolveCoachStatus(userData, coachData) {
+  return String(userData?.status || coachData?.status || "active").toLowerCase();
+}
+
+function resolveCoachRole(userData, coachData) {
+  return String(userData?.role || coachData?.role || "").toLowerCase();
+}
+
 export default function Coaches() {
-  const { profile } = useAuth();
+  const { profile, activeOrgId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [coaches, setCoaches] = useState([]);
   const [rollups, setRollups] = useState([]);
@@ -22,17 +39,19 @@ export default function Coaches() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
+  const [savingUserId, setSavingUserId] = useState("");
 
+  const orgId = activeOrgId || profile?.orgId;
   const isAdmin = ["admin", "super-admin"].includes(profile?.role);
 
   useEffect(() => {
-    if (!profile?.orgId) return;
+    if (!orgId) return;
 
     async function load() {
       setLoading(true);
       try {
         const coachesSnap = await getDocs(
-          query(collection(db, "coaches"), where("orgId", "==", profile.orgId))
+          query(collection(db, "coaches"), where("orgId", "==", orgId))
         );
 
         const coachRows = coachesSnap.docs.map((d) => ({
@@ -40,36 +59,26 @@ export default function Coaches() {
           ...d.data(),
         }));
 
-        // Avoid broad users queries that can fail org-scoped rules.
         const coachUids = coachRows.map((c) => c.uid).filter(Boolean);
         const usersMap = {};
         await Promise.all(
-          coachUids.slice(0, 50).map(async (uid) => {
+          coachUids.slice(0, 100).map(async (uid) => {
             try {
               const userSnap = await getDoc(doc(db, "users", uid));
               if (userSnap.exists()) {
                 usersMap[uid] = userSnap.data();
               }
             } catch (_) {
-              // Skip unreadable user docs so one doc does not break the page.
+              // Skip unreadable user docs so one record does not block page load.
             }
           })
         );
 
-        const rollupsSnap = await getDocs(
-          query(
-            collection(db, "donation_rollups"),
-            where("orgId", "==", profile.orgId)
-          )
-        );
-
-        const campaignsSnap = await getDocs(
-          query(collection(db, "campaigns"), where("orgId", "==", profile.orgId))
-        );
-
-        const teamsSnap = await getDocs(
-          query(collection(db, "teams"), where("orgId", "==", profile.orgId))
-        );
+        const [rollupsSnap, campaignsSnap, teamsSnap] = await Promise.all([
+          getDocs(query(collection(db, "donation_rollups"), where("orgId", "==", orgId))),
+          getDocs(query(collection(db, "campaigns"), where("orgId", "==", orgId))),
+          getDocs(query(collection(db, "teams"), where("orgId", "==", orgId))),
+        ]);
 
         setUsersByUid(usersMap);
         setCoaches(coachRows);
@@ -94,7 +103,7 @@ export default function Coaches() {
     }
 
     load();
-  }, [profile?.orgId]);
+  }, [orgId]);
 
   const coachTotals = buildCoachTotals({
     rollups,
@@ -102,38 +111,49 @@ export default function Coaches() {
     teams,
   });
 
-  const rows = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-
-    const withDisplayData = coaches.map((c) => {
+  const withDisplayData = useMemo(() => {
+    return coaches.map((c) => {
       const user = usersByUid[c.uid] || {};
+      const role = resolveCoachRole(user, c);
+      const status = resolveCoachStatus(user, c);
       const teamsCount = teams.filter((t) => t.coachId === c.uid).length;
       const raisedCents = Number((coachTotals[c.uid] || { amount: 0 }).amount || 0);
-      const status = (user.status || "active").toLowerCase();
       const name = user.displayName || c.name || "Coach";
       const email = user.email || c.email || "-";
 
       return {
         coach: c,
         user,
+        role,
+        status,
         teamsCount,
         raisedCents,
-        status,
         name,
         email,
       };
     });
+  }, [coaches, usersByUid, teams, coachTotals]);
 
-    const filtered = withDisplayData.filter((row) => {
-      const statusMatch = statusFilter === "all" || row.status === statusFilter;
-      const searchMatch =
-        !normalizedSearch ||
-        row.name.toLowerCase().includes(normalizedSearch) ||
-        row.email.toLowerCase().includes(normalizedSearch);
-      return statusMatch && searchMatch;
-    });
+  const hiddenNonCoachCount = useMemo(
+    () => withDisplayData.filter((row) => row.role && row.role !== "coach").length,
+    [withDisplayData]
+  );
 
-    const sorted = [...filtered].sort((a, b) => {
+  const rows = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    const filtered = withDisplayData
+      .filter((row) => row.role === "coach")
+      .filter((row) => {
+        const statusMatch = statusFilter === "all" || row.status === statusFilter;
+        const searchMatch =
+          !normalizedSearch ||
+          row.name.toLowerCase().includes(normalizedSearch) ||
+          row.email.toLowerCase().includes(normalizedSearch);
+        return statusMatch && searchMatch;
+      });
+
+    return [...filtered].sort((a, b) => {
       let left;
       let right;
 
@@ -155,13 +175,34 @@ export default function Coaches() {
       if (left > right) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
+  }, [withDisplayData, searchTerm, statusFilter, sortBy, sortDir]);
 
-    return sorted;
-  }, [coaches, usersByUid, teams, coachTotals, searchTerm, statusFilter, sortBy, sortDir]);
+  async function setCoachStatus(row, nextStatus) {
+    if (!isAdmin || !row?.coach?.uid) return;
+    const userId = row.coach.uid;
+    setSavingUserId(userId);
+    try {
+      await updateDoc(doc(db, "users", userId), {
+        status: nextStatus,
+        updatedAt: serverTimestamp(),
+      });
+      setUsersByUid((prev) => ({
+        ...prev,
+        [userId]: {
+          ...(prev[userId] || {}),
+          status: nextStatus,
+        },
+      }));
+    } catch (err) {
+      console.error(`Failed to set coach status to ${nextStatus}:`, err);
+    } finally {
+      setSavingUserId("");
+    }
+  }
 
   function SortableHeader({ label, value, className = "" }) {
     const isActive = sortBy === value;
-    const indicator = isActive ? (sortDir === "asc" ? "▲" : "▼") : "";
+    const indicator = isActive ? (sortDir === "asc" ? "^" : "v") : "";
     return (
       <th className={`p-2 text-left ${className}`}>
         <button
@@ -232,6 +273,12 @@ export default function Coaches() {
         </div>
       </div>
 
+      {hiddenNonCoachCount > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Hidden {hiddenNonCoachCount} non-coach records due to role mismatch.
+        </div>
+      )}
+
       <table className="w-full text-sm border">
         <thead>
           <tr className="bg-gray-100">
@@ -240,6 +287,7 @@ export default function Coaches() {
             <SortableHeader label="Teams" value="teams" className="text-right" />
             <SortableHeader label="Funds Raised" value="raised" className="text-right" />
             <SortableHeader label="Status" value="status" className="text-center" />
+            {isAdmin && <th className="p-2 text-center">Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -255,12 +303,35 @@ export default function Coaches() {
                 <td className="p-2 text-center">
                   <StatusBadge status={row.status || "active"} />
                 </td>
+                {isAdmin && (
+                  <td className="p-2 text-center">
+                    {row.status === "inactive" ? (
+                      <button
+                        type="button"
+                        disabled={savingUserId === c.uid}
+                        onClick={() => setCoachStatus(row, "active")}
+                        className="rounded border border-green-300 bg-green-50 px-2 py-1 text-xs text-green-700 hover:bg-green-100 disabled:opacity-60"
+                      >
+                        {savingUserId === c.uid ? "Saving..." : "Activate"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={savingUserId === c.uid}
+                        onClick={() => setCoachStatus(row, "inactive")}
+                        className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                      >
+                        {savingUserId === c.uid ? "Saving..." : "Deactivate"}
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}
           {rows.length === 0 && (
             <tr className="border-t">
-              <td className="p-4 text-center text-gray-500" colSpan={5}>
+              <td className="p-4 text-center text-gray-500" colSpan={isAdmin ? 6 : 5}>
                 No coaches match the current filters.
               </td>
             </tr>
@@ -272,14 +343,15 @@ export default function Coaches() {
 }
 
 function StatusBadge({ status }) {
+  const normalized = String(status || "").toLowerCase();
   const color =
-    status === "active"
+    normalized === "active"
       ? "bg-green-100 text-green-700"
       : "bg-gray-200 text-gray-600";
 
   return (
     <span className={`px-2 py-1 rounded text-xs ${color}`}>
-      {status || "unknown"}
+      {normalized || "unknown"}
     </span>
   );
 }

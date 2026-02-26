@@ -8,6 +8,10 @@ export default function RoleRoute({ children, allowed }) {
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace />;
 
+  const status = String(profile?.status || "active").toLowerCase();
+  const isLocked = status === "inactive" || !!profile?.deletedAt;
+  if (isLocked) return <Navigate to="/dashboard" replace />;
+
   return allowed.includes(profile?.role)
     ? children
     : <Navigate to="/dashboard" replace />;
