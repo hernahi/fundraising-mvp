@@ -137,6 +137,11 @@ export default function DashboardHome() {
     assignedCampaignCount: 0,
     contactCount: 0,
   });
+  const [insightOpen, setInsightOpen] = useState(false);
+  const [insightType, setInsightType] = useState("");
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState("");
+  const [insightData, setInsightData] = useState(null);
 
   const fetchStats = useCallback(async () => {
     if (!profile?.orgId || !activeCampaignId) {
@@ -424,7 +429,7 @@ export default function DashboardHome() {
                 /* ==============================
    C5 — Export Donations CSV
    ============================== */
-const exportDonationsCSV = async () => {
+  const exportDonationsCSV = async () => {
   if (!profile?.orgId || !activeCampaignId) return;
 
   try {
@@ -480,7 +485,162 @@ const exportDonationsCSV = async () => {
     console.error("CSV export failed:", err);
     alert("Could not export donations. See console for details.");
   }
-};
+  };
+
+  const openInsight = useCallback(async (type) => {
+    setInsightOpen(true);
+    setInsightType(type);
+    setInsightLoading(true);
+    setInsightError("");
+    setInsightData(null);
+
+    if (!profile?.orgId || !activeCampaignId) {
+      setInsightError("Select a campaign first.");
+      setInsightLoading(false);
+      return;
+    }
+
+    try {
+      const donationsSnap = await getDocs(
+        query(
+          collection(db, "donations"),
+          where("orgId", "==", profile.orgId),
+          where("campaignId", "==", activeCampaignId)
+        )
+      );
+
+      const donations = donationsSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((d) => !d.status || d.status === "paid");
+
+      const raisedTotal = donations.reduce(
+        (sum, d) => sum + normalizeDonationAmount(d.amount),
+        0
+      );
+
+      const athleteRaised = new Map();
+      const donorAgg = new Map();
+      let topGift = 0;
+
+      donations.forEach((d) => {
+        const amount = normalizeDonationAmount(d.amount);
+        if (amount > topGift) topGift = amount;
+
+        if (d.athleteId) {
+          athleteRaised.set(d.athleteId, (athleteRaised.get(d.athleteId) || 0) + amount);
+        }
+
+        const donorKey = (d.donorEmail || d.donorName || "anonymous").toString().trim().toLowerCase();
+        const donorLabel = d.donorName || d.donorEmail || "Anonymous";
+        const prev = donorAgg.get(donorKey) || { name: donorLabel, email: d.donorEmail || "", amount: 0, gifts: 0 };
+        donorAgg.set(donorKey, {
+          ...prev,
+          amount: prev.amount + amount,
+          gifts: prev.gifts + 1,
+        });
+      });
+
+      if (type === "athletes") {
+        let athleteIds = [];
+        try {
+          const campaignAthletesSnap = await getDocs(
+            query(
+              collection(db, "campaignAthletes"),
+              where("orgId", "==", profile.orgId),
+              where("campaignId", "==", activeCampaignId)
+            )
+          );
+          athleteIds = campaignAthletesSnap.docs
+            .map((d) => d.data()?.athleteId)
+            .filter(Boolean);
+        } catch {
+          athleteIds = [];
+        }
+
+        if (athleteIds.length === 0) {
+          athleteIds = Array.from(athleteRaised.keys());
+        }
+
+        const uniqAthleteIds = Array.from(new Set(athleteIds));
+        const athletesById = await fetchDocsByIds({
+          collectionName: "athletes",
+          ids: uniqAthleteIds,
+        });
+
+        const contactsSnap = await getDocs(
+          query(collection(db, "athlete_contacts"), where("orgId", "==", profile.orgId))
+        );
+        const contactCounts = new Map();
+        contactsSnap.forEach((d) => {
+          const athleteId = d.data()?.athleteId;
+          if (!athleteId) return;
+          contactCounts.set(athleteId, (contactCounts.get(athleteId) || 0) + 1);
+        });
+
+        const athletes = uniqAthleteIds
+          .map((id) => {
+            const a = athletesById[id] || {};
+            const goal = Number(a.goal ?? a.personalGoal ?? a.fundraisingGoal ?? 0);
+            const raised = Number(athleteRaised.get(id) || 0);
+            const contacts = Number(contactCounts.get(id) || 0);
+            const goalPct = goal > 0 ? Math.round((raised / goal) * 100) : null;
+
+            return {
+              id,
+              name: a.name || "Unnamed Athlete",
+              email: a.email || "",
+              contacts,
+              raised,
+              goal,
+              goalPct,
+            };
+          })
+          .sort((a, b) => (b.raised - a.raised) || (b.contacts - a.contacts) || a.name.localeCompare(b.name));
+
+        setInsightData({
+          title: "Athlete Performance",
+          subtitle: "Ranked by amount raised (highest first)",
+          athletes,
+        });
+      } else if (type === "donors") {
+        const donors = Array.from(donorAgg.values()).sort((a, b) => b.amount - a.amount);
+        setInsightData({
+          title: "Donor Summary",
+          subtitle: "Unique donors in active campaign",
+          donors,
+        });
+      } else if (type === "funds") {
+        const avgGift = donations.length ? raisedTotal / donations.length : 0;
+        setInsightData({
+          title: "Funds Raised Summary",
+          subtitle: "Active campaign paid donations",
+          totals: {
+            raisedTotal,
+            gifts: donations.length,
+            avgGift,
+            topGift,
+          },
+        });
+      } else {
+        const remaining = Math.max(0, goalAmount - raisedTotal);
+        setInsightData({
+          title: "Campaign Progress Summary",
+          subtitle: activeCampaign?.name || "",
+          progress: {
+            goal: goalAmount,
+            raised: raisedTotal,
+            remaining,
+            percent: goalAmount > 0 ? Math.min(100, Math.round((raisedTotal / goalAmount) * 100)) : 0,
+          },
+        });
+      }
+    } catch (err) {
+      console.error("Insight modal load failed:", err);
+      setInsightError("Could not load summary data.");
+    } finally {
+      setInsightLoading(false);
+    }
+  }, [profile?.orgId, activeCampaignId, goalAmount, activeCampaign?.name]);
 
   /* ==============================
      Fetch ONCE per campaign change
@@ -602,6 +762,7 @@ const exportDonationsCSV = async () => {
         <AnalyticsCard
           title="Campaign Progress"
           value={`${progressPercent}%`}
+          onClick={() => openInsight("progress")}
           subtext={
             goalAmount
               ? `${formatCurrency(stats.fundsRaised)} of ${formatCurrency(
@@ -625,19 +786,112 @@ const exportDonationsCSV = async () => {
         <AnalyticsCard
           title="Funds Raised"
           value={formatCurrency(stats.fundsRaised)}
+          onClick={() => openInsight("funds")}
           subtext="Campaign-scoped"
         />
         <AnalyticsCard
           title="Total Donors"
           value={stats.totalDonors}
+          onClick={() => openInsight("donors")}
           subtext="Unique donors"
         />
         <AnalyticsCard
           title="Total Athletes"
           value={stats.totalAthletes}
+          onClick={() => openInsight("athletes")}
           subtext="In this campaign"
         />
       </div>
+
+      {insightOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl max-h-[85vh] overflow-auto rounded-xl bg-white border border-slate-200 shadow-xl">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  {insightData?.title || "Summary"}
+                </h3>
+                <p className="text-sm text-slate-500 mt-0.5">{insightData?.subtitle || ""}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInsightOpen(false)}
+                className="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-5">
+              {insightLoading && <div className="text-sm text-slate-500">Loading summary…</div>}
+              {insightError && <div className="text-sm text-red-600">{insightError}</div>}
+
+              {!insightLoading && !insightError && insightType === "athletes" && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-slate-500 border-b">
+                        <th className="py-2 pr-3">Athlete</th>
+                        <th className="py-2 pr-3">Contacts</th>
+                        <th className="py-2 pr-3">Raised</th>
+                        <th className="py-2 pr-3">Goal</th>
+                        <th className="py-2 pr-3">Progress</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(insightData?.athletes || []).map((a) => (
+                        <tr key={a.id} className="border-b border-slate-100">
+                          <td className="py-2 pr-3 font-medium text-slate-800">{a.name}</td>
+                          <td className="py-2 pr-3 text-slate-700">{a.contacts}</td>
+                          <td className="py-2 pr-3 text-slate-700">{formatCurrency(a.raised)}</td>
+                          <td className="py-2 pr-3 text-slate-700">
+                            {a.goal > 0 ? formatCurrency(a.goal) : "—"}
+                          </td>
+                          <td className="py-2 pr-3 text-slate-700">
+                            {a.goalPct == null ? "No goal" : `${a.goalPct}%`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {!insightLoading && !insightError && insightType === "donors" && (
+                <div className="space-y-2">
+                  {(insightData?.donors || []).slice(0, 25).map((d, idx) => (
+                    <div key={`${d.email}-${idx}`} className="flex items-center justify-between rounded border border-slate-200 p-2">
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-800 truncate">{d.name || d.email || "Anonymous"}</div>
+                        <div className="text-xs text-slate-500">{d.gifts} gift{d.gifts === 1 ? "" : "s"}</div>
+                      </div>
+                      <div className="font-semibold text-slate-900">{formatCurrency(d.amount)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!insightLoading && !insightError && insightType === "funds" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Total Raised</div><div className="text-xl font-semibold">{formatCurrency(insightData?.totals?.raisedTotal || 0)}</div></div>
+                  <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Total Gifts</div><div className="text-xl font-semibold">{insightData?.totals?.gifts || 0}</div></div>
+                  <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Average Gift</div><div className="text-xl font-semibold">{formatCurrency(insightData?.totals?.avgGift || 0)}</div></div>
+                  <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Top Gift</div><div className="text-xl font-semibold">{formatCurrency(insightData?.totals?.topGift || 0)}</div></div>
+                </div>
+              )}
+
+              {!insightLoading && !insightError && insightType === "progress" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Goal</div><div className="text-xl font-semibold">{formatCurrency(insightData?.progress?.goal || 0)}</div></div>
+                  <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Raised</div><div className="text-xl font-semibold">{formatCurrency(insightData?.progress?.raised || 0)}</div></div>
+                  <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Remaining</div><div className="text-xl font-semibold">{formatCurrency(insightData?.progress?.remaining || 0)}</div></div>
+                  <div className="rounded border border-slate-200 p-3"><div className="text-xs text-slate-500">Progress</div><div className="text-xl font-semibold">{insightData?.progress?.percent || 0}%</div></div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recent Activity */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
