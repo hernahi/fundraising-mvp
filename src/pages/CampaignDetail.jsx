@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/config";
 import safeImageURL from "../utils/safeImage";
-import { FaEdit, FaShareAlt } from "react-icons/fa";
+import { FaArrowLeft, FaEdit, FaShareAlt } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import AssignTeamsToCampaignModal from "../components/AssignTeamsToCampaignModal";
 
@@ -153,12 +153,19 @@ useEffect(() => {
           Campaign Detail Page
          =============================== */}
       <div className="space-y-6 md:space-y-8">
+        <Link
+          to="/campaigns"
+          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
+        >
+          <FaArrowLeft /> Back to Campaigns
+        </Link>
+
         {/* Header */}
         <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7 flex flex-col md:flex-row gap-4 md:gap-6">
           <img
             src={safeImageURL(campaign.imageURL)}
             alt="Campaign"
-            className="w-full md:w-64 h-40 md:h-44 object-cover rounded-lg"
+            className="w-full sm:w-56 md:w-52 lg:w-56 h-32 md:h-36 object-cover rounded-lg shrink-0"
           />
 
           <div className="flex-1 min-w-0">

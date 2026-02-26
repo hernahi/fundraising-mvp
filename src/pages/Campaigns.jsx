@@ -93,10 +93,10 @@ export default function Campaigns() {
                   <img
                     src={image}
                     alt={title}
-                    className="w-full h-40 md:h-44 object-cover bg-slate-100"
+                    className="w-full h-32 md:h-36 object-cover bg-slate-100"
                   />
                 ) : (
-                  <div className="w-full h-40 md:h-44 bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
+                  <div className="w-full h-32 md:h-36 bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
                     No Image
                   </div>
                 )}
