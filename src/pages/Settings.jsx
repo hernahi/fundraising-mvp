@@ -87,18 +87,35 @@ export default function Settings() {
   }, [isOrgAdmin, profile?.orgId]);
 
   return (
-    <div className="p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
+    <div className="p-4 md:p-6 lg:p-8">
+      <div className="max-w-4xl mx-auto space-y-6">
         {/* HEADER */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-slate-900">Settings</h1>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+              Settings
+            </h1>
+            <p className="text-sm text-slate-500">
+              Account profile, workspace controls, and org messaging defaults.
+            </p>
+          </div>
           <span className="text-xs px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
             Account &amp; Workspace
           </span>
         </div>
 
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <SettingStat label="Role" value={role || "N/A"} />
+          <SettingStat label="Org" value={orgId || "N/A"} mono />
+          <SettingStat label="Team" value={teamId || "N/A"} mono />
+          <SettingStat
+            label="Drip Status"
+            value={isOrgAdmin ? (orgDripEnabled ? "Active" : "Paused") : "N/A"}
+          />
+        </div>
+
         {/* PROFILE CARD */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex items-center gap-4">
           <AvatarCircle
             name={name}
             imgUrl={profile?.photoURL || profile?.imgUrl}
@@ -116,7 +133,7 @@ export default function Settings() {
         </div>
 
         {/* ORG / TEAM INFO */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-800 mb-3">
             Workspace
           </h2>
@@ -135,7 +152,7 @@ export default function Settings() {
         </div>
 
         {/* PLACEHOLDER FOR FUTURE TOGGLES */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-800 mb-3">
             Notifications &amp; Preferences
           </h2>
@@ -146,7 +163,7 @@ export default function Settings() {
         </div>
 
         {isOrgAdmin && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
             <div>
               <h2 className="text-sm font-semibold text-slate-800">
                 Drip Campaign Scheduler
@@ -268,7 +285,7 @@ export default function Settings() {
         )}
 
         {isOrgAdmin && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-800 mb-3">
               Donor Invite Template
             </h2>
@@ -342,6 +359,23 @@ function DetailRow({ label, value }) {
     <div className="flex justify-between gap-3">
       <dt className="text-slate-500">{label}</dt>
       <dd className="text-slate-800 text-right">{value || "N/A"}</dd>
+    </div>
+  );
+}
+
+function SettingStat({ label, value, mono = false }) {
+  return (
+    <div className="rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 px-3 py-3 shadow-sm">
+      <div className="text-[11px] uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+      <div
+        className={`mt-1 text-sm font-semibold text-slate-800 truncate ${
+          mono ? "font-mono" : ""
+        }`}
+      >
+        {value}
+      </div>
     </div>
   );
 }
