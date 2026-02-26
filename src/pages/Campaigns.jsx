@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
-import safeImageURL from "../utils/safeImage";
 
 export default function Campaigns() {
   const { user, profile, loading } = useAuth();
@@ -81,7 +80,6 @@ export default function Campaigns() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5 lg:gap-6">
           {campaigns.map((c) => {
-            const image = safeImageURL(c.imageURL || c.image);
             const title = c.name || "Untitled Campaign";
             const goal = Number(c.goal || c.goalAmount || 0);
             const isPublic = c.isPublic === true;
@@ -93,18 +91,6 @@ export default function Campaigns() {
                 className="group block rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
                 <article className="overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md group-hover:border-slate-400">
-                  {image ? (
-                    <img
-                      src={image}
-                      alt={title}
-                      className="w-full h-24 md:h-28 object-cover bg-slate-100"
-                    />
-                  ) : (
-                    <div className="w-full h-24 md:h-28 bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
-                      No Image
-                    </div>
-                  )}
-
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-2">
                       <h2 className="text-base font-semibold text-slate-900 line-clamp-2">
