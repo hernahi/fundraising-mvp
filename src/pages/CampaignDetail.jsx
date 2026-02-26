@@ -7,6 +7,7 @@ import { FaArrowLeft, FaEdit, FaShareAlt } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import AssignTeamsToCampaignModal from "../components/AssignTeamsToCampaignModal";
 import AnalyticsCard from "../components/AnalyticsCard";
+import { normalizeDonationAmount } from "../utils/normalizeDonation";
 
 export default function CampaignDetail() {
   const { campaignId } = useParams();
@@ -15,6 +16,8 @@ export default function CampaignDetail() {
   const [teams, setTeams] = useState([]);
   const [athletes, setAthletes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fundsRaised, setFundsRaised] = useState(0);
+  const [giftCount, setGiftCount] = useState(0);
   const [showAssignTeams, setShowAssignTeams] = useState(false);
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -98,9 +101,29 @@ export default function CampaignDetail() {
 
         setAthletes(athleteRows);
 
+        // Load campaign donation totals (match dashboard logic)
+        let donationTotal = 0;
+        let donationCount = 0;
+        const donationConstraints = [where("campaignId", "==", campaignId)];
+        if (campaignData.orgId) {
+          donationConstraints.push(where("orgId", "==", campaignData.orgId));
+        }
+        const donationsQ = query(collection(db, "donations"), ...donationConstraints);
+        const donationsSnap = await getDocs(donationsQ);
+        donationsSnap.forEach((d) => {
+          const donation = d.data() || {};
+          if (donation.status && donation.status !== "paid") return;
+          donationTotal += normalizeDonationAmount(donation.amount);
+          donationCount += 1;
+        });
+        setFundsRaised(donationTotal);
+        setGiftCount(donationCount);
+
         setLoading(false);
       } catch (err) {
         console.error("Error loading campaign:", err);
+        setFundsRaised(0);
+        setGiftCount(0);
         setLoading(false);
       }
     }
@@ -246,8 +269,11 @@ useEffect(() => {
 
           <AnalyticsCard
             title="Funds Raised"
-            value="$0"
-            subtext="Live total coming next pass"
+            value={`$${Number(fundsRaised || 0).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}`}
+            subtext={`${giftCount} paid donation${giftCount === 1 ? "" : "s"}`}
           />
         </div>
       </div>
