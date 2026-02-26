@@ -296,7 +296,10 @@ export default function TeamDetail() {
             Edit Team
           </Link>
 
-          <Link to={`/athletes/new?teamId=${id}`} className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm text-center">
+          <Link
+            to={`/athletes/new?teamId=${id}&returnTo=${encodeURIComponent(`/teams/${id}`)}&returnLabel=${encodeURIComponent("Back to Team")}`}
+            className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm text-center"
+          >
             Add Athlete
           </Link>
         </div>

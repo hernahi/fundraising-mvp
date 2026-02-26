@@ -12,6 +12,7 @@ import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { safeImageURL } from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
+import { FaArrowLeft } from "react-icons/fa";
 
 export default function EditTeam() {
   const { teamId } = useParams();
@@ -143,6 +144,12 @@ export default function EditTeam() {
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-8">
+      <Link
+        to={`/teams/${teamId}`}
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
+      >
+        <FaArrowLeft /> Back to Team
+      </Link>
 
       {/* PAGE HEADER */}
       <div>

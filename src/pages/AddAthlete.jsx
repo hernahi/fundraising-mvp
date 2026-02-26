@@ -15,6 +15,8 @@ export default function AddAthlete() {
   const { profile } = useAuth();
   const [searchParams] = useSearchParams();
   const presetTeamId = searchParams.get("teamId") || "";
+  const returnTo = searchParams.get("returnTo") || "/athletes";
+  const returnLabel = searchParams.get("returnLabel") || "Back to Athletes";
 
   const [form, setForm] = useState({
     name: "",
@@ -66,7 +68,7 @@ export default function AddAthlete() {
         "success"
       );
 
-      navigate("/athletes");
+      navigate(returnTo);
     } catch (err) {
       console.error(err);
       push("Failed to create athlete", "error");
@@ -78,10 +80,10 @@ export default function AddAthlete() {
   return (
     <div className="p-6">
       <Link
-        to="/athletes"
+        to={returnTo}
         className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-3"
       >
-        <FaArrowLeft /> Back to Athletes
+        <FaArrowLeft /> {returnLabel}
       </Link>
 
       <h1 className="text-2xl font-bold text-slate-800 border-b-2 border-yellow-400 pb-1">
