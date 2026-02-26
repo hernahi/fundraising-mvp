@@ -168,6 +168,12 @@ export default function DonorDetail() {
 
   return (
     <div className="p-6 space-y-6">
+      <Link
+        to="/donors"
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
+      >
+        <FaArrowLeft /> Back to Donors
+      </Link>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           {avatar ? (
@@ -197,12 +203,6 @@ export default function DonorDetail() {
           </div>
         </div>
 
-        <Link
-          to="/donors"
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
-        >
-          <FaArrowLeft /> Back to Donors
-        </Link>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

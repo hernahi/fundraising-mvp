@@ -1,8 +1,8 @@
 // src/pages/Donations.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { FaPlus } from "react-icons/fa";
 
-import HeaderActions from "../components/HeaderActions";
 import ListLoadingSpinner from "../components/ListLoadingSpinner";
 import ListEmptyState from "../components/ListEmptyState";
 
@@ -324,16 +324,35 @@ export default function Donors() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
-      <HeaderActions
-        title="Donors"
-        addLabel="+ Add Donor"
-        onAdd={() => navigate("/donors/new")}
-        exportLabel="Export CSV"
-        onExport={() => {
-          exportCsv(visibleDonors, "donors_filtered");
-        }}
-        lastUpdated={lastUpdated}
-      />
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+            Donors
+          </h1>
+          {lastUpdated && (
+            <div className="mt-1 text-xs text-slate-400">
+              Last synced: {lastUpdated}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => navigate("/donors/new")}
+            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            <FaPlus className="text-xs" />
+            Add Donor
+          </button>
+          <button
+            type="button"
+            onClick={() => exportCsv(visibleDonors, "donors_filtered")}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Export CSV
+          </button>
+        </div>
+      </div>
       <p className="mt-2 text-sm text-slate-500">
         This list is for returning donors. One-time donations appear on campaign
         pages.
