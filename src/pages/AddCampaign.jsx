@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { db } from "../firebase/config";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { FaArrowLeft } from "react-icons/fa";
 
 export default function AddCampaign() {
   const navigate = useNavigate();
@@ -62,6 +63,13 @@ export default function AddCampaign() {
 
   return (
     <div className="p-6">
+      <Link
+        to="/campaigns"
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-3"
+      >
+        <FaArrowLeft /> Back to Campaigns
+      </Link>
+
       <h1 className="text-2xl font-bold text-slate-800 border-b-2 border-yellow-400 pb-1">
         New Campaign
       </h1>

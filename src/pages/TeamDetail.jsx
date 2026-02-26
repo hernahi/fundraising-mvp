@@ -17,6 +17,7 @@ import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { safeImageURL } from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
+import { FaArrowLeft } from "react-icons/fa";
 
 import AssignCoachToTeamModal from "../components/AssignCoachToTeamModal";
 import AssignTeamAthletesModal from "../components/AssignTeamAthletesModal";
@@ -258,6 +259,13 @@ export default function TeamDetail() {
 
   return (
     <div className="space-y-6 md:space-y-8">
+      <Link
+        to="/teams"
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
+      >
+        <FaArrowLeft /> Back to Teams
+      </Link>
+
       {/* HEADER */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>

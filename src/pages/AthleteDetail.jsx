@@ -19,7 +19,7 @@ import { db, functions } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import safeImageURL from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
-import { FaEdit, FaTrophy, FaUser } from "react-icons/fa";
+import { FaArrowLeft, FaEdit, FaTrophy, FaUser } from "react-icons/fa";
 
 export default function AthleteDetail() {
   const { athleteId } = useParams();
@@ -181,6 +181,13 @@ export default function AthleteDetail() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-6xl mx-auto">
+      <Link
+        to="/athletes"
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-3"
+      >
+        <FaArrowLeft /> Back to Athletes
+      </Link>
+
       {/* Header Section */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
