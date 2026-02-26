@@ -111,7 +111,7 @@ export default function EditCampaign() {
           <img
             src={safeImageURL(imagePreview || form.imageURL)}
             alt="Campaign"
-            className="w-full md:w-64 h-40 rounded-lg object-cover border"
+            className="w-full md:w-64 h-40 rounded-lg object-contain bg-slate-100 border p-1"
           />
 
           <div className="flex-1">

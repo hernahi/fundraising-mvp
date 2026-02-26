@@ -189,7 +189,7 @@ useEffect(() => {
           <img
             src={safeImageURL(campaign.imageURL)}
             alt="Campaign"
-            className="w-full sm:w-56 md:w-52 lg:w-56 h-32 md:h-36 object-cover rounded-lg shrink-0"
+            className="w-full sm:w-56 md:w-52 lg:w-56 h-32 md:h-36 object-contain bg-slate-100 rounded-lg shrink-0 p-1"
           />
 
           <div className="flex-1 min-w-0">
