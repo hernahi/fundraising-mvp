@@ -5,11 +5,11 @@ import { Link } from "react-router-dom";
 import HeaderActions from "../components/HeaderActions";
 import ListLoadingSpinner from "../components/ListLoadingSpinner";
 import ListEmptyState from "../components/ListEmptyState";
-import CardUserAvatar from "../components/CardUserAvatar";
-import CardStatBadge from "../components/CardStatBadge";
 
 import { useToast } from "../components/Toast";
 import { useAuth } from "../context/AuthContext";
+import { safeImageURL } from "../utils/safeImage";
+import avatarFallback from "../utils/avatarFallback";
 
 import { db } from "../firebase/config";
 import {
@@ -397,41 +397,53 @@ export default function Donors() {
             return (
               <div
                 key={d.id}
-                className="bg-white rounded-2xl border border-slate-200 p-4 md:p-5 shadow hover:shadow-yellow-300/40 transition-all duration-300"
+                className="rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:border-slate-400"
               >
-                <div className="flex items-start md:items-center gap-3">
-                  <CardUserAvatar name={d.donorName} imgUrl={avatarUrl} />
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={safeImageURL(
+                      avatarUrl,
+                      avatarFallback({ label: d.donorName || "Donor", type: "user", size: 96 })
+                    )}
+                    alt={d.donorName || "Donor"}
+                    className="w-12 h-12 rounded-full border object-cover bg-slate-100 shrink-0"
+                  />
 
-                  <div className="min-w-0">
-                    <div className="font-semibold text-slate-800">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-slate-800 truncate">
                       {d.donorName}
                     </div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-500 truncate">
                       {d.donorEmail || "No email"}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 truncate">
+                      ID: {d.id}
                     </div>
                   </div>
                 </div>
 
-                <div className="text-[10px] text-slate-400 mt-1 select-all">
-                  ID: {d.id}
-                </div>
-
-                <div className="mt-3 flex gap-2 flex-wrap">
-                  <CardStatBadge
-                    label="Total Donations"
-                    value={d.totalDonations}
-                  />
-                  <CardStatBadge
-                    label="Last Donation"
-                    value={lastDonationLabel}
-                  />
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <span className="px-2 py-1 rounded-full border border-slate-300 text-slate-700">
+                    Total ${Number(d.totalDonations || 0).toLocaleString()}
+                  </span>
+                  <span className="px-2 py-1 rounded-full border border-slate-300 text-slate-700">
+                    {d.donationCount || 0} gift{(d.donationCount || 0) === 1 ? "" : "s"}
+                  </span>
+                  <span className="px-2 py-1 rounded-full border border-slate-300 text-slate-700">
+                    Last {lastDonationLabel}
+                  </span>
+                  {d.lastCampaignName && (
+                    <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                      {d.lastCampaignName}
+                    </span>
+                  )}
                 </div>
 
                 <div className="mt-4 flex justify-end sm:justify-end">
                   {d.hasDonorDoc ? (
                     <Link
                       to={`/donors/${d.id}`}
-                      className="text-sm px-3 py-1.5 rounded-lg border border-yellow-400 text-yellow-600 hover:bg-yellow-400 hover:text-slate-900 transition w-full sm:w-auto text-center"
+                      className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition w-full sm:w-auto text-center"
                     >
                       View
                     </Link>
