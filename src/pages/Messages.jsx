@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { httpsCallable } from "firebase/functions";
 
 import { useAuth } from "../context/AuthContext";
-import HeaderActions from "../components/HeaderActions";
 import ListLoadingSpinner from "../components/ListLoadingSpinner";
 import ListEmptyState from "../components/ListEmptyState";
 import AvatarCircle from "../components/AvatarCircle";
@@ -631,13 +630,21 @@ export default function Messages() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-7">
-      <HeaderActions
-        title="Messages"
-        addLabel={null}
-        exportLabel={null}
-        onExport={null}
-        lastUpdated={lastUpdated}
-      />
+      <div className="mb-1 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+            Messages
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Manage outreach templates, contacts, and drip sends.
+          </p>
+        </div>
+        {lastUpdated ? (
+          <div className="text-xs text-slate-400">
+            Last synced: {lastUpdated}
+          </div>
+        ) : null}
+      </div>
 
       {(isCoach || isAdmin) && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-6">
