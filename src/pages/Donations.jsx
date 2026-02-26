@@ -1,6 +1,6 @@
 // src/pages/Donations.jsx
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import HeaderActions from "../components/HeaderActions";
 import ListLoadingSpinner from "../components/ListLoadingSpinner";
@@ -23,6 +23,7 @@ import {
 export default function Donors() {
   const { profile, activeOrgId, loading: authLoading } = useAuth();
   const { push } = useToast();
+  const navigate = useNavigate();
 
   const [donors, setDonors] = useState([]);
   const [donationRows, setDonationRows] = useState([]);
@@ -325,7 +326,8 @@ export default function Donors() {
     <div className="p-4 md:p-6 lg:p-8">
       <HeaderActions
         title="Donors"
-        addLabel={<Link to="/donors/new">+ Add Donor</Link>}
+        addLabel="+ Add Donor"
+        onAdd={() => navigate("/donors/new")}
         exportLabel="Export CSV"
         onExport={() => {
           exportCsv(visibleDonors, "donors_filtered");

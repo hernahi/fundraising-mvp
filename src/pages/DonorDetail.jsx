@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import { FaArrowLeft } from "react-icons/fa";
 import { db } from "../firebase/config";
 import {
   doc,
@@ -133,9 +134,9 @@ export default function DonorDetail() {
         </div>
         <Link
           to="/donors"
-          className="inline-flex mt-3 text-sm text-blue-600 hover:underline"
+          className="inline-flex items-center gap-2 mt-3 text-sm text-gray-600 hover:text-gray-800"
         >
-          Back to Donors
+          <FaArrowLeft /> Back to Donors
         </Link>
       </div>
     );
@@ -198,9 +199,9 @@ export default function DonorDetail() {
 
         <Link
           to="/donors"
-          className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
         >
-          Back to Donors
+          <FaArrowLeft /> Back to Donors
         </Link>
       </div>
 
