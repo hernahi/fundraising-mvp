@@ -1,108 +1,191 @@
-// src/pages/CoachDetail.jsx
-import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-
-import { useAuth } from "../context/AuthContext";
-import ListLoadingSpinner from "../components/ListLoadingSpinner";
-import AvatarCircle from "../components/AvatarCircle";
-import CardStatBadge from "../components/CardStatBadge";
-
-import { db } from "../firebase/config";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { FaArrowLeft } from "react-icons/fa";
 import {
-  doc,
-  onSnapshot,
   collection,
-  query,
-  where,
+  doc,
+  getDoc,
   getDocs,
-} from "../firebase/firestore";
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import { db } from "../firebase/config";
+import { useAuth } from "../context/AuthContext";
+import AvatarCircle from "../components/AvatarCircle";
+import ListLoadingSpinner from "../components/ListLoadingSpinner";
 
 export default function CoachDetail() {
   const { id } = useParams();
-  const { profile, loading: authLoading } = useAuth();
+  const { profile, activeOrgId, loading: authLoading } = useAuth();
+  const orgId = activeOrgId || profile?.orgId;
+  const isAdmin = ["admin", "super-admin"].includes(profile?.role);
 
-  const [coach, setCoach] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
   const [noAccess, setNoAccess] = useState(false);
+  const [coach, setCoach] = useState(null);
+  const [user, setUser] = useState(null);
+  const [teamOptions, setTeamOptions] = useState([]);
+  const [athleteCount, setAthleteCount] = useState(0);
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    teamId: "",
+    teamName: "",
+  });
 
-  const [teamInfo, setTeamInfo] = useState(null);
-  const [athletes, setAthletes] = useState([]);
-
-  /* -------------------------------------------------------------
-     Load coach
-  ------------------------------------------------------------- */
   useEffect(() => {
-    if (authLoading || !profile) return;
+    if (authLoading || !orgId || !id) return;
 
-    const ref = doc(db, "coaches", id);
-
-    const unsub = onSnapshot(
-      ref,
-      snap => {
-        if (!snap.exists()) {
+    async function load() {
+      setLoading(true);
+      try {
+        const coachSnap = await getDoc(doc(db, "coaches", id));
+        if (!coachSnap.exists()) {
           setCoach(null);
           setNoAccess(false);
-          setLoading(false);
           return;
         }
 
-        const data = { id: snap.id, ...snap.data() };
-
-        if (data.orgId !== profile.orgId) {
-          console.warn("🚫 Coach belongs to another org");
+        const coachData = { id: coachSnap.id, ...coachSnap.data() };
+        if (coachData.orgId !== orgId) {
           setNoAccess(true);
           setCoach(null);
-        } else {
-          setCoach(data);
-          setNoAccess(false);
+          return;
         }
 
-        setLoading(false);
-      },
-      err => {
-        console.error("❌ Coach listener error:", err);
-        setLoading(false);
-      }
-    );
+        const coachUid = coachData.uid || coachData.id;
+        const userSnap = coachUid ? await getDoc(doc(db, "users", coachUid)) : null;
+        const userData = userSnap?.exists?.() ? { id: userSnap.id, ...userSnap.data() } : null;
 
-    return () => unsub();
-  }, [authLoading, profile, id]);
+        const [teamSnap, athletesSnap] = await Promise.all([
+          getDocs(query(collection(db, "teams"), where("orgId", "==", orgId))),
+          coachData.teamId
+            ? getDocs(
+                query(
+                  collection(db, "athletes"),
+                  where("orgId", "==", orgId),
+                  where("teamId", "==", coachData.teamId)
+                )
+              )
+            : Promise.resolve({ size: 0 }),
+        ]);
 
-  /* -------------------------------------------------------------
-     Load team + athletes
-  ------------------------------------------------------------- */
-  useEffect(() => {
-    if (!coach || !coach.teamId) return;
+        const nextTeams = teamSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setTeamOptions(nextTeams);
+        setAthleteCount(athletesSnap.size || 0);
 
-    const load = async () => {
-      try {
-        const teamRef = doc(db, "teams", coach.teamId);
-        const teamSnap = await getDocs(query(
-          collection(db, "teams"),
-          where("__name__", "==", coach.teamId)
-        ));
+        const resolvedName = userData?.displayName || coachData.name || "";
+        const resolvedEmail = userData?.email || coachData.email || "";
+        const resolvedTeamId = coachData.teamId || "";
+        const resolvedTeamName =
+          nextTeams.find((t) => t.id === resolvedTeamId)?.name ||
+          coachData.team ||
+          "";
 
-        setTeamInfo(teamSnap.docs[0] ? { id: coach.teamId, ...teamSnap.docs[0].data() } : null);
-
-        const athQ = query(
-          collection(db, "athletes"),
-          where("teamId", "==", coach.teamId),
-          where("orgId", "==", coach.orgId)
-        );
-
-        const athSnap = await getDocs(athQ);
-        setAthletes(athSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setCoach(coachData);
+        setUser(userData);
+        setNoAccess(false);
+        setForm({
+          name: resolvedName,
+          email: resolvedEmail,
+          teamId: resolvedTeamId,
+          teamName: resolvedTeamName,
+        });
       } catch (err) {
-        console.error("❌ Failed loading team/athletes:", err);
+        console.error("Failed to load coach profile:", err);
+      } finally {
+        setLoading(false);
       }
-    };
+    }
 
     load();
-  }, [coach]);
+  }, [authLoading, id, orgId]);
 
-  /* -------------------------------------------------------------
-     States
-  ------------------------------------------------------------- */
+  const coachStatus = useMemo(() => {
+    return String(user?.status || "active").toLowerCase();
+  }, [user?.status]);
+
+  const createdLabel = useMemo(() => {
+    const ts = coach?.createdAt?.toDate?.();
+    return ts ? ts.toLocaleDateString() : "N/A";
+  }, [coach?.createdAt]);
+
+  async function saveProfile() {
+    if (!isAdmin || !coach) return;
+    setSaving(true);
+    try {
+      const selectedTeam = teamOptions.find((t) => t.id === form.teamId);
+      const nextTeamName = selectedTeam?.name || "";
+      const coachUid = coach.uid || coach.id;
+
+      await updateDoc(doc(db, "coaches", coach.id), {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        teamId: form.teamId || null,
+        team: nextTeamName || null,
+        updatedAt: serverTimestamp(),
+      });
+
+      if (coachUid && user?.id) {
+        await updateDoc(doc(db, "users", coachUid), {
+          displayName: form.name.trim(),
+          email: form.email.trim(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      setCoach((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: form.name.trim(),
+              email: form.email.trim(),
+              teamId: form.teamId || null,
+              team: nextTeamName || null,
+            }
+          : prev
+      );
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              displayName: form.name.trim(),
+              email: form.email.trim(),
+            }
+          : prev
+      );
+    } catch (err) {
+      console.error("Failed to update coach profile:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function setAccessStatus(nextStatus) {
+    if (!isAdmin || !coach) return;
+    const coachUid = coach.uid || coach.id;
+    if (!coachUid) return;
+    setSavingStatus(true);
+    try {
+      await updateDoc(doc(db, "users", coachUid), {
+        status: nextStatus,
+        updatedAt: serverTimestamp(),
+      });
+      setUser((prev) => ({
+        ...(prev || {}),
+        status: nextStatus,
+      }));
+    } catch (err) {
+      console.error("Failed to update coach access status:", err);
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
   if (authLoading || loading) {
     return (
       <div className="p-6">
@@ -113,9 +196,9 @@ export default function CoachDetail() {
 
   if (noAccess) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-4">
-          You don’t have access to view this coach.
+      <div className="p-6 max-w-3xl mx-auto">
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
+          You do not have access to this coach profile.
         </div>
       </div>
     );
@@ -123,156 +206,150 @@ export default function CoachDetail() {
 
   if (!coach) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
-        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-2xl p-4">
+      <div className="p-6 max-w-3xl mx-auto">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
           Coach not found.
         </div>
       </div>
     );
   }
 
-  const created = coach.createdAt?.toDate
-    ? coach.createdAt.toDate().toLocaleDateString()
-    : "—";
-
-  // ⭐ Phase D: Avatar fallback
-  const avatarUrl =
-    coach.imgUrl ||
-    coach.photoURL ||
-    null;
-
-  /* -------------------------------------------------------------
-     UI
-  ------------------------------------------------------------- */
   return (
-    <div className="p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
-        
-        {/* HEADER */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center gap-5">
-          <AvatarCircle
-            name={coach.name}
-            imgUrl={avatarUrl}
-            size="lg"
-            entity="coach"
-          />
+    <div className="p-4 md:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
+      <Link
+        to="/coaches"
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
+      >
+        <FaArrowLeft /> Back to Coaches
+      </Link>
 
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-semibold text-slate-900 truncate">
-              {coach.name}
-            </h1>
-            <p className="text-sm text-slate-600 truncate">
-              {coach.role || "Coach"} 
-              {coach.teamId && (
-                <span className="text-slate-400"> · Team {coach.team}</span>
-              )}
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              Coach profile · Created {created}
-            </p>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4 min-w-0">
+            <AvatarCircle
+              name={form.name || "Coach"}
+              imgUrl={coach.imgUrl || coach.photoURL || user?.photoURL || ""}
+              size="md"
+              entity="coach"
+            />
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold text-slate-900 truncate">
+                {form.name || "Coach"}
+              </h1>
+              <p className="text-sm text-slate-500 truncate">{form.email || "No email"}</p>
+              <p className="text-xs text-slate-400 mt-1">Created: {createdLabel}</p>
+            </div>
           </div>
-
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
-            Coach
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border ${
+              coachStatus === "inactive"
+                ? "border-slate-300 bg-slate-100 text-slate-700"
+                : "border-green-200 bg-green-50 text-green-700"
+            }`}
+          >
+            {coachStatus}
           </span>
         </div>
+      </div>
 
-        {/* GRID */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+          <h2 className="text-lg font-semibold text-slate-800">Coach Profile</h2>
 
-          {/* LEFT */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="text-sm">
+              <span className="block text-slate-600 mb-1">Name</span>
+              <input
+                value={form.name}
+                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                disabled={!isAdmin}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-50"
+              />
+            </label>
 
-            {/* SUMMARY */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h2 className="text-sm font-semibold text-slate-800 mb-4">
-                Summary
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <CardStatBadge label="Team" value={coach.team || "—"} />
-                <CardStatBadge label="Role" value={coach.role || "Coach"} />
-                <CardStatBadge label="Athletes" value={athletes.length} />
-              </div>
-            </div>
-
-            {/* ATHLETES LIST */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h2 className="text-sm font-semibold text-slate-800 mb-4">
-                Assigned Athletes
-              </h2>
-
-              {athletes.length === 0 ? (
-                <p className="text-sm text-slate-500">No assigned athletes.</p>
-              ) : (
-                <ul className="divide-y">
-                  {athletes.map(a => {
-                    // ⭐ Phase D fallback
-                    const aAvatar =
-                      a.imgUrl ||
-                      a.photoURL ||
-                      null;
-
-                    return (
-                      <li key={a.id} className="py-3 flex items-center justify-between">
-                        <div className="min-w-0">
-                          <p className="font-medium text-slate-800">{a.name}</p>
-                          <p className="text-xs text-slate-500 truncate">
-                            #{a.jersey || "—"} · {a.position || "Position N/A"}
-                          </p>
-                        </div>
-                        <Link
-                          to={`/athletes/${a.id}`}
-                          className="text-xs text-yellow-600 underline hover:text-yellow-500"
-                        >
-                          View →
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
+            <label className="text-sm">
+              <span className="block text-slate-600 mb-1">Email</span>
+              <input
+                value={form.email}
+                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                disabled={!isAdmin}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-50"
+              />
+            </label>
           </div>
 
-          {/* RIGHT */}
-          <div>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="text-sm font-semibold text-slate-800 mb-3">
-                Details
-              </h3>
+          <label className="text-sm block">
+            <span className="block text-slate-600 mb-1">Assigned Team</span>
+            <select
+              value={form.teamId}
+              onChange={(e) => {
+                const nextTeam = teamOptions.find((t) => t.id === e.target.value);
+                setForm((prev) => ({
+                  ...prev,
+                  teamId: e.target.value,
+                  teamName: nextTeam?.name || "",
+                }));
+              }}
+              disabled={!isAdmin}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-50"
+            >
+              <option value="">No team assigned</option>
+              {teamOptions.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name || team.teamName || team.id}
+                </option>
+              ))}
+            </select>
+          </label>
 
-              <dl className="space-y-2 text-sm">
-                <Detail label="Name" value={coach.name} />
-                <Detail label="Role" value={coach.role} />
-                <Detail label="Email" value={coach.email} />
-                <Detail label="Team" value={coach.team} />
-                <Detail label="Org" value={coach.orgId} />
-                <Detail label="Created" value={created} />
-              </dl>
-
-              <div className="mt-4">
-                <Link
-                  to="/coaches"
-                  className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition"
-                >
-                  ← Back to Coaches
-                </Link>
-              </div>
+          {isAdmin && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={saveProfile}
+                disabled={saving}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Save Profile"}
+              </button>
             </div>
-          </div>
+          )}
+        </div>
 
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+          <h2 className="text-lg font-semibold text-slate-800">Account Access</h2>
+          <p className="text-sm text-slate-600">
+            Set whether this coach can access the app.
+          </p>
+          <div className="text-sm text-slate-700">
+            Current status: <span className="font-medium">{coachStatus}</span>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setAccessStatus(coachStatus === "inactive" ? "active" : "inactive")}
+              disabled={savingStatus}
+              className={`w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-60 ${
+                coachStatus === "inactive"
+                  ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
+                  : "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100"
+              }`}
+            >
+              {savingStatus
+                ? "Saving..."
+                : coachStatus === "inactive"
+                ? "Activate Coach Access"
+                : "Deactivate Coach Access"}
+            </button>
+          )}
+
+          <div className="pt-3 border-t border-slate-100 text-sm text-slate-600 space-y-1">
+            <div>Coach ID: {coach.id}</div>
+            <div>User UID: {coach.uid || coach.id}</div>
+            <div>Athletes in assigned team: {athleteCount}</div>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Detail({ label, value }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="text-slate-800 text-right">{value || "—"}</dd>
     </div>
   );
 }

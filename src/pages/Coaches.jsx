@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   collection,
   query,
@@ -6,8 +7,6 @@ import {
   getDocs,
   doc,
   getDoc,
-  updateDoc,
-  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
@@ -39,7 +38,6 @@ export default function Coaches() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
-  const [savingUserId, setSavingUserId] = useState("");
 
   const orgId = activeOrgId || profile?.orgId;
   const isAdmin = ["admin", "super-admin"].includes(profile?.role);
@@ -177,29 +175,6 @@ export default function Coaches() {
     });
   }, [withDisplayData, searchTerm, statusFilter, sortBy, sortDir]);
 
-  async function setCoachStatus(row, nextStatus) {
-    if (!isAdmin || !row?.coach?.uid) return;
-    const userId = row.coach.uid;
-    setSavingUserId(userId);
-    try {
-      await updateDoc(doc(db, "users", userId), {
-        status: nextStatus,
-        updatedAt: serverTimestamp(),
-      });
-      setUsersByUid((prev) => ({
-        ...prev,
-        [userId]: {
-          ...(prev[userId] || {}),
-          status: nextStatus,
-        },
-      }));
-    } catch (err) {
-      console.error(`Failed to set coach status to ${nextStatus}:`, err);
-    } finally {
-      setSavingUserId("");
-    }
-  }
-
   function SortableHeader({ label, value, className = "" }) {
     const isActive = sortBy === value;
     const indicator = isActive ? (sortDir === "asc" ? "^" : "v") : "";
@@ -287,7 +262,7 @@ export default function Coaches() {
             <SortableHeader label="Teams" value="teams" className="text-right" />
             <SortableHeader label="Funds Raised" value="raised" className="text-right" />
             <SortableHeader label="Status" value="status" className="text-center" />
-            {isAdmin && <th className="p-2 text-center">Actions</th>}
+            <th className="p-2 text-center">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -303,35 +278,20 @@ export default function Coaches() {
                 <td className="p-2 text-center">
                   <StatusBadge status={row.status || "active"} />
                 </td>
-                {isAdmin && (
-                  <td className="p-2 text-center">
-                    {row.status === "inactive" ? (
-                      <button
-                        type="button"
-                        disabled={savingUserId === c.uid}
-                        onClick={() => setCoachStatus(row, "active")}
-                        className="rounded border border-green-300 bg-green-50 px-2 py-1 text-xs text-green-700 hover:bg-green-100 disabled:opacity-60"
-                      >
-                        {savingUserId === c.uid ? "Saving..." : "Activate"}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={savingUserId === c.uid}
-                        onClick={() => setCoachStatus(row, "inactive")}
-                        className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                      >
-                        {savingUserId === c.uid ? "Saving..." : "Deactivate"}
-                      </button>
-                    )}
-                  </td>
-                )}
+                <td className="p-2 text-center">
+                  <Link
+                    to={`/coaches/${c.id}`}
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  >
+                    View Profile
+                  </Link>
+                </td>
               </tr>
             );
           })}
           {rows.length === 0 && (
             <tr className="border-t">
-              <td className="p-4 text-center text-gray-500" colSpan={isAdmin ? 6 : 5}>
+              <td className="p-4 text-center text-gray-500" colSpan={6}>
                 No coaches match the current filters.
               </td>
             </tr>

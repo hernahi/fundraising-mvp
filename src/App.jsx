@@ -31,6 +31,7 @@ import PublicCampaign from "./pages/PublicCampaign";
 import DonateSuccess from "./pages/DonateSuccess";
 import AdminFinancials from "./pages/AdminFinancials";
 import Coaches from "./pages/Coaches";
+import CoachDetail from "./pages/CoachDetail";
 import Donors from "./pages/Donations";
 import AddDonor from "./pages/AddDonor";
 import DonorDetail from "./pages/DonorDetail";
@@ -80,6 +81,7 @@ export default function App() {
 
       {/* Coaches */}
       <Route path="coaches" element={<Coaches />} />
+      <Route path="coaches/:id" element={<CoachDetail />} />
 
       {/* Athletes */}
       <Route path="athletes" element={<Athletes />} />
