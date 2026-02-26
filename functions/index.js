@@ -2563,6 +2563,220 @@ exports.runEmailSummaries = onSchedule(
   }
 );
 
+exports.sendTestSummaryNow = onCall(
+  {
+    timeoutSeconds: 120,
+    memory: "512MiB",
+  },
+  async (request) => {
+    const adminProfile = await assertAdmin(request);
+    const db = admin.firestore();
+    const requesterUid = request?.auth?.uid || "";
+    const targetUid = String(request?.data?.targetUid || requesterUid).trim();
+
+    if (!targetUid) {
+      throw new HttpsError("invalid-argument", "targetUid is required");
+    }
+
+    const targetSnap = await db.collection("users").doc(targetUid).get();
+    if (!targetSnap.exists) {
+      throw new HttpsError("not-found", "Target user not found");
+    }
+
+    const targetUser = targetSnap.data() || {};
+    const role = String(targetUser.role || "").toLowerCase();
+    if (!["coach", "admin", "super-admin"].includes(role)) {
+      throw new HttpsError("failed-precondition", "Target role is not summary-eligible");
+    }
+
+    if (targetUser.status && targetUser.status !== "active") {
+      throw new HttpsError("failed-precondition", "Target user is not active");
+    }
+
+    const orgId = String(targetUser.orgId || "").trim();
+    const email = String(targetUser.email || "").trim();
+    if (!orgId || !email) {
+      throw new HttpsError("failed-precondition", "Target user missing orgId or email");
+    }
+
+    if (adminProfile.role !== "super-admin" && adminProfile.orgId !== orgId) {
+      throw new HttpsError("permission-denied", "Admin can only test summaries in their own org");
+    }
+
+    const now = new Date();
+    const periodEnd = new Date(now);
+    const periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const dateKey = periodEnd.toISOString().slice(0, 10);
+
+    const [orgSnap, teamsSnap, campaignsSnap, donationsSnap, athletesSnap, contactsSnap] =
+      await Promise.all([
+        db.collection("organizations").doc(orgId).get(),
+        db.collection("teams").where("orgId", "==", orgId).get(),
+        db.collection("campaigns").where("orgId", "==", orgId).get(),
+        db
+          .collection("donations")
+          .where("orgId", "==", orgId)
+          .where("status", "==", "paid")
+          .where("createdAt", ">=", admin.firestore.Timestamp.fromDate(periodStart))
+          .where("createdAt", "<", admin.firestore.Timestamp.fromDate(periodEnd))
+          .get(),
+        db.collection("athletes").where("orgId", "==", orgId).get(),
+        db.collection("athlete_contacts").where("orgId", "==", orgId).get(),
+      ]);
+
+    const orgData = orgSnap.exists ? orgSnap.data() || {} : {};
+    const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    const campaigns = campaignsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    const donations = donationsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    const athletes = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    const athleteContacts = contactsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+
+    const campaignById = new Map(campaigns.map((c) => [c.id, c]));
+
+    let scopedTeams = teams;
+    let scopedTeamIds = new Set(teams.map((t) => t.id));
+    if (role === "coach") {
+      scopedTeams = teams.filter((t) => String(t.coachId || "") === targetUid);
+      scopedTeamIds = new Set(scopedTeams.map((t) => t.id));
+    }
+
+    const scopedCampaigns =
+      role === "coach"
+        ? campaigns.filter((c) => scopedTeamIds.has(String(c.teamId || "")))
+        : campaigns;
+    const scopedCampaignIds = new Set(scopedCampaigns.map((c) => c.id));
+
+    const scopedAthletes =
+      role === "coach"
+        ? athletes.filter((a) => scopedTeamIds.has(String(a.teamId || "")))
+        : athletes;
+    const scopedAthleteIds = new Set(scopedAthletes.map((a) => a.id));
+
+    const scopedDonations =
+      role === "coach"
+        ? donations.filter((d) => scopedCampaignIds.has(String(d.campaignId || "")))
+        : donations;
+
+    const scopedContacts =
+      role === "coach"
+        ? athleteContacts.filter((c) => scopedAthleteIds.has(String(c.athleteId || "")))
+        : athleteContacts;
+
+    const donationCount = scopedDonations.length;
+    const amountCents = scopedDonations.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+
+    const topCampaignMap = {};
+    scopedDonations.forEach((d) => {
+      const campaignId = String(d.campaignId || "");
+      if (!campaignId) return;
+      topCampaignMap[campaignId] = (topCampaignMap[campaignId] || 0) + Number(d.amount || 0);
+    });
+
+    const topCampaignRows = Object.entries(topCampaignMap)
+      .map(([campaignId, cents]) => ({
+        campaignId,
+        cents,
+        campaignName:
+          campaignById.get(campaignId)?.name ||
+          campaignById.get(campaignId)?.title ||
+          campaignId,
+      }))
+      .sort((a, b) => b.cents - a.cents)
+      .slice(0, 5);
+
+    const teamNameList =
+      role === "coach"
+        ? scopedTeams
+            .map((t) => t.name || t.teamName || t.id)
+            .filter(Boolean)
+            .slice(0, 5)
+        : [];
+
+    const scopeLabel =
+      role === "coach"
+        ? `${scopedTeams.length} team(s): ${teamNameList.join(", ") || "none"}`
+        : `Organization: ${orgData.name || orgId}`;
+
+    const subject = "Test Daily Fundraising Summary";
+    const topCampaignHtml = topCampaignRows.length
+      ? `<ul>${topCampaignRows
+          .map(
+            (row) =>
+              `<li>${escapeHtml(row.campaignName)} - ${escapeHtml(
+                formatCurrencyFromCents(row.cents)
+              )}</li>`
+          )
+          .join("")}</ul>`
+      : "<p>No campaign donations during this period.</p>";
+
+    const textLines = [
+      `${subject}`,
+      `Period: ${formatDateRange(periodStart, periodEnd)}`,
+      `Scope: ${scopeLabel}`,
+      `Donations: ${donationCount}`,
+      `Amount Raised: ${formatCurrencyFromCents(amountCents)}`,
+      `Campaigns in Scope: ${scopedCampaigns.length}`,
+      `Athletes in Scope: ${scopedAthletes.length}`,
+      `Contacts in Scope: ${scopedContacts.length}`,
+    ];
+
+    if (topCampaignRows.length) {
+      textLines.push("Top Campaigns:");
+      topCampaignRows.forEach((row) => {
+        textLines.push(`- ${row.campaignName}: ${formatCurrencyFromCents(row.cents)}`);
+      });
+    }
+
+    await db.collection("mail").add({
+      to: email,
+      message: {
+        subject,
+        text: textLines.join("\n"),
+        html: `
+          <div style="font-family: Arial, sans-serif;">
+            <h2>${escapeHtml(subject)}</h2>
+            <p><b>Period:</b> ${escapeHtml(formatDateRange(periodStart, periodEnd))}</p>
+            <p><b>Scope:</b> ${escapeHtml(scopeLabel)}</p>
+            <p><b>Donations:</b> ${donationCount}</p>
+            <p><b>Amount Raised:</b> ${escapeHtml(formatCurrencyFromCents(amountCents))}</p>
+            <p><b>Campaigns in Scope:</b> ${scopedCampaigns.length}</p>
+            <p><b>Athletes in Scope:</b> ${scopedAthletes.length}</p>
+            <p><b>Contacts in Scope:</b> ${scopedContacts.length}</p>
+            <h3>Top Campaigns</h3>
+            ${topCampaignHtml}
+          </div>
+        `,
+      },
+      kind: "summary",
+      isTestSummary: true,
+      summaryDateKey: dateKey,
+      uid: targetUid,
+      orgId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    logger.info("sendTestSummaryNow: queued", {
+      targetUid,
+      orgId,
+      role,
+      donationCount,
+      amountCents,
+    });
+
+    return {
+      ok: true,
+      targetUid,
+      orgId,
+      role,
+      donationCount,
+      amountCents,
+      campaignsInScope: scopedCampaigns.length,
+      athletesInScope: scopedAthletes.length,
+      contactsInScope: scopedContacts.length,
+    };
+  }
+);
+
 /* ============================================================
    PHASE 17 â€” WEBHOOK FAILURE ALERT MONITOR
    - Scans recent webhook_failures

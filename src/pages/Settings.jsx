@@ -235,7 +235,7 @@ export default function Settings() {
             {canReceiveSummary && (
               <>
                 <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                  <span className="text-slate-700">Summary Emails</span>
+                  <span className="text-slate-700">Daily Digest / Report Emails</span>
                   <input
                     type="checkbox"
                     checked={Boolean(notificationPrefs.summaryEnabled)}
@@ -256,7 +256,7 @@ export default function Settings() {
                 </label>
                 <div>
                   <label className="text-xs uppercase tracking-wide text-slate-400">
-                    Summary Frequency
+                    Digest Frequency
                   </label>
                   <select
                     value={notificationPrefs.summaryFrequency || "off"}
@@ -272,13 +272,14 @@ export default function Settings() {
                     className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                   >
                     <option value="off">Off</option>
-                    <option value="daily">Daily (Email)</option>
-                    <option value="weekly">Weekly (Email)</option>
+                    <option value="daily">Daily Digest (Email)</option>
+                    <option value="weekly">Weekly Report (Email)</option>
                   </select>
                 </div>
                 <p className="text-xs text-slate-500">
-                  SMS summaries are disabled for now and will be enabled after
-                  SMS provider rollout.
+                  Default for new coach/admin accounts is Daily Digest. SMS
+                  summaries are disabled for now and will be enabled after SMS
+                  provider rollout.
                 </p>
               </>
             )}
