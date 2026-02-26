@@ -28,6 +28,10 @@ export default function Settings() {
     smsNotifications: false,
     weeklyDigest: false,
     defaultCampaignSort: "recent",
+    summaryEnabled: false,
+    summaryFrequency: "off",
+    summaryEmailEnabled: false,
+    summarySmsEnabled: false,
   });
 
   const name =
@@ -38,6 +42,7 @@ export default function Settings() {
   const teamId = profile?.teamId || "N/A";
   const roleLower = (profile?.role || "").toLowerCase();
   const isOrgAdmin = roleLower === "admin" || roleLower === "super-admin";
+  const canReceiveSummary = ["admin", "super-admin", "coach"].includes(roleLower);
   const browserTimeZone =
     Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const timeZoneOptions = Array.from(
@@ -95,8 +100,23 @@ export default function Settings() {
         if (!userSnap.exists()) return;
         const data = userSnap.data() || {};
         const prefs = data.preferences || {};
+        const role = String(data.role || profile?.role || "").toLowerCase();
+        const summaryDefaults = ["admin", "super-admin", "coach"].includes(role)
+          ? {
+              summaryEnabled: true,
+              summaryFrequency: "daily",
+              summaryEmailEnabled: true,
+              summarySmsEnabled: false,
+            }
+          : {
+              summaryEnabled: false,
+              summaryFrequency: "off",
+              summaryEmailEnabled: false,
+              summarySmsEnabled: false,
+            };
         setNotificationPrefs((prev) => ({
           ...prev,
+          ...summaryDefaults,
           ...prefs,
         }));
       } catch (err) {
@@ -212,6 +232,56 @@ export default function Settings() {
                 }
               />
             </label>
+            {canReceiveSummary && (
+              <>
+                <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                  <span className="text-slate-700">Summary Emails</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(notificationPrefs.summaryEnabled)}
+                    onChange={(e) =>
+                      setNotificationPrefs((prev) => ({
+                        ...prev,
+                        summaryEnabled: e.target.checked,
+                        summaryFrequency: e.target.checked
+                          ? prev.summaryFrequency === "off"
+                            ? "daily"
+                            : prev.summaryFrequency
+                          : "off",
+                        summaryEmailEnabled: e.target.checked,
+                        summarySmsEnabled: false,
+                      }))
+                    }
+                  />
+                </label>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Summary Frequency
+                  </label>
+                  <select
+                    value={notificationPrefs.summaryFrequency || "off"}
+                    onChange={(e) =>
+                      setNotificationPrefs((prev) => ({
+                        ...prev,
+                        summaryFrequency: e.target.value,
+                        summaryEnabled: e.target.value !== "off",
+                        summaryEmailEnabled: e.target.value !== "off",
+                        summarySmsEnabled: false,
+                      }))
+                    }
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    <option value="off">Off</option>
+                    <option value="daily">Daily (Email)</option>
+                    <option value="weekly">Weekly (Email)</option>
+                  </select>
+                </div>
+                <p className="text-xs text-slate-500">
+                  SMS summaries are disabled for now and will be enabled after
+                  SMS provider rollout.
+                </p>
+              </>
+            )}
             <div>
               <label className="text-xs uppercase tracking-wide text-slate-400">
                 Default Campaign Sort

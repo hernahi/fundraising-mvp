@@ -69,6 +69,10 @@ setGlobalOptions({
   region: "us-central1",
 });
 
+const WEBHOOK_ALERT_WINDOW_MINUTES = 10;
+const WEBHOOK_ALERT_THRESHOLD = 3;
+const WEBHOOK_ALERT_COOLDOWN_MINUTES = 30;
+
 /* ============================================================
    DONATION AMOUNT GUARD
    - Ensures Firestore always stores cents (integer)
@@ -218,6 +222,33 @@ function getCampaignStartDate(campaign) {
     return new Date(campaign.createdAt.seconds * 1000);
   }
   return null;
+}
+
+function getWebhookAlertEmail() {
+  return (
+    (process.env.WEBHOOK_ALERT_EMAIL || "").trim() ||
+    (process.env.ALERT_EMAIL || "").trim() ||
+    ""
+  );
+}
+
+async function recordWebhookFailure(source, data = {}) {
+  try {
+    await admin.firestore().collection("webhook_failures").add({
+      source,
+      reason: data.reason || "unknown",
+      eventId: data.eventId || null,
+      eventType: data.eventType || null,
+      httpStatus: data.httpStatus || null,
+      details: data.details || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    logger.error("recordWebhookFailure: write failed", {
+      source,
+      message: err?.message,
+    });
+  }
 }
 
 function inferAthleteIdFromReferer(referer, campaignId) {
@@ -975,6 +1006,10 @@ exports.mailgunEventWebhook = onRequest(async (req, res) => {
   try {
     if (!isValidMailgunSignature(req.body)) {
       logger.warn("mailgunEventWebhook: invalid signature");
+      await recordWebhookFailure("mailgun", {
+        reason: "invalid-signature",
+        httpStatus: 401,
+      });
       return res.status(401).send("invalid signature");
     }
 
@@ -1061,11 +1096,20 @@ exports.mailgunEventWebhook = onRequest(async (req, res) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
+    logger.info(
+      `mailgunEventWebhook: processed eventType=${eventType || "unknown"} recipient=${recipient || "unknown"} contactId=${contactId || "none"}`
+    );
+
     return res.status(200).send("ok");
   } catch (err) {
     logger.error("mailgunEventWebhook failed", {
       message: err?.message,
       stack: err?.stack,
+    });
+    await recordWebhookFailure("mailgun", {
+      reason: "handler-failed",
+      httpStatus: 500,
+      details: err?.message || "unknown",
     });
     return res.status(200).send("ignored");
   }
@@ -1414,8 +1458,26 @@ exports.createCheckoutSession = onCall(
 
       const baseUrl = (() => {
         const fromEnv = (process.env.FRONTEND_URL || "").trim();
-        const fromHeader = (request?.rawRequest?.headers?.origin || "").trim();
-        return fromEnv || fromHeader;
+        const fromOrigin = (request?.rawRequest?.headers?.origin || "").trim();
+        const fromReferer = (() => {
+          const raw = (request?.rawRequest?.headers?.referer || "").trim();
+          if (!raw) return "";
+          try {
+            return new URL(raw).origin;
+          } catch {
+            return "";
+          }
+        })();
+
+        const candidates = [fromOrigin, fromReferer, fromEnv].filter((value) =>
+          /^https?:\/\//i.test(value)
+        );
+
+        const nonLocal = candidates.find(
+          (value) => !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(value)
+        );
+
+        return nonLocal || candidates[0] || "";
       })();
 
       if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
@@ -1427,8 +1489,39 @@ exports.createCheckoutSession = onCall(
         );
       }
 
+      const stripeSecretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+      if (!stripeSecretKey) {
+        throw new HttpsError("failed-precondition", "Missing STRIPE_SECRET_KEY");
+      }
+
+      let baseHostname = "";
+      try {
+        baseHostname = new URL(baseUrl).hostname.toLowerCase();
+      } catch (_) {
+        baseHostname = "";
+      }
+      const isProductionHost =
+        !!baseHostname &&
+        baseHostname !== "localhost" &&
+        baseHostname !== "127.0.0.1" &&
+        !baseHostname.endsWith(".local");
+      const allowTestCheckoutOnProduction =
+        String(process.env.ALLOW_TEST_CHECKOUT_ON_PRODUCTION || "").trim().toLowerCase() ===
+        "true";
+
+      if (
+        isProductionHost &&
+        stripeSecretKey.startsWith("sk_test_") &&
+        !allowTestCheckoutOnProduction
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Refusing to create checkout session: production domain with Stripe test key. Set ALLOW_TEST_CHECKOUT_ON_PRODUCTION=true only for temporary testing."
+        );
+      }
+
       // IMPORTANT (Gen 2): initialize Stripe INSIDE the handler after secrets are injected
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      const stripe = new Stripe(stripeSecretKey);
 
       const snap = await admin.firestore().collection("campaigns").doc(campaignId).get();
       if (!snap.exists) {
@@ -1478,8 +1571,10 @@ exports.createCheckoutSession = onCall(
         referer: request?.rawRequest?.headers?.referer || "",
         amountCents,
         baseUrl,
-        hasStripeKey: !!process.env.STRIPE_SECRET_KEY,
-        keyPrefix: (process.env.STRIPE_SECRET_KEY || "").slice(0, 8),
+        isProductionHost,
+        allowTestCheckoutOnProduction,
+        hasStripeKey: !!stripeSecretKey,
+        keyPrefix: stripeSecretKey.slice(0, 8),
       });
 
       const session = await stripe.checkout.sessions.create({
@@ -1555,7 +1650,21 @@ exports.stripeWebhook = onRequest(
     const sig = req.headers["stripe-signature"];
     if (!sig) {
       logger.error("stripeWebhook: missing stripe-signature header");
+      await recordWebhookFailure("stripe", {
+        reason: "missing-signature",
+        httpStatus: 400,
+      });
       return res.status(400).send("Missing stripe-signature");
+    }
+
+    const stripeWebhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+    if (!stripeWebhookSecret) {
+      logger.error("stripeWebhook: missing STRIPE_WEBHOOK_SECRET");
+      await recordWebhookFailure("stripe", {
+        reason: "missing-webhook-secret",
+        httpStatus: 500,
+      });
+      return res.status(500).send("Missing webhook secret");
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -1565,11 +1674,16 @@ exports.stripeWebhook = onRequest(
       event = stripe.webhooks.constructEvent(
         req.rawBody,
         sig,
-        process.env.STRIPE_WEBHOOK_SECRET
+        stripeWebhookSecret
       );
     } catch (err) {
       logger.error("stripeWebhook: signature verification failed", {
         message: err?.message,
+      });
+      await recordWebhookFailure("stripe", {
+        reason: "invalid-signature",
+        httpStatus: 400,
+        details: err?.message || "unknown",
       });
       return res.status(400).send("Invalid signature");
     }
@@ -1803,6 +1917,11 @@ exports.stripeWebhook = onRequest(
       logger.error("stripeWebhook: handler failed", {
         message: err?.message,
         stack: err?.stack,
+      });
+      await recordWebhookFailure("stripe", {
+        reason: "handler-failed",
+        httpStatus: 500,
+        details: err?.message || "unknown",
       });
       return res.status(500).send("Webhook handler error");
     }
@@ -2070,6 +2189,481 @@ exports.dailyDonationRollups = onSchedule(
       orgsProcessed: rollups.size,
       dateKey,
     });
+  }
+);
+
+function formatCurrencyFromCents(cents) {
+  const amount = Number(cents || 0) / 100;
+  return amount.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatDateRange(start, end) {
+  const startLabel = start.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const endLabel = end.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  return `${startLabel} - ${endLabel}`;
+}
+
+function getSummaryPreference(userData = {}) {
+  const role = String(userData.role || "").toLowerCase();
+  const isEligibleRole = role === "coach" || role === "admin" || role === "super-admin";
+  const prefs = userData.preferences || {};
+  const summaryEnabled = typeof prefs.summaryEnabled === "boolean" ?
+    prefs.summaryEnabled :
+    isEligibleRole;
+  const summaryFrequency = String(
+    prefs.summaryFrequency || (summaryEnabled ? "daily" : "off")
+  ).toLowerCase();
+  const summaryEmailEnabled = typeof prefs.summaryEmailEnabled === "boolean" ?
+    prefs.summaryEmailEnabled :
+    summaryEnabled;
+
+  return {
+    role,
+    isEligibleRole,
+    summaryEnabled,
+    summaryFrequency,
+    summaryEmailEnabled,
+  };
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+exports.runEmailSummaries = onSchedule(
+  {
+    schedule: "every day 07:00",
+    timeZone: "America/Los_Angeles",
+    memory: "512MiB",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    const db = admin.firestore();
+    const now = new Date();
+    const periodEnd = new Date(now);
+    const periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const dateKey = periodEnd.toISOString().slice(0, 10);
+
+    const usersSnap = await db
+      .collection("users")
+      .where("role", "in", ["coach", "admin", "super-admin"])
+      .get();
+
+    if (usersSnap.empty) {
+      logger.info("runEmailSummaries: no eligible users found");
+      return;
+    }
+
+    const recipients = [];
+    usersSnap.forEach((docSnap) => {
+      const userData = docSnap.data() || {};
+      const pref = getSummaryPreference(userData);
+
+      if (!pref.isEligibleRole) return;
+      if (userData.status && userData.status !== "active") return;
+      if (!userData.orgId || !userData.email) return;
+      if (userData.preferences?.emailNotifications === false) return;
+      if (!pref.summaryEnabled || !pref.summaryEmailEnabled) return;
+      if (pref.summaryFrequency === "off") return;
+      if (pref.summaryFrequency === "weekly" && now.getUTCDay() !== 1) return;
+
+      recipients.push({
+        uid: docSnap.id,
+        email: String(userData.email || "").trim(),
+        orgId: String(userData.orgId || "").trim(),
+        role: pref.role,
+        summaryFrequency: pref.summaryFrequency,
+      });
+    });
+
+    if (!recipients.length) {
+      logger.info("runEmailSummaries: no recipients after preference filters");
+      return;
+    }
+
+    const orgCache = new Map();
+    const teamsByOrg = new Map();
+    const campaignsByOrg = new Map();
+    const donationsByOrg = new Map();
+    const athletesByOrg = new Map();
+    const athleteContactsByOrg = new Map();
+
+    async function ensureOrgData(orgId) {
+      if (orgCache.has(orgId)) return;
+
+      const [orgSnap, teamsSnap, campaignsSnap, donationsSnap, athletesSnap, contactsSnap] =
+        await Promise.all([
+          db.collection("organizations").doc(orgId).get(),
+          db.collection("teams").where("orgId", "==", orgId).get(),
+          db.collection("campaigns").where("orgId", "==", orgId).get(),
+          db
+            .collection("donations")
+            .where("orgId", "==", orgId)
+            .where("status", "==", "paid")
+            .where("createdAt", ">=", admin.firestore.Timestamp.fromDate(periodStart))
+            .where("createdAt", "<", admin.firestore.Timestamp.fromDate(periodEnd))
+            .get(),
+          db.collection("athletes").where("orgId", "==", orgId).get(),
+          db.collection("athlete_contacts").where("orgId", "==", orgId).get(),
+        ]);
+
+      orgCache.set(orgId, orgSnap.exists ? orgSnap.data() || {} : {});
+      teamsByOrg.set(
+        orgId,
+        teamsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }))
+      );
+      campaignsByOrg.set(
+        orgId,
+        campaignsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }))
+      );
+      donationsByOrg.set(
+        orgId,
+        donationsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }))
+      );
+      athletesByOrg.set(
+        orgId,
+        athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }))
+      );
+      athleteContactsByOrg.set(
+        orgId,
+        contactsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }))
+      );
+    }
+
+    let sentCount = 0;
+    let skippedCount = 0;
+
+    for (const recipient of recipients) {
+      const runId = `${dateKey}_${recipient.summaryFrequency}_${recipient.uid}`;
+      const runRef = db.collection("summary_runs").doc(runId);
+      try {
+        await runRef.create({
+          uid: recipient.uid,
+          orgId: recipient.orgId,
+          role: recipient.role,
+          summaryFrequency: recipient.summaryFrequency,
+          dateKey,
+          status: "started",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } catch (err) {
+        // Already created = already processed.
+        if (err?.code === 6 || String(err?.message || "").includes("ALREADY_EXISTS")) {
+          skippedCount += 1;
+          continue;
+        }
+        throw err;
+      }
+
+      try {
+        await ensureOrgData(recipient.orgId);
+        const orgData = orgCache.get(recipient.orgId) || {};
+        const teams = teamsByOrg.get(recipient.orgId) || [];
+        const campaigns = campaignsByOrg.get(recipient.orgId) || [];
+        const donations = donationsByOrg.get(recipient.orgId) || [];
+        const athletes = athletesByOrg.get(recipient.orgId) || [];
+        const athleteContacts = athleteContactsByOrg.get(recipient.orgId) || [];
+
+        const campaignById = new Map(campaigns.map((c) => [c.id, c]));
+
+        let scopedTeams = teams;
+        let scopedTeamIds = new Set(teams.map((t) => t.id));
+        if (recipient.role === "coach") {
+          scopedTeams = teams.filter((t) => String(t.coachId || "") === recipient.uid);
+          scopedTeamIds = new Set(scopedTeams.map((t) => t.id));
+        }
+
+        const scopedCampaigns =
+          recipient.role === "coach"
+            ? campaigns.filter((c) => scopedTeamIds.has(String(c.teamId || "")))
+            : campaigns;
+        const scopedCampaignIds = new Set(scopedCampaigns.map((c) => c.id));
+
+        const scopedAthletes =
+          recipient.role === "coach"
+            ? athletes.filter((a) => scopedTeamIds.has(String(a.teamId || "")))
+            : athletes;
+        const scopedAthleteIds = new Set(scopedAthletes.map((a) => a.id));
+
+        const scopedDonations =
+          recipient.role === "coach"
+            ? donations.filter((d) => scopedCampaignIds.has(String(d.campaignId || "")))
+            : donations;
+
+        const scopedContacts =
+          recipient.role === "coach"
+            ? athleteContacts.filter((c) => scopedAthleteIds.has(String(c.athleteId || "")))
+            : athleteContacts;
+
+        const donationCount = scopedDonations.length;
+        const amountCents = scopedDonations.reduce(
+          (sum, d) => sum + Number(d.amount || 0),
+          0
+        );
+
+        const topCampaignMap = {};
+        scopedDonations.forEach((d) => {
+          const campaignId = String(d.campaignId || "");
+          if (!campaignId) return;
+          topCampaignMap[campaignId] =
+            (topCampaignMap[campaignId] || 0) + Number(d.amount || 0);
+        });
+
+        const topCampaignRows = Object.entries(topCampaignMap)
+          .map(([campaignId, cents]) => ({
+            campaignId,
+            cents,
+            campaignName:
+              campaignById.get(campaignId)?.name ||
+              campaignById.get(campaignId)?.title ||
+              campaignId,
+          }))
+          .sort((a, b) => b.cents - a.cents)
+          .slice(0, 5);
+
+        const teamNameList =
+          recipient.role === "coach"
+            ? scopedTeams
+                .map((t) => t.name || t.teamName || t.id)
+                .filter(Boolean)
+                .slice(0, 5)
+            : [];
+
+        const scopeLabel =
+          recipient.role === "coach"
+            ? `${scopedTeams.length} team(s): ${teamNameList.join(", ") || "none"}`
+            : `Organization: ${orgData.name || recipient.orgId}`;
+
+        const subjectPrefix =
+          recipient.summaryFrequency === "weekly" ? "Weekly" : "Daily";
+        const subjectRole = recipient.role === "coach" ? "Coach" : "Org";
+        const subject = `${subjectPrefix} ${subjectRole} Fundraising Summary`;
+
+        const topCampaignHtml = topCampaignRows.length
+          ? `<ul>${topCampaignRows
+              .map(
+                (row) =>
+                  `<li>${escapeHtml(row.campaignName)} - ${escapeHtml(
+                    formatCurrencyFromCents(row.cents)
+                  )}</li>`
+              )
+              .join("")}</ul>`
+          : "<p>No campaign donations during this period.</p>";
+
+        const teamHtml =
+          recipient.role === "coach"
+            ? `<p><b>Teams:</b> ${escapeHtml(scopeLabel)}</p>`
+            : "";
+
+        const textLines = [
+          `${subject}`,
+          `Period: ${formatDateRange(periodStart, periodEnd)}`,
+          recipient.role === "coach"
+            ? `Scope: ${scopeLabel}`
+            : `Organization: ${orgData.name || recipient.orgId}`,
+          `Donations: ${donationCount}`,
+          `Amount Raised: ${formatCurrencyFromCents(amountCents)}`,
+          `Campaigns in Scope: ${scopedCampaigns.length}`,
+          `Athletes in Scope: ${scopedAthletes.length}`,
+          `Contacts in Scope: ${scopedContacts.length}`,
+        ];
+
+        if (topCampaignRows.length) {
+          textLines.push("Top Campaigns:");
+          topCampaignRows.forEach((row) => {
+            textLines.push(
+              `- ${row.campaignName}: ${formatCurrencyFromCents(row.cents)}`
+            );
+          });
+        }
+
+        await db.collection("mail").add({
+          to: recipient.email,
+          message: {
+            subject,
+            text: textLines.join("\n"),
+            html: `
+              <div style="font-family: Arial, sans-serif;">
+                <h2>${escapeHtml(subject)}</h2>
+                <p><b>Period:</b> ${escapeHtml(
+                  formatDateRange(periodStart, periodEnd)
+                )}</p>
+                ${teamHtml}
+                <p><b>Donations:</b> ${donationCount}</p>
+                <p><b>Amount Raised:</b> ${escapeHtml(
+                  formatCurrencyFromCents(amountCents)
+                )}</p>
+                <p><b>Campaigns in Scope:</b> ${scopedCampaigns.length}</p>
+                <p><b>Athletes in Scope:</b> ${scopedAthletes.length}</p>
+                <p><b>Contacts in Scope:</b> ${scopedContacts.length}</p>
+                <h3>Top Campaigns</h3>
+                ${topCampaignHtml}
+              </div>
+            `,
+          },
+          kind: "summary",
+          summaryFrequency: recipient.summaryFrequency,
+          summaryDateKey: dateKey,
+          uid: recipient.uid,
+          orgId: recipient.orgId,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        await runRef.set(
+          {
+            status: "sent",
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            donationCount,
+            amountCents,
+          },
+          { merge: true }
+        );
+        sentCount += 1;
+      } catch (err) {
+        logger.error("runEmailSummaries: failed for recipient", {
+          uid: recipient.uid,
+          orgId: recipient.orgId,
+          message: err?.message,
+        });
+        await runRef.set(
+          {
+            status: "failed",
+            failedAt: admin.firestore.FieldValue.serverTimestamp(),
+            error: err?.message || "unknown",
+          },
+          { merge: true }
+        );
+      }
+    }
+
+    logger.info("runEmailSummaries: complete", {
+      recipients: recipients.length,
+      sentCount,
+      skippedCount,
+      dateKey,
+    });
+  }
+);
+
+/* ============================================================
+   PHASE 17 â€” WEBHOOK FAILURE ALERT MONITOR
+   - Scans recent webhook_failures
+   - Sends alert email if failures cross threshold
+   ============================================================ */
+exports.webhookFailureMonitor = onSchedule(
+  {
+    schedule: "every 10 minutes",
+    timeZone: "UTC",
+    memory: "256MiB",
+    timeoutSeconds: 60,
+  },
+  async () => {
+    const db = admin.firestore();
+    const now = Date.now();
+    const windowStart = admin.firestore.Timestamp.fromMillis(
+      now - WEBHOOK_ALERT_WINDOW_MINUTES * 60 * 1000
+    );
+
+    const snap = await db
+      .collection("webhook_failures")
+      .where("createdAt", ">=", windowStart)
+      .get();
+
+    if (snap.empty) {
+      logger.info("webhookFailureMonitor: no recent failures");
+      return;
+    }
+
+    const grouped = {};
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() || {};
+      const source = String(data.source || "unknown");
+      if (!grouped[source]) grouped[source] = [];
+      grouped[source].push({
+        id: docSnap.id,
+        reason: data.reason || "unknown",
+        eventType: data.eventType || null,
+        eventId: data.eventId || null,
+        createdAt: data.createdAt || null,
+      });
+    });
+
+    const alertEmail = getWebhookAlertEmail();
+
+    for (const [source, rows] of Object.entries(grouped)) {
+      if (rows.length < WEBHOOK_ALERT_THRESHOLD) continue;
+
+      const stateRef = db.collection("system_alert_state").doc(`webhook_${source}`);
+      const stateSnap = await stateRef.get();
+      const lastSentAtMs = stateSnap.exists
+        ? stateSnap.data()?.lastSentAt?.toMillis?.() || 0
+        : 0;
+      const cooldownMs = WEBHOOK_ALERT_COOLDOWN_MINUTES * 60 * 1000;
+
+      if (lastSentAtMs && now - lastSentAtMs < cooldownMs) {
+        logger.info("webhookFailureMonitor: cooldown active", {
+          source,
+          failures: rows.length,
+        });
+        continue;
+      }
+
+      logger.warn("webhookFailureMonitor: threshold reached", {
+        source,
+        failures: rows.length,
+      });
+
+      const stateUpdate = {
+        source,
+        lastFailureCount: rows.length,
+        lastEvaluatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      if (!alertEmail) {
+        logger.warn("webhookFailureMonitor: WEBHOOK_ALERT_EMAIL not configured", {
+          source,
+          failures: rows.length,
+        });
+      } else {
+        const recentLines = rows
+          .slice(0, 5)
+          .map((row) => `- ${row.reason} (${row.eventType || "n/a"}) [${row.eventId || row.id}]`)
+          .join("\n");
+
+        await db.collection("mail").add({
+          to: alertEmail,
+          message: {
+            subject: `[ALERT] ${source} webhook failures (${rows.length}/${WEBHOOK_ALERT_WINDOW_MINUTES}m)`,
+            text: `Detected ${rows.length} ${source} webhook failures in the last ${WEBHOOK_ALERT_WINDOW_MINUTES} minutes.\n\nRecent failures:\n${recentLines}\n\nProject: fundraising-mvp-auth-payments`,
+          },
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        stateUpdate.lastSentAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+
+      await stateRef.set(
+        stateUpdate,
+        { merge: true }
+      );
+    }
   }
 );
 
