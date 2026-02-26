@@ -83,43 +83,60 @@ export default function Campaigns() {
           {campaigns.map((c) => {
             const image = safeImageURL(c.imageURL || c.image);
             const title = c.name || "Untitled Campaign";
+            const goal = Number(c.goal || c.goalAmount || 0);
+            const isPublic = c.isPublic === true;
 
             return (
-              <article
+              <Link
                 key={c.id}
-                className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm flex flex-col"
+                to={`/campaigns/${c.id}`}
+                className="group block rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
-                {image ? (
-                  <img
-                    src={image}
-                    alt={title}
-                    className="w-full h-32 md:h-36 object-cover bg-slate-100"
-                  />
-                ) : (
-                  <div className="w-full h-32 md:h-36 bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
-                    No Image
+                <article className="overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md group-hover:border-slate-400">
+                  {image ? (
+                    <img
+                      src={image}
+                      alt={title}
+                      className="w-full h-24 md:h-28 object-cover bg-slate-100"
+                    />
+                  ) : (
+                    <div className="w-full h-24 md:h-28 bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
+                      No Image
+                    </div>
+                  )}
+
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <h2 className="text-base font-semibold text-slate-900 line-clamp-2">
+                        {title}
+                      </h2>
+                      <span className="shrink-0 text-[11px] font-medium text-slate-500 rounded-full border border-slate-300 px-2 py-0.5">
+                        View details
+                      </span>
+                    </div>
+
+                    <p className="mt-2 text-sm text-slate-600 line-clamp-2">
+                      {c.description || "No description available."}
+                    </p>
+
+                    <div className="mt-3 flex items-center gap-2 text-xs">
+                      <span className="rounded-full border border-slate-300 px-2 py-0.5 text-slate-600">
+                        {goal > 0 ? `Goal $${goal.toLocaleString()}` : "No goal"}
+                      </span>
+                      <span
+                        className={[
+                          "rounded-full px-2 py-0.5",
+                          isPublic
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-200 text-slate-600",
+                        ].join(" ")}
+                      >
+                        {isPublic ? "Public" : "Private"}
+                      </span>
+                    </div>
                   </div>
-                )}
-
-                <div className="p-4 md:p-5 flex-1 flex flex-col">
-                  <h2 className="text-lg font-semibold text-slate-900 line-clamp-2">
-                    {title}
-                  </h2>
-
-                  <p className="mt-2 text-sm text-slate-600 line-clamp-3">
-                    {c.description || "No description available."}
-                  </p>
-
-                  <div className="mt-4">
-                    <Link
-                      to={`/campaigns/${c.id}`}
-                      className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 w-full sm:w-auto"
-                    >
-                      View Details
-                    </Link>
-                  </div>
-                </div>
-              </article>
+                </article>
+              </Link>
             );
           })}
         </div>
