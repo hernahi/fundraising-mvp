@@ -241,6 +241,13 @@ useEffect(() => {
                 <FaShareAlt /> Copy Share Link
               </button>
 
+              <Link
+                to={`/coach/invite?campaignId=${encodeURIComponent(campaign.id)}`}
+                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 inline-flex items-center justify-center gap-2 text-sm"
+              >
+                Add Athletes to Campaign
+              </Link>
+
               {canEditTeams && (
                 <button
                   onClick={() => setShowAssignTeams(true)}

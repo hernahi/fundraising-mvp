@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   addDoc,
   collection,
@@ -12,9 +13,11 @@ import { useAuth } from "../context/AuthContext";
 
 export default function CoachInviteAthlete() {
   const { profile } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [email, setEmail] = useState("");
-  const [campaignId, setCampaignId] = useState("");
+  const [campaignId, setCampaignId] = useState(searchParams.get("campaignId") || "");
+  const [prefillTeamId] = useState(searchParams.get("teamId") || "");
   const [campaigns, setCampaigns] = useState([]);
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -106,12 +109,17 @@ If you were not expecting this invite, you can safely ignore this email.
 
   return (
     <div className="page-container max-w-xl">
-      <h1 className="page-title">Invite Athlete</h1>
+      <h1 className="page-title">Athlete Onboarding</h1>
 
       <p className="text-sm text-slate-600 mb-6">
-        Invite an athlete to join your fundraising team. Athletes will receive
-        an email with instructions to accept.
+        Preferred athlete onboarding flow. Send an invite email and optionally
+        attach the athlete to a campaign at invite time.
       </p>
+      {prefillTeamId ? (
+        <p className="text-xs text-slate-500 mb-4">
+          Team context detected: <span className="font-mono">{prefillTeamId}</span>
+        </p>
+      ) : null}
 
       <form onSubmit={submit} className="space-y-4">
         <div>
@@ -159,8 +167,14 @@ If you were not expecting this invite, you can safely ignore this email.
           disabled={sending}
           className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium disabled:opacity-50"
         >
-          {sending ? "Sending..." : "Send Athlete Invite"}
+          {sending ? "Sending..." : "Send Onboarding Invite"}
         </button>
+        <Link
+          to="/athletes/new"
+          className="ml-3 text-sm text-slate-600 hover:text-slate-800 underline"
+        >
+          Use legacy manual add
+        </Link>
       </form>
     </div>
   );

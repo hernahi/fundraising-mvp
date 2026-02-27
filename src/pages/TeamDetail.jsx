@@ -297,10 +297,10 @@ export default function TeamDetail() {
           </Link>
 
           <Link
-            to={`/athletes/new?teamId=${id}&returnTo=${encodeURIComponent(`/teams/${id}`)}&returnLabel=${encodeURIComponent("Back to Team")}`}
+            to={`/coach/invite?teamId=${encodeURIComponent(id)}&campaignId=${encodeURIComponent(activeCampaign?.id || "")}`}
             className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm text-center"
           >
-            Add Athlete
+            Onboard Athlete
           </Link>
         </div>
       </div>
@@ -309,6 +309,9 @@ export default function TeamDetail() {
       {(isAdmin || isCoach) && team?.joinCode && (
         <div className="mt-6 rounded-2xl border border-slate-200 p-4 md:p-5 bg-white shadow-sm">
           <h2 className="font-semibold mb-2">Invite Athletes</h2>
+          <p className="text-xs text-slate-500">
+            Preferred flow: use Athlete Onboarding for new athletes. Team invite tools remain available here.
+          </p>
 
           <div className="mt-4 space-y-3">
             <label className="block text-sm font-medium text-slate-700">Invite athletes by email (one per line)</label>

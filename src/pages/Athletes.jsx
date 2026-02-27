@@ -290,10 +290,10 @@ if (isCoach && teamRows.length > 0) {
 
           {(isAdmin || isCoach) && (
             <Link
-              to="/athletes/add"
+              to="/coach/invite"
               className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow text-center w-full sm:w-auto"
             >
-              + Add Athlete
+              + Onboard Athlete
             </Link>
           )}
         </div>

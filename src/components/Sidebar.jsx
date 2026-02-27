@@ -37,7 +37,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   const quickStartItems = [
     { to: "/teams", label: "1) New Team" },
     ...(isAdmin ? [{ to: "/coaches", label: "2) Invite Coach" }] : []),
-    { to: "/athletes/add", label: isAdmin ? "3) Add Athlete" : "2) Add Athlete" },
+    { to: "/coach/invite", label: isAdmin ? "3) Onboard Athlete" : "2) Onboard Athlete" },
     { to: "/campaigns", label: isAdmin ? "4) New Campaign" : "3) New Campaign" },
   ];
 
@@ -92,7 +92,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
     if (isCoach) {
       items.push({
         to: "/coach/invite",
-        label: "Invite Athletes",
+        label: "Athlete Onboarding",
         icon: UserPlusIcon,
       });
     }

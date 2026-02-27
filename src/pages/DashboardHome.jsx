@@ -808,8 +808,8 @@ export default function DashboardHome() {
                   label: "2. Invite Athletes",
                   done: coachFlow.athleteCount > 0,
                   detail: `${coachFlow.athleteCount} athlete${coachFlow.athleteCount === 1 ? "" : "s"}`,
-                  to: isCoach ? "/coach/invite" : "/athletes/add",
-                  cta: isCoach ? "Invite Athletes" : "Add Athlete",
+                  to: "/coach/invite",
+                  cta: "Onboard Athletes",
                 },
                 {
                   key: "campaign",

@@ -86,9 +86,19 @@ export default function AddAthlete() {
         <FaArrowLeft /> {returnLabel}
       </Link>
 
-      <h1 className="text-2xl font-bold text-slate-800 border-b-2 border-yellow-400 pb-1">
-        New Athlete
+      <h1 className="text-2xl font-bold text-slate-800 border-b-2 border-slate-300 pb-1">
+        Manual Athlete Add
       </h1>
+
+      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+        Preferred flow: use Athlete Onboarding to invite and activate athletes.
+        <Link
+          to="/coach/invite"
+          className="ml-2 font-medium text-blue-700 hover:text-blue-800 underline"
+        >
+          Go to Athlete Onboarding
+        </Link>
+      </div>
 
       <form
         onSubmit={submit}
@@ -141,9 +151,9 @@ export default function AddAthlete() {
         <button
           type="submit"
           disabled={saving}
-          className="bg-yellow-400 hover:brightness-110 text-slate-900 font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
+          className="bg-slate-900 hover:bg-slate-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
         >
-          {saving ? "Saving…" : "Create Athlete"}
+          {saving ? "Saving…" : "Create Athlete Manually"}
         </button>
       </form>
     </div>
