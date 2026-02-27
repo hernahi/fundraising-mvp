@@ -97,13 +97,14 @@ export default function Settings() {
     loadOrgSettings();
   }, [browserTimeZone, isOrgAdmin, profile?.orgId]);
 
-  const dripStatusLabel = profile?.orgId
+  const dripStatusRaw = profile?.orgId
     ? orgSettingsLoaded
       ? orgDripEnabled
-        ? "Active"
-        : "Paused"
+        ? "On"
+        : "Off"
       : "Loading..."
     : "N/A";
+  const dripStatusLabel = dripStatusRaw;
 
   useEffect(() => {
     async function loadUserPreferences() {
@@ -163,8 +164,16 @@ export default function Settings() {
           <SettingStat label="Role" value={role || "N/A"} />
           <SettingStat label="Org" value={orgId || "N/A"} mono />
           <SettingStat label="Team" value={teamId || "N/A"} mono />
-          <SettingStat label="Drip Status" value={dripStatusLabel} />
+          <SettingStat
+            label={roleLower === "coach" ? "Auto-Drip" : "Drip Status"}
+            value={dripStatusLabel}
+          />
         </div>
+        {roleLower === "coach" && (
+          <p className="-mt-3 text-xs text-slate-500">
+            Auto-Drip is controlled by your organization admin.
+          </p>
+        )}
 
         {/* PROFILE CARD */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex items-center gap-4">
