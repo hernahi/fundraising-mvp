@@ -11,8 +11,9 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { useAuth } from "../context/AuthContext";
-import { db } from "../firebase/config";
+import { db, functions } from "../firebase/config";
 import AvatarCircle from "../components/AvatarCircle";
 
 export default function Settings() {
@@ -21,8 +22,11 @@ export default function Settings() {
   const [timeZoneDraft, setTimeZoneDraft] = useState("");
   const [savingTimeZone, setSavingTimeZone] = useState(false);
   const [orgDripEnabled, setOrgDripEnabled] = useState(false);
+  const [orgSettingsLoaded, setOrgSettingsLoaded] = useState(false);
   const [savingDrip, setSavingDrip] = useState(false);
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [sendingTestSummary, setSendingTestSummary] = useState(false);
+  const [testSummaryStatus, setTestSummaryStatus] = useState("");
   const [notificationPrefs, setNotificationPrefs] = useState({
     emailNotifications: true,
     smsNotifications: false,
@@ -61,7 +65,7 @@ export default function Settings() {
 
   useEffect(() => {
     async function loadOrgSettings() {
-      if (!isOrgAdmin || !profile?.orgId) return;
+      if (!profile?.orgId) return;
 
       try {
         const ref = doc(db, "organizations", profile.orgId);
@@ -74,7 +78,7 @@ export default function Settings() {
           setTimeZoneDraft(nextTimeZone || browserTimeZone);
           setOrgDripEnabled(Boolean(data.dripGlobalEnabled));
 
-          if (!nextTimeZone && browserTimeZone) {
+          if (isOrgAdmin && !nextTimeZone && browserTimeZone) {
             await updateDoc(ref, {
               orgTimeZone: browserTimeZone,
               updatedAt: serverTimestamp(),
@@ -85,11 +89,21 @@ export default function Settings() {
         }
       } catch (err) {
         console.error("Failed to load org settings:", err);
+      } finally {
+        setOrgSettingsLoaded(true);
       }
     }
 
     loadOrgSettings();
-  }, [isOrgAdmin, profile?.orgId]);
+  }, [browserTimeZone, isOrgAdmin, profile?.orgId]);
+
+  const dripStatusLabel = profile?.orgId
+    ? orgSettingsLoaded
+      ? orgDripEnabled
+        ? "Active"
+        : "Paused"
+      : "Loading..."
+    : "N/A";
 
   useEffect(() => {
     async function loadUserPreferences() {
@@ -149,10 +163,7 @@ export default function Settings() {
           <SettingStat label="Role" value={role || "N/A"} />
           <SettingStat label="Org" value={orgId || "N/A"} mono />
           <SettingStat label="Team" value={teamId || "N/A"} mono />
-          <SettingStat
-            label="Drip Status"
-            value={isOrgAdmin ? (orgDripEnabled ? "Active" : "Paused") : "N/A"}
-          />
+          <SettingStat label="Drip Status" value={dripStatusLabel} />
         </div>
 
         {/* PROFILE CARD */}
@@ -328,6 +339,46 @@ export default function Settings() {
                 {savingPrefs ? "Saving..." : "Save Preferences"}
               </button>
             </div>
+            {isOrgAdmin && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      Summary Test
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Send a test digest email immediately to your admin account.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={sendingTestSummary}
+                    onClick={async () => {
+                      try {
+                        setSendingTestSummary(true);
+                        setTestSummaryStatus("");
+                        const fn = httpsCallable(functions, "sendTestSummaryNow");
+                        await fn({});
+                        setTestSummaryStatus("Test summary queued. Check your inbox.");
+                      } catch (err) {
+                        console.error("Failed to send test summary:", err);
+                        setTestSummaryStatus(
+                          "Failed to queue test summary. Please try again."
+                        );
+                      } finally {
+                        setSendingTestSummary(false);
+                      }
+                    }}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                  >
+                    {sendingTestSummary ? "Sending..." : "Send Test Summary Now"}
+                  </button>
+                </div>
+                {testSummaryStatus ? (
+                  <p className="mt-2 text-xs text-slate-600">{testSummaryStatus}</p>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
 
