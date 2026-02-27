@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AthleteOnboardingPanel from "../components/AthleteOnboardingPanel";
+import { FaArrowLeft } from "react-icons/fa";
 
 export default function CoachInviteAthlete() {
   const { profile } = useAuth();
@@ -25,6 +26,13 @@ export default function CoachInviteAthlete() {
 
   return (
     <div className="page-container max-w-xl">
+      <Link
+        to="/teams"
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-3"
+      >
+        <FaArrowLeft /> Back to Teams
+      </Link>
+
       <div className="mb-4">
         <h1 className="page-title">Athlete Onboarding</h1>
         <p className="text-sm text-slate-600">
@@ -39,13 +47,6 @@ export default function CoachInviteAthlete() {
         teamId={prefillTeamId}
         showLegacyLink
       />
-
-      <div className="mt-6 text-sm">
-        <Link to="/teams" className="text-slate-600 hover:text-slate-800 underline">
-          Back to Teams
-        </Link>
-      </div>
     </div>
   );
 }
-
