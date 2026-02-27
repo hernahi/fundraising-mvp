@@ -2248,6 +2248,49 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+async function getPaidDonationsForWindow(db, orgId, periodStart, periodEnd) {
+  const startTs = admin.firestore.Timestamp.fromDate(periodStart);
+  const endTs = admin.firestore.Timestamp.fromDate(periodEnd);
+
+  try {
+    const indexedSnap = await db
+      .collection("donations")
+      .where("orgId", "==", orgId)
+      .where("status", "==", "paid")
+      .where("createdAt", ">=", startTs)
+      .where("createdAt", "<", endTs)
+      .get();
+    return indexedSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+  } catch (err) {
+    const message = String(err?.message || "").toLowerCase();
+    const isIndexError =
+      err?.code === 9 ||
+      message.includes("requires an index") ||
+      message.includes("failed-precondition");
+    if (!isIndexError) throw err;
+
+    logger.warn("summary query fallback: missing index for donations window query", {
+      orgId,
+      message: err?.message,
+    });
+
+    // Fallback path: broader org query then in-memory filter.
+    const broadSnap = await db
+      .collection("donations")
+      .where("orgId", "==", orgId)
+      .get();
+
+    return broadSnap.docs
+      .map((d) => ({ id: d.id, ...(d.data() || {}) }))
+      .filter((row) => {
+        if (String(row.status || "").toLowerCase() !== "paid") return false;
+        const createdAt = row.createdAt?.toDate?.();
+        if (!createdAt) return false;
+        return createdAt >= periodStart && createdAt < periodEnd;
+      });
+  }
+}
+
 exports.runEmailSummaries = onSchedule(
   {
     schedule: "every day 07:00",
@@ -2309,18 +2352,12 @@ exports.runEmailSummaries = onSchedule(
     async function ensureOrgData(orgId) {
       if (orgCache.has(orgId)) return;
 
-      const [orgSnap, teamsSnap, campaignsSnap, donationsSnap, athletesSnap, contactsSnap] =
+      const [orgSnap, teamsSnap, campaignsSnap, donationsRows, athletesSnap, contactsSnap] =
         await Promise.all([
           db.collection("organizations").doc(orgId).get(),
           db.collection("teams").where("orgId", "==", orgId).get(),
           db.collection("campaigns").where("orgId", "==", orgId).get(),
-          db
-            .collection("donations")
-            .where("orgId", "==", orgId)
-            .where("status", "==", "paid")
-            .where("createdAt", ">=", admin.firestore.Timestamp.fromDate(periodStart))
-            .where("createdAt", "<", admin.firestore.Timestamp.fromDate(periodEnd))
-            .get(),
+          getPaidDonationsForWindow(db, orgId, periodStart, periodEnd),
           db.collection("athletes").where("orgId", "==", orgId).get(),
           db.collection("athlete_contacts").where("orgId", "==", orgId).get(),
         ]);
@@ -2336,7 +2373,7 @@ exports.runEmailSummaries = onSchedule(
       );
       donationsByOrg.set(
         orgId,
-        donationsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }))
+        donationsRows
       );
       athletesByOrg.set(
         orgId,
@@ -2608,18 +2645,12 @@ exports.sendTestSummaryNow = onCall(
     const periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const dateKey = periodEnd.toISOString().slice(0, 10);
 
-    const [orgSnap, teamsSnap, campaignsSnap, donationsSnap, athletesSnap, contactsSnap] =
+    const [orgSnap, teamsSnap, campaignsSnap, donations, athletesSnap, contactsSnap] =
       await Promise.all([
         db.collection("organizations").doc(orgId).get(),
         db.collection("teams").where("orgId", "==", orgId).get(),
         db.collection("campaigns").where("orgId", "==", orgId).get(),
-        db
-          .collection("donations")
-          .where("orgId", "==", orgId)
-          .where("status", "==", "paid")
-          .where("createdAt", ">=", admin.firestore.Timestamp.fromDate(periodStart))
-          .where("createdAt", "<", admin.firestore.Timestamp.fromDate(periodEnd))
-          .get(),
+        getPaidDonationsForWindow(db, orgId, periodStart, periodEnd),
         db.collection("athletes").where("orgId", "==", orgId).get(),
         db.collection("athlete_contacts").where("orgId", "==", orgId).get(),
       ]);
@@ -2627,7 +2658,6 @@ exports.sendTestSummaryNow = onCall(
     const orgData = orgSnap.exists ? orgSnap.data() || {} : {};
     const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
     const campaigns = campaignsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
-    const donations = donationsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
     const athletes = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
     const athleteContacts = contactsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
 
