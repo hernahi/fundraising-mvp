@@ -40,6 +40,7 @@ export default function AthleteOnboardingPanel({
   orgId,
   defaultCampaignId = "",
   teamId = "",
+  lockCampaign = false,
   compact = false,
   showLegacyLink = false,
   onSent = null,
@@ -173,7 +174,7 @@ export default function AthleteOnboardingPanel({
           value={campaignId}
           onChange={(e) => setCampaignId(e.target.value)}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          disabled={sending}
+          disabled={sending || lockCampaign}
         >
           <option value="">No campaign</option>
           {campaigns.map((c) => (
@@ -185,6 +186,11 @@ export default function AthleteOnboardingPanel({
       </div>
 
       <p className="text-xs text-slate-500">{helperText}</p>
+      {lockCampaign && campaignId ? (
+        <p className="text-xs text-slate-500">
+          Campaign context is locked from the previous page.
+        </p>
+      ) : null}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {result && result.sent.length > 0 && (
@@ -218,4 +224,3 @@ export default function AthleteOnboardingPanel({
     </div>
   );
 }
-

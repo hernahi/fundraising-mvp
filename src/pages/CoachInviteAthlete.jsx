@@ -10,6 +10,7 @@ export default function CoachInviteAthlete() {
 
   const prefillCampaignId = searchParams.get("campaignId") || "";
   const prefillTeamId = searchParams.get("teamId") || "";
+  const lockCampaign = searchParams.get("lockCampaign") === "1";
 
   const pageHint = useMemo(() => {
     if (prefillTeamId && prefillCampaignId) {
@@ -45,7 +46,7 @@ export default function CoachInviteAthlete() {
         orgId={profile?.orgId || ""}
         defaultCampaignId={prefillCampaignId}
         teamId={prefillTeamId}
-        showLegacyLink
+        lockCampaign={lockCampaign}
       />
     </div>
   );

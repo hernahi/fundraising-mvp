@@ -204,7 +204,7 @@ export default function TeamDetail() {
           </Link>
 
           <Link
-            to={`/coach/invite?teamId=${encodeURIComponent(id)}&campaignId=${encodeURIComponent(activeCampaign?.id || "")}`}
+            to={`/coach/invite?teamId=${encodeURIComponent(id)}&campaignId=${encodeURIComponent(activeCampaign?.id || "")}&lockCampaign=1`}
             className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm text-center"
           >
             Onboard Athlete
@@ -225,6 +225,7 @@ export default function TeamDetail() {
               orgId={team.orgId}
               defaultCampaignId={activeCampaign?.id || ""}
               teamId={team.id}
+              lockCampaign={Boolean(activeCampaign?.id)}
               compact
             />
           </div>
