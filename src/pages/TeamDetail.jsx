@@ -9,7 +9,6 @@ import {
   where,
   getDocs,
   updateDoc,
-  addDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
@@ -21,6 +20,7 @@ import { FaArrowLeft } from "react-icons/fa";
 
 import AssignCoachToTeamModal from "../components/AssignCoachToTeamModal";
 import AssignTeamAthletesModal from "../components/AssignTeamAthletesModal";
+import AthleteOnboardingPanel from "../components/AthleteOnboardingPanel";
 
 function generateJoinCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -29,36 +29,11 @@ function generateJoinCode() {
   return code;
 }
 
-const INVITE_EMAIL_HTML = `
-  <div style="font-family: system-ui, -apple-system, sans-serif;">
-    <h2>You’ve been invited to join a team</h2>
-    <p>You’ve been invited to join a team on <strong>Fundraising MVP</strong>.</p>
-    <p>
-      <a href="{{INVITE_LINK}}"
-         style="display:inline-block;padding:10px 16px;background:#0f172a;color:white;text-decoration:none;border-radius:6px;font-weight:600">
-        Accept Invite
-      </a>
-    </p>
-    <p style="font-size: 12px; color: #64748b;">
-      If you didn’t expect this invite, you can ignore this email.
-    </p>
-  </div>
-`;
-
-const INVITE_EMAIL_TEXT = `
-You’ve been invited to join a team on Fundraising MVP.
-
-Accept your invite here:
-{{INVITE_LINK}}
-
-If you didn’t expect this invite, you can ignore this email.
-`;
-
 export default function TeamDetail() {
   const { teamId } = useParams();
   const id = teamId;
 
-  const { user, profile } = useAuth();
+  const { profile } = useAuth();
 
   const [team, setTeam] = useState(null);
   const [athletes, setAthletes] = useState([]);
@@ -66,10 +41,6 @@ export default function TeamDetail() {
   const [coachUser, setCoachUser] = useState(null);
 
   const [loading, setLoading] = useState(true);
-
-  const [inviteEmails, setInviteEmails] = useState("");
-  const [sendingInvites, setSendingInvites] = useState(false);
-  const [inviteStatus, setInviteStatus] = useState(null);
 
   const [showAssignCoach, setShowAssignCoach] = useState(false);
   const [showManageAthletes, setShowManageAthletes] = useState(false);
@@ -190,70 +161,6 @@ export default function TeamDetail() {
 
     setTeam((prev) => ({ ...prev, joinEnabled: !prev.joinEnabled }));
   };
-
-  const sendAthleteInvites = async () => {
-    if (!team || !user) return;
-
-    if (!inviteEmails.trim()) {
-      alert("Enter at least one email.");
-      return;
-    }
-
-    const emails = inviteEmails
-      .split("\n")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-
-    const sent = [];
-    const failed = [];
-    const invalid = [];
-
-    setSendingInvites(true);
-    try {
-      for (const email of emails) {
-        if (!email.includes("@")) {
-          invalid.push(email);
-          continue;
-        }
-
-        try {
-          const inviteRef = await addDoc(collection(db, "invites"), {
-            email,
-            role: "athlete",
-            orgId: team.orgId,
-            teamId: team.id,
-            campaignId: activeCampaign?.id || null,
-            status: "pending",
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days
-            createdByUid: user.uid,
-          });
-
-          const inviteLink = `${window.location.origin}/accept-invite?invite=${inviteRef.id}`;
-
-          await addDoc(collection(db, "mail"), {
-            to: email,
-            message: {
-              subject: "You’ve been invited to join a team",
-              html: INVITE_EMAIL_HTML.replaceAll("{{INVITE_LINK}}", inviteLink),
-              text: INVITE_EMAIL_TEXT.replaceAll("{{INVITE_LINK}}", inviteLink),
-            },
-          });
-
-          sent.push(email);
-        } catch (err) {
-          console.error("Invite failed:", email, err);
-          failed.push(email);
-        }
-      }
-    } finally {
-      setInviteStatus({ sent, failed, invalid });
-      setInviteEmails("");
-      setSendingInvites(false);
-    }
-  };
-
   if (loading) return <div className="p-4 md:p-6 text-gray-600 text-lg">Loading team details...</div>;
   if (!team) return <div className="p-4 md:p-6 text-gray-600 text-lg">Team not found (or access restricted).</div>;
 
@@ -308,39 +215,18 @@ export default function TeamDetail() {
       {/* INVITE BLOCK (coach/admin) */}
       {(isAdmin || isCoach) && team?.joinCode && (
         <div className="mt-6 rounded-2xl border border-slate-200 p-4 md:p-5 bg-white shadow-sm">
-          <h2 className="font-semibold mb-2">Invite Athletes</h2>
+          <h2 className="font-semibold mb-2">Athlete Onboarding</h2>
           <p className="text-xs text-slate-500">
             Preferred flow: use Athlete Onboarding for new athletes. Team invite tools remain available here.
           </p>
 
-          <div className="mt-4 space-y-3">
-            <label className="block text-sm font-medium text-slate-700">Invite athletes by email (one per line)</label>
-
-            <textarea
-              rows={4}
-              value={inviteEmails}
-              onChange={(e) => setInviteEmails(e.target.value)}
-              placeholder="athlete1@email.com&#10;athlete2@email.com"
-              className="w-full rounded-md border border-slate-200 bg-slate-50 p-2 text-sm"
+          <div className="mt-4">
+            <AthleteOnboardingPanel
+              orgId={team.orgId}
+              defaultCampaignId={activeCampaign?.id || ""}
+              teamId={team.id}
+              compact
             />
-
-            {activeCampaign ? (
-              <p className="text-xs text-slate-600">
-                Active campaign auto-assigned: {activeCampaign.name || activeCampaign.title || activeCampaign.id}
-              </p>
-            ) : (
-              <p className="text-xs text-amber-600">
-                No active campaign found. Invites will not set a campaign.
-              </p>
-            )}
-
-            <button
-              onClick={sendAthleteInvites}
-              disabled={sendingInvites}
-              className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm disabled:opacity-50"
-            >
-              {sendingInvites ? "Sending…" : "Send Invites"}
-            </button>
           </div>
 
           <p className="text-sm text-slate-600 mb-3 mt-4">Share this link or code with athletes so they can join the team.</p>
@@ -369,16 +255,6 @@ export default function TeamDetail() {
               )}
             </div>
           </div>
-
-          {inviteStatus && (
-            <div className="mt-3 text-sm space-y-1">
-              {inviteStatus.sent.length > 0 && <div className="text-green-600">✅ Invites sent: {inviteStatus.sent.length}</div>}
-              {inviteStatus.failed.length > 0 && <div className="text-red-600">❌ Failed: {inviteStatus.failed.length}</div>}
-              {inviteStatus.invalid.length > 0 && (
-                <div className="text-amber-600">⚠️ Invalid emails skipped: {inviteStatus.invalid.length}</div>
-              )}
-            </div>
-          )}
 
           {!team.joinEnabled && <p className="text-xs text-red-600 mt-2">Team joining is currently disabled.</p>}
         </div>
@@ -564,3 +440,5 @@ export default function TeamDetail() {
     </div>
   );
 }
+
+
