@@ -348,7 +348,7 @@ export default function Settings() {
                 {savingPrefs ? "Saving..." : "Save Preferences"}
               </button>
             </div>
-            {isOrgAdmin && (
+            {canReceiveSummary && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -356,7 +356,7 @@ export default function Settings() {
                       Summary Test
                     </p>
                     <p className="text-xs text-slate-500">
-                      Send a test digest email immediately to your admin account.
+                      Send a test digest email immediately to your account.
                     </p>
                   </div>
                   <button

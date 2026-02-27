@@ -2606,13 +2606,35 @@ exports.sendTestSummaryNow = onCall(
     memory: "512MiB",
   },
   async (request) => {
-    const adminProfile = await assertAdmin(request);
     const db = admin.firestore();
     const requesterUid = request?.auth?.uid || "";
+    if (!requesterUid) {
+      throw new HttpsError("unauthenticated", "Login required");
+    }
+
+    const requesterProfile = await getUserProfile(requesterUid);
+    if (!requesterProfile) {
+      throw new HttpsError("permission-denied", "User profile not found");
+    }
+    if (requesterProfile.status && requesterProfile.status !== "active") {
+      throw new HttpsError("permission-denied", "User is not active");
+    }
+
+    const requesterRole = String(requesterProfile.role || "").toLowerCase();
+    const isAdminCaller = requesterRole === "admin" || requesterRole === "super-admin";
+    const isCoachCaller = requesterRole === "coach";
+    if (!isAdminCaller && !isCoachCaller) {
+      throw new HttpsError("permission-denied", "Only admins and coaches can send test summaries");
+    }
+
     const targetUid = String(request?.data?.targetUid || requesterUid).trim();
 
     if (!targetUid) {
       throw new HttpsError("invalid-argument", "targetUid is required");
+    }
+
+    if (isCoachCaller && targetUid !== requesterUid) {
+      throw new HttpsError("permission-denied", "Coaches can only send test summaries to themselves");
     }
 
     const targetSnap = await db.collection("users").doc(targetUid).get();
@@ -2636,8 +2658,11 @@ exports.sendTestSummaryNow = onCall(
       throw new HttpsError("failed-precondition", "Target user missing orgId or email");
     }
 
-    if (adminProfile.role !== "super-admin" && adminProfile.orgId !== orgId) {
-      throw new HttpsError("permission-denied", "Admin can only test summaries in their own org");
+    if (
+      requesterRole !== "super-admin" &&
+      String(requesterProfile.orgId || "") !== orgId
+    ) {
+      throw new HttpsError("permission-denied", "You can only test summaries in your own org");
     }
 
     const now = new Date();
