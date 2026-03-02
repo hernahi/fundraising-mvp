@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Bars3Icon } from "@heroicons/react/24/outline";
 import { collection, getDocs } from "firebase/firestore";
 
@@ -22,6 +23,8 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
     useCampaign();
 
   const [orgs, setOrgs] = useState([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
   const role = (profile?.role || "").toLowerCase();
   const isAthlete = role === "athlete";
 
@@ -36,10 +39,30 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
     loadOrgs();
   }, [isSuperAdmin]);
 
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (!menuRef.current?.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const avatarSrc = safeImage(
     profile?.photoURL || user?.photoURL || "",
-    avatarFallback({ label: profile?.name || user?.displayName || "User", type: "user", size: 96 })
+    avatarFallback({
+      label: profile?.name || user?.displayName || "User",
+      type: "user",
+      size: 96,
+    })
   );
+
+  const myAccountPath = useMemo(() => {
+    if (isAthlete && profile?.uid) return `/athletes/${profile.uid}`;
+    return "/settings";
+  }, [isAthlete, profile?.uid]);
 
   return (
     <header className="h-16 w-full border-b bg-white flex items-center">
@@ -89,8 +112,12 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
           )}
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-4">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((value) => !value)}
+            className="flex items-center gap-2 sm:gap-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 hover:bg-slate-50"
+          >
             <img
               src={avatarSrc}
               alt="User avatar"
@@ -105,16 +132,46 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
                 Role: {profile?.role || "user"}
               </div>
             </div>
-          </div>
-
-          <button
-            onClick={logout}
-            className="border rounded-md px-2 sm:px-3 py-1 text-xs sm:text-sm hover:bg-gray-100"
-          >
-            Logout
           </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 bg-white shadow-lg z-50 overflow-hidden">
+              <Link
+                to={myAccountPath}
+                onClick={() => setMenuOpen(false)}
+                className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                My Account
+              </Link>
+              <Link
+                to="/settings"
+                onClick={() => setMenuOpen(false)}
+                className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Settings
+              </Link>
+              <Link
+                to="/help"
+                onClick={() => setMenuOpen(false)}
+                className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Help Center
+              </Link>
+              <button
+                type="button"
+                onClick={async () => {
+                  setMenuOpen(false);
+                  await logout();
+                }}
+                className="block w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 border-t border-slate-100"
+              >
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>
   );
 }
+

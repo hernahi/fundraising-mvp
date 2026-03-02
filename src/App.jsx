@@ -37,6 +37,7 @@ import AddDonor from "./pages/AddDonor";
 import DonorDetail from "./pages/DonorDetail";
 import Settings from "./pages/Settings";
 import Messages from "./pages/Messages";
+import HelpCenter from "./pages/HelpCenter";
 
 export default function App() {
   return (
@@ -103,6 +104,7 @@ export default function App() {
 
       {/* Settings */}
       <Route path="settings" element={<Settings />} />
+      <Route path="help" element={<HelpCenter />} />
 
       {/* Admin */}
       <Route path="admin/users" element={<AdminUsers />} />
