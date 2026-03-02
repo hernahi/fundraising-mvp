@@ -444,9 +444,9 @@ service cloud.firestore {
         && (isOrgAdmin() || isSuperAdmin())
         && canAccessOrg(resource.data.orgId);
 
-      // Admins can create invites
+      // Admins and coaches can create coach/athlete/admin invites in their org
       allow create: if isSignedIn()
-        && (isOrgAdmin() || isSuperAdmin())
+        && (isOrgAdmin() || isCoach() || isSuperAdmin())
         && canAccessOrg(request.resource.data.orgId);
 
       // Athletes/coaches/admins can create donor invites

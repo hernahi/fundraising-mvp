@@ -8,33 +8,9 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
-
-const INVITE_EMAIL_HTML = `
-  <div style="font-family: system-ui, -apple-system, sans-serif;">
-    <h2>You have been invited to join a team</h2>
-    <p>You have been invited to join a team on <strong>Fundraising MVP</strong>.</p>
-    <p>
-      <a href="{{INVITE_LINK}}"
-         style="display:inline-block;padding:10px 16px;background:#0f172a;color:white;text-decoration:none;border-radius:6px;font-weight:600">
-        Accept Invite
-      </a>
-    </p>
-    <p style="font-size: 12px; color: #64748b;">
-      If you did not expect this invite, you can ignore this email.
-    </p>
-  </div>
-`;
-
-const INVITE_EMAIL_TEXT = `
-You have been invited to join a team on Fundraising MVP.
-
-Accept your invite here:
-{{INVITE_LINK}}
-
-If you did not expect this invite, you can ignore this email.
-`;
 
 export default function AthleteOnboardingPanel({
   orgId,
@@ -106,6 +82,9 @@ export default function AthleteOnboardingPanel({
 
     setSending(true);
     try {
+      const appUrl = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin;
+      const sendInviteEmail = httpsCallable(functions, "sendInviteEmail");
+
       for (const email of emails) {
         if (!email.includes("@")) {
           invalid.push(email);
@@ -125,16 +104,10 @@ export default function AthleteOnboardingPanel({
             createdByUid: user?.uid || null,
           });
 
-          const inviteLink = `${window.location.origin}/accept-invite?invite=${inviteRef.id}`;
-
-          await addDoc(collection(db, "mail"), {
-            to: email,
-            message: {
-              subject: "You have been invited to join a fundraising team",
-              html: INVITE_EMAIL_HTML.replaceAll("{{INVITE_LINK}}", inviteLink),
-              text: INVITE_EMAIL_TEXT.replaceAll("{{INVITE_LINK}}", inviteLink),
-            },
-            createdAt: serverTimestamp(),
+          await sendInviteEmail({
+            toEmail: email,
+            inviteId: inviteRef.id,
+            appUrl,
           });
 
           sent.push(email);
