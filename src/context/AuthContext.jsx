@@ -2,9 +2,12 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import { auth, db } from "../firebase/config";
 import {
   GoogleAuthProvider,
+  createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
@@ -21,6 +24,18 @@ export function AuthProvider({ children }) {
   const login = async () => {
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
+  };
+
+  const loginWithEmail = async (email, password) => {
+    return signInWithEmailAndPassword(auth, email, password);
+  };
+
+  const signupWithEmail = async (email, password) => {
+    return createUserWithEmailAndPassword(auth, email, password);
+  };
+
+  const resetPassword = async (email) => {
+    return sendPasswordResetEmail(auth, email);
   };
 
   const logout = async () => {
@@ -86,6 +101,9 @@ export function AuthProvider({ children }) {
     profile,
     loading,
     login,
+    loginWithEmail,
+    signupWithEmail,
+    resetPassword,
     logout,
     reloadProfile: () => user && loadProfile(user.uid),
 
