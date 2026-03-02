@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
@@ -14,6 +14,11 @@ export default function Login() {
     profile,
   } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const redirectTo =
+    searchParams.get("redirectTo") ||
+    `${location.state?.from?.pathname || ""}${location.state?.from?.search || ""}`;
 
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
@@ -24,7 +29,16 @@ export default function Login() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!loading && user && !profile && redirectTo?.startsWith("/accept-invite")) {
+      navigate(redirectTo, { replace: true });
+      return;
+    }
+
     if (!loading && user && profile) {
+      if (redirectTo && redirectTo !== "/login") {
+        navigate(redirectTo, { replace: true });
+        return;
+      }
       const role = (profile?.role || "").toLowerCase();
       if (role === "athlete" && profile?.uid) {
         navigate(`/athletes/${profile.uid}`, { replace: true });
@@ -32,7 +46,7 @@ export default function Login() {
       }
       navigate("/", { replace: true });
     }
-  }, [user, loading, profile, navigate]);
+  }, [user, loading, profile, navigate, redirectTo]);
 
   const clearStatus = () => {
     setMessage("");
@@ -129,6 +143,11 @@ export default function Login() {
         <p className="text-center text-gray-600 mb-8">
           Sign in with Google or use a local email/password account.
         </p>
+        {redirectTo?.startsWith("/accept-invite") ? (
+          <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-800">
+            After signing in, you will return to your invite automatically.
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-2 mb-6">
           <button
@@ -212,7 +231,9 @@ export default function Login() {
           {hasAccountWithoutProfile && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
               Your authentication account exists, but app access is not assigned yet.
-              Use your invite link or contact your administrator.
+              {redirectTo?.startsWith("/accept-invite")
+                ? " You will be returned to your invite automatically."
+                : " Use your invite link or contact your administrator."}
             </div>
           )}
 
@@ -260,8 +281,18 @@ export default function Login() {
         >
           Sign in with Google
         </button>
+
+        {redirectTo?.startsWith("/accept-invite") ? (
+          <div className="mt-4 text-center">
+            <Link
+              to={redirectTo}
+              className="text-sm text-slate-600 hover:text-slate-800 underline"
+            >
+              Back to Invite
+            </Link>
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
-

@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   doc,
   getDoc,
@@ -13,7 +13,8 @@ import { useAuth } from "../context/AuthContext";
 export default function AcceptInvite() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { user, login, reloadProfile } = useAuth();
+  const location = useLocation();
+  const { user, login, reloadProfile, logout } = useAuth();
 
   const [invite, setInvite] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -22,6 +23,10 @@ export default function AcceptInvite() {
 
   const acceptingRef = useRef(false);
   const inviteId = params.get("invite");
+  const returnToLogin = `/login?redirectTo=${encodeURIComponent(
+    `${location.pathname}${location.search}`
+  )}`;
+
   const isExpired = (inviteRecord) => {
     if (!inviteRecord?.expiresAt) return false;
     const expires =
@@ -29,19 +34,10 @@ export default function AcceptInvite() {
     return expires.getTime() < Date.now();
   };
 
-  /* ===============================
-     LOAD INVITE
-     =============================== */
-
   useEffect(() => {
     const loadInvite = async () => {
       if (!inviteId) {
         setError("Invalid invite link.");
-        setLoading(false);
-        return;
-      }
-
-      if (!user) {
         setLoading(false);
         return;
       }
@@ -58,7 +54,6 @@ export default function AcceptInvite() {
 
         const data = snap.data();
 
-        // Expired (auto-mark if still pending)
         if (data.status === "pending" && isExpired(data)) {
           try {
             await updateDoc(ref, {
@@ -74,7 +69,6 @@ export default function AcceptInvite() {
           return;
         }
 
-        // Already used / revoked
         if (data.status !== "pending") {
           setError("This invite has already been used or is no longer valid.");
           setLoading(false);
@@ -91,11 +85,7 @@ export default function AcceptInvite() {
     };
 
     loadInvite();
-  }, [inviteId, user]);
-
-  /* ===============================
-     ACCEPT INVITE
-     =============================== */
+  }, [inviteId]);
 
   const acceptInvite = async () => {
     if (acceptingRef.current) return;
@@ -120,8 +110,6 @@ export default function AcceptInvite() {
         return;
       }
 
-      /* ===== STEP 1: CREATE / UPDATE USER ===== */
-
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
 
@@ -131,16 +119,13 @@ export default function AcceptInvite() {
           {
             uid: user.uid,
             email: user.email,
-            displayName: user.displayName,
+            displayName: user.displayName || user.email || "",
             photoURL: user.photoURL || null,
             role: invite.role,
             orgId: invite.orgId,
             inviteId: invite.id,
-
-            // Required for admin visibility
             status: "active",
             createdAt: serverTimestamp(),
-
             updatedAt: serverTimestamp(),
           },
           { merge: true }
@@ -149,15 +134,13 @@ export default function AcceptInvite() {
         await setDoc(
           userRef,
           {
-            displayName: user.displayName,
+            displayName: user.displayName || user.email || "",
             photoURL: user.photoURL || null,
             updatedAt: serverTimestamp(),
           },
           { merge: true }
         );
       }
-
-      /* ===== STEP 1.5: CREATE ATHLETE PROFILE (IF ATHLETE) ===== */
 
       if (invite.role === "athlete") {
         const athleteRef = doc(db, "athletes", user.uid);
@@ -173,10 +156,7 @@ export default function AcceptInvite() {
               orgId: invite.orgId,
               teamId: invite.teamId || null,
               campaignId: invite.campaignId || null,
-
-              // Required for invite-based create
               inviteId: invite.id,
-
               status: "active",
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
@@ -186,8 +166,6 @@ export default function AcceptInvite() {
         }
       }
 
-      /* ===== STEP 2: MARK INVITE ACCEPTED ===== */
-
       try {
         await updateDoc(doc(db, "invites", invite.id), {
           status: "accepted",
@@ -195,10 +173,8 @@ export default function AcceptInvite() {
           acceptedByUid: user.uid,
         });
 
-        // Create coach record on invite accept
         if (invite.role === "coach") {
           const coachRef = doc(db, "coaches", user.uid);
-
           await setDoc(
             coachRef,
             {
@@ -220,34 +196,26 @@ export default function AcceptInvite() {
       } catch (e) {
         console.warn("Profile reload failed (non-fatal):", e);
       }
+
       setError("");
       setAccepted(true);
-
-      /* ===== STEP 3: ATHLETE AUTO-JOIN (OPTIONAL) ===== */
 
       const redirectTo =
         invite.role === "coach" && invite.teamId
           ? `/teams/${invite.teamId}`
           : invite.role === "athlete" && invite.teamId
           ? `/teams/${invite.teamId}`
-          : "/dashboard";
+          : "/";
 
-      // Defer navigation to avoid throwing inside async flow
       setTimeout(() => {
         navigate(redirectTo, { replace: true });
       }, 0);
-
-      return;
     } catch (err) {
       console.error("Invite acceptance failed:", err);
       setError("Failed to accept invite.");
       acceptingRef.current = false;
     }
   };
-
-  /* ===============================
-     RENDER STATES
-     =============================== */
 
   if (loading) {
     return <div className="p-6">Loading invite...</div>;
@@ -264,10 +232,10 @@ export default function AcceptInvite() {
     );
   }
 
-  if (error) {
+  if (error && !invite) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center space-y-4">
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="text-center space-y-4 max-w-md">
           <h1 className="text-xl font-semibold">Invite Error</h1>
           <p className="text-slate-600">{error}</p>
           <button
@@ -281,27 +249,93 @@ export default function AcceptInvite() {
     );
   }
 
+  const signedInEmail = String(user?.email || "").toLowerCase();
+  const invitedEmail = String(invite?.email || "").toLowerCase();
+  const emailMismatch = Boolean(user && invitedEmail && signedInEmail && invitedEmail !== signedInEmail);
+
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <button
-          onClick={login}
-          className="px-6 py-3 rounded-lg bg-slate-900 text-white font-medium"
-        >
-          Sign in to accept invite
-        </button>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Accept Invitation</h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Sign in or create a local account, then return here to complete setup.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 space-y-2">
+            <div><span className="font-semibold">Invited email:</span> {invite?.email || "Unknown"}</div>
+            <div><span className="font-semibold">Role:</span> {invite?.role || "Unknown"}</div>
+            <div><span className="font-semibold">Organization:</span> {invite?.orgId || "Unknown"}</div>
+          </div>
+
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+            If you do not want to use Google, choose Create Account on the login page and use the invited email address.
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Link
+              to={returnToLogin}
+              className="px-4 py-3 rounded-lg bg-slate-900 text-white text-center font-medium"
+            >
+              Continue to Login
+            </Link>
+            <button
+              onClick={login}
+              className="px-4 py-3 rounded-lg bg-blue-600 text-white font-medium"
+            >
+              Sign in with Google
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <button
-        onClick={acceptInvite}
-        className="px-6 py-3 rounded-lg bg-slate-900 text-white font-medium"
-      >
-        Accept & Continue
-      </button>
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Accept Invitation</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Review the invite details below, then continue.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 space-y-2">
+          <div><span className="font-semibold">Signed in as:</span> {user.email || "Unknown"}</div>
+          <div><span className="font-semibold">Invited email:</span> {invite?.email || "Unknown"}</div>
+          <div><span className="font-semibold">Role:</span> {invite?.role || "Unknown"}</div>
+          <div><span className="font-semibold">Organization:</span> {invite?.orgId || "Unknown"}</div>
+        </div>
+
+        {emailMismatch ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 space-y-3">
+            <p>
+              You are signed in with a different email than the invited address.
+              To avoid account confusion, sign out and use the invited email if possible.
+            </p>
+            <button
+              type="button"
+              onClick={logout}
+              className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-amber-900"
+            >
+              Sign Out
+            </button>
+          </div>
+        ) : null}
+
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+        <button
+          onClick={acceptInvite}
+          className="px-6 py-3 rounded-lg bg-slate-900 text-white font-medium"
+        >
+          Accept & Continue
+        </button>
+      </div>
     </div>
   );
 }
+
