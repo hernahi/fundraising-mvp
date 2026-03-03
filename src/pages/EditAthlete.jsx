@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
+import { useAuth } from "../context/AuthContext";
 import safeImageURL from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
 import { FaArrowLeft, FaSave, FaUser } from "react-icons/fa";
@@ -10,10 +11,16 @@ import { FaArrowLeft, FaSave, FaUser } from "react-icons/fa";
 export default function EditAthlete() {
   const { athleteId } = useParams();
   const navigate = useNavigate();
+  const { profile } = useAuth();
 
   const [athlete, setAthlete] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const role = String(profile?.role || "").toLowerCase();
+  const canManageAnyAthlete = role === "admin" || role === "super-admin" || role === "coach";
+  const canEditSelf = role === "athlete" && profile?.uid === athleteId;
+  const canEditAthlete = canManageAnyAthlete || canEditSelf;
 
   useEffect(() => {
     async function fetchAthlete() {
@@ -58,6 +65,23 @@ export default function EditAthlete() {
 
   if (loading) return <div className="p-6">Loading athlete...</div>;
   if (!athlete) return <div className="p-6">Athlete not found.</div>;
+  if (!canEditAthlete) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+          You can only edit your own athlete profile.
+        </div>
+        <div className="mt-4">
+          <Link
+            to={`/athletes/${athleteId}`}
+            className="inline-flex items-center gap-2 rounded-lg bg-white border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            <FaArrowLeft /> Back to Athlete
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">

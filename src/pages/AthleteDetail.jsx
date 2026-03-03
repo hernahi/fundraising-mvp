@@ -40,6 +40,7 @@ export default function AthleteDetail() {
   const role = (profile?.role || "").toLowerCase();
   const isSelf =
     role === "athlete" && profile?.uid === athleteId;
+  const canEditProfile = isSelf || role === "admin" || role === "super-admin" || role === "coach";
   const canAssignCampaign =
     role === "admin" || role === "super-admin" || role === "coach";
 
@@ -193,13 +194,15 @@ export default function AthleteDetail() {
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <FaUser /> {athlete.name}
         </h1>
-        <Link
-          to={`/athletes/${athlete.id}/edit`}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition w-full sm:w-auto text-center"
-        >
-          <FaEdit className="inline mr-2" />
-          Edit Athlete
-        </Link>
+        {canEditProfile && (
+          <Link
+            to={`/athletes/${athlete.id}/edit`}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition w-full sm:w-auto text-center"
+          >
+            <FaEdit className="inline mr-2" />
+            {isSelf ? "Edit My Profile" : "Edit Athlete"}
+          </Link>
+        )}
       </div>
 
       {isSelf && (
@@ -344,13 +347,39 @@ export default function AthleteDetail() {
       {/* Stats Section */}
       <div className="mt-8 md:mt-10 bg-white rounded-xl shadow p-4 md:p-6">
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <FaTrophy /> Performance / Stats
+          <FaTrophy /> {isSelf ? "My Fundraising Progress" : "Performance / Stats"}
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-          <StatCard label="Campaigns Participated" value={computedStats.campaignCount} />
-          <StatCard label="Funds Raised" value={`$${computedStats.totalRaised}`} />
-          <StatCard label="Supporters" value={computedStats.supporters} />
+          {isSelf ? (
+            <>
+              <StatCard
+                label="Personal Goal"
+                value={goalAmount > 0 ? `$${goalAmount.toLocaleString()}` : "Not Set"}
+              />
+              <StatCard
+                label="Raised So Far"
+                value={`$${computedStats.totalRaised}`}
+              />
+              <StatCard
+                label="Goal Progress"
+                value={
+                  goalAmount > 0
+                    ? `${Math.min(
+                        100,
+                        Math.round((Number(computedStats.totalRaised || 0) / goalAmount) * 100)
+                      )}%`
+                    : "No Goal"
+                }
+              />
+            </>
+          ) : (
+            <>
+              <StatCard label="Campaigns Participated" value={computedStats.campaignCount} />
+              <StatCard label="Funds Raised" value={`$${computedStats.totalRaised}`} />
+              <StatCard label="Supporters" value={computedStats.supporters} />
+            </>
+          )}
         </div>
       </div>
 
