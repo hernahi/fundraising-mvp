@@ -482,7 +482,7 @@ export default function Accounting() {
                       </span>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div className="mt-4 space-y-2 text-sm">
                       <MiniMetric label="Gross" value={centsToCurrency(summary.grossCents)} />
                       <MiniMetric label="Net" value={centsToCurrency(summary.estimatedNetCents)} />
                       <MiniMetric label="Stripe Fees" value={centsToCurrency(summary.stripeFeeCents)} />
@@ -1060,11 +1060,13 @@ function SummaryCard({ label, value, detail }) {
 
 function MiniMetric({ label, value }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
       <div className="text-[11px] uppercase tracking-wide text-slate-400">
         {label}
       </div>
-      <div className="mt-1 text-sm font-semibold text-slate-800">{value}</div>
+      <div className="text-sm font-semibold text-right text-slate-800 break-all">
+        {value}
+      </div>
     </div>
   );
 }
