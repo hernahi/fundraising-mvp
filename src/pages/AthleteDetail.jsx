@@ -252,6 +252,51 @@ export default function AthleteDetail() {
       actionTo: "/messages",
     },
   ];
+  const readinessBlocker = useMemo(() => {
+    if (!athlete?.campaignId) {
+      return {
+        title: "You still need a campaign assignment",
+        detail: "Your coach or admin must assign you to a campaign before you can start fundraising outreach.",
+        actionLabel: "Review My Profile",
+        actionTo: athleteId ? `/athletes/${athleteId}` : "/athletes",
+        tone: "amber",
+      };
+    }
+
+    if (contactCount < 20) {
+      return {
+        title: "You need more supporter contacts",
+        detail: `Add ${20 - contactCount} more contact${20 - contactCount === 1 ? "" : "s"} so you are ready to start sending.`,
+        actionLabel: "Add Contacts",
+        actionTo: "/messages",
+        tone: "amber",
+      };
+    }
+
+    if (messageCount === 0) {
+      return {
+        title: "You are ready to send your first message",
+        detail: "Your campaign and supporter list are ready. Send your first outreach message to begin fundraising.",
+        actionLabel: "Send Message",
+        actionTo: "/messages",
+        tone: "blue",
+      };
+    }
+
+    return {
+      title: "Your fundraising setup is on track",
+      detail: "Keep adding supporters, sending follow-ups, and tracking donations as they come in.",
+      actionLabel: "Open Messages",
+      actionTo: "/messages",
+      tone: "green",
+    };
+  }, [athlete?.campaignId, athleteId, contactCount, messageCount]);
+  const readinessBlockerClasses =
+    readinessBlocker.tone === "green"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : readinessBlocker.tone === "blue"
+      ? "border-blue-200 bg-blue-50 text-blue-800"
+      : "border-amber-200 bg-amber-50 text-amber-800";
 
   if (loading) return <div className="p-4 md:p-6">Loading athlete...</div>;
   if (!athlete) return <div className="p-4 md:p-6">Athlete not found.</div>;
@@ -340,6 +385,20 @@ export default function AthleteDetail() {
                 </Link>
               </div>
             ))}
+          </div>
+          <div className={`mt-4 rounded-lg border px-4 py-3 ${readinessBlockerClasses}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold">{readinessBlocker.title}</div>
+                <p className="mt-1 text-xs opacity-90">{readinessBlocker.detail}</p>
+              </div>
+              <Link
+                to={readinessBlocker.actionTo}
+                className="inline-flex items-center justify-center rounded-md border border-current/20 bg-white px-3 py-2 text-xs font-semibold hover:bg-white/80"
+              >
+                {readinessBlocker.actionLabel}
+              </Link>
+            </div>
           </div>
         </div>
       )}

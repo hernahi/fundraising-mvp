@@ -450,6 +450,51 @@ export default function Messages() {
     ],
     [athleteId, athleteRecord?.campaignId, counts.total, messageStats.total]
   );
+  const readinessBlocker = useMemo(() => {
+    if (!athleteRecord?.campaignId) {
+      return {
+        title: "You still need a campaign assignment",
+        detail: "Your coach or admin must assign you to a campaign before you can start fundraising outreach.",
+        actionLabel: "Review My Profile",
+        actionTo: athleteId ? `/athletes/${athleteId}` : "/athletes",
+        tone: "amber",
+      };
+    }
+
+    if (counts.total < 20) {
+      return {
+        title: "You need more supporter contacts",
+        detail: `Add ${20 - counts.total} more contact${20 - counts.total === 1 ? "" : "s"} so you are ready to start sending.`,
+        actionLabel: "Add Contacts",
+        actionTo: "#contacts",
+        tone: "amber",
+      };
+    }
+
+    if (messageStats.total === 0) {
+      return {
+        title: "You are ready to send your first message",
+        detail: "Your campaign and supporter list are ready. Choose a template and send your first outreach message now.",
+        actionLabel: "Send Message",
+        actionTo: "#drip-campaign",
+        tone: "blue",
+      };
+    }
+
+    return {
+      title: "Your fundraising setup is on track",
+      detail: "Keep refining your supporter list, fixing bounced emails, and sending follow-up messages.",
+      actionLabel: "Review Drip Campaign",
+      actionTo: "#drip-campaign",
+      tone: "green",
+    };
+  }, [athleteId, athleteRecord?.campaignId, counts.total, messageStats.total]);
+  const readinessBlockerClasses =
+    readinessBlocker.tone === "green"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : readinessBlocker.tone === "blue"
+      ? "border-blue-200 bg-blue-50 text-blue-800"
+      : "border-amber-200 bg-amber-50 text-amber-800";
 
   const filteredMessages = useMemo(() => {
     const now = Date.now();
@@ -785,6 +830,29 @@ export default function Messages() {
                 )}
               </div>
             ))}
+          </div>
+          <div className={`mt-4 rounded-lg border px-4 py-3 ${readinessBlockerClasses}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold">{readinessBlocker.title}</div>
+                <p className="mt-1 text-xs opacity-90">{readinessBlocker.detail}</p>
+              </div>
+              {readinessBlocker.actionTo.startsWith("#") ? (
+                <a
+                  href={readinessBlocker.actionTo}
+                  className="inline-flex items-center justify-center rounded-md border border-current/20 bg-white px-3 py-2 text-xs font-semibold hover:bg-white/80"
+                >
+                  {readinessBlocker.actionLabel}
+                </a>
+              ) : (
+                <Link
+                  to={readinessBlocker.actionTo}
+                  className="inline-flex items-center justify-center rounded-md border border-current/20 bg-white px-3 py-2 text-xs font-semibold hover:bg-white/80"
+                >
+                  {readinessBlocker.actionLabel}
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       )}
