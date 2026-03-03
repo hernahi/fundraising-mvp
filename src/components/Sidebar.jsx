@@ -32,6 +32,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   const canManageOrg = isAdmin || isCoach;
   const [mainOpen, setMainOpen] = useState(true);
   const [opsOpen, setOpsOpen] = useState(true);
+  const [adminOpen, setAdminOpen] = useState(true);
 
   const coreNavItems = useMemo(() => {
     const items = [
@@ -75,7 +76,6 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
       items.push(
         { to: "/donors", label: "Donors", icon: UserGroupIcon },
         { to: "/coaches", label: "Coaches", icon: UserGroupIcon },
-        { to: "/accounting", label: "Accounting", icon: BanknotesIcon },
         { to: "/messages", label: "Messages", icon: ChatBubbleLeftRightIcon },
         { to: "/settings", label: "Settings", icon: Cog6ToothIcon }
       );
@@ -84,21 +84,30 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
     return items;
   }, [canManageOrg]);
 
+  const adminNavItems = useMemo(() => {
+    if (!isAdmin || isAthlete) return [];
+    return [
+      { to: "/admin/users", label: "Users", icon: UsersIcon },
+      { to: "/admin/invite", label: "Invite User", icon: UserPlusIcon },
+      { to: "/accounting", label: "Accounting", icon: BanknotesIcon },
+    ];
+  }, [isAdmin, isAthlete]);
+
   return (
     <aside
       className={[
-        "fixed inset-y-0 left-0 z-40 w-64 border-r bg-white flex flex-col justify-between",
-        "transform transition-transform duration-200 ease-in-out lg:static lg:translate-x-0",
+        "fixed inset-y-0 left-0 z-40 w-64 border-r bg-white flex flex-col",
+        "transform transition-transform duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
         mobileOpen ? "translate-x-0" : "-translate-x-full",
       ].join(" ")}
     >
-      <div>
+      <div className="flex min-h-0 flex-1 flex-col">
         <div className="px-6 py-4 border-b">
           <div className="text-lg font-semibold">Fundraising MVP</div>
           <div className="text-xs text-gray-500">{profile?.orgId}</div>
         </div>
 
-        <nav className="mt-4 space-y-3 px-2 overflow-y-auto">
+        <nav className="mt-4 flex-1 space-y-3 overflow-y-auto px-2 pb-4">
           <button
             type="button"
             onClick={() => setMainOpen((v) => !v)}
@@ -169,9 +178,38 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
               )}
             </>
           )}
+
+          {adminNavItems.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setAdminOpen((v) => !v)}
+                className="w-full px-3 py-2 text-left text-xs font-semibold tracking-wide text-gray-500 rounded-md hover:bg-gray-100"
+              >
+                ADMIN {adminOpen ? "[open]" : "[closed]"}
+              </button>
+              {adminOpen && (
+                <div className="space-y-1">
+                  {adminNavItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        `${navItem} ${isActive ? navActive : navInactive}`
+                      }
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </nav>
 
-        <div className="mt-6 px-6 py-4 border-t">
+        <div className="mt-auto px-6 py-4 border-t bg-white">
           <div className="text-xs font-semibold text-gray-500 mb-1">
             Current Campaign
           </div>
@@ -186,36 +224,6 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
           )}
         </div>
       </div>
-
-      {isAdmin && !isAthlete && (
-        <div className="border-t px-2 py-4">
-          <div className="px-4 mb-2 text-xs font-semibold text-gray-500">
-            ADMIN
-          </div>
-
-          <NavLink
-            to="/admin/users"
-            onClick={onClose}
-            className={({ isActive }) =>
-              `${navItem} ${isActive ? navActive : navInactive}`
-            }
-          >
-            <UsersIcon className="h-5 w-5" />
-            Users
-          </NavLink>
-
-          <NavLink
-            to="/admin/invite"
-            onClick={onClose}
-            className={({ isActive }) =>
-              `${navItem} ${isActive ? navActive : navInactive}`
-            }
-          >
-            <UserPlusIcon className="h-5 w-5" />
-            Invite User
-          </NavLink>
-        </div>
-      )}
     </aside>
   );
 }
