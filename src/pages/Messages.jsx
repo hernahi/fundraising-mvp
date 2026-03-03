@@ -1,6 +1,7 @@
 // src/pages/Messages.jsx
 import { useEffect, useMemo, useState } from "react";
 import { httpsCallable } from "firebase/functions";
+import { Link } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
 import ListLoadingSpinner from "../components/ListLoadingSpinner";
