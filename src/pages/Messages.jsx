@@ -57,6 +57,7 @@ const SUBJECTS_BY_TEMPLATE = {
   week3: "We are getting closer to our goal",
   week4: "Last chance to support our fundraiser",
   week5: "Final week to support our fundraiser",
+  lateIntro: "A personal fundraiser update from our team",
   custom: "Fundraiser update",
 };
 
@@ -530,6 +531,7 @@ export default function Messages() {
     }
 
     try {
+      const joinedAfterPhase = athleteRecord?.drip?.lastPhaseSent || "";
       await addDoc(collection(db, "athlete_contacts"), {
         orgId,
         athleteId,
@@ -537,6 +539,8 @@ export default function Messages() {
         email,
         emailLower: email,
         status: "draft",
+        lateIntroPending: Boolean(joinedAfterPhase),
+        joinedAfterPhase: joinedAfterPhase || null,
         createdAt: serverTimestamp(),
       });
       setContactName("");
@@ -1454,7 +1458,7 @@ export default function Messages() {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-800">
-                  Drip Campaign
+                  Campaign Automation
                 </h2>
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-wide ${dripStatus.className}`}
@@ -1463,11 +1467,11 @@ export default function Messages() {
                 </span>
               </div>
               <p className="text-sm text-slate-500 mt-1">
-                Final step: confirm recipients, review the selected message, then send or let auto-send handle the next phase.
+                Once your campaign is assigned and you have at least 20 eligible contacts, the system handles the outreach cadence for you.
               </p>
 
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-800">
                       Auto-send at 6:30 PM
@@ -1478,37 +1482,12 @@ export default function Messages() {
                         : "Org time zone not set yet. Auto-send starts after 20 eligible contacts."}
                     </p>
                   </div>
-                  <label className="flex items-center gap-2 text-xs text-slate-600">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(athleteRecord?.drip?.autoSendEnabled)}
-                      onChange={async (e) => {
-                        try {
-                          const nextValue = e.target.checked;
-                          await updateDoc(doc(db, "athletes", athleteId), {
-                            drip: {
-                              ...(athleteRecord?.drip || {}),
-                              autoSendEnabled: nextValue,
-                            },
-                            updatedAt: serverTimestamp(),
-                          });
-                          setAthleteRecord((prev) => ({
-                            ...(prev || {}),
-                            drip: {
-                              ...(prev?.drip || {}),
-                              autoSendEnabled: nextValue,
-                            },
-                          }));
-                        } catch (err) {
-                          console.error("Failed to update drip toggle:", err);
-                        }
-                      }}
-                    />
-                    Auto-send
-                  </label>
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
                   Next send: {dripNextSendAt}
+                </div>
+                <div className="mt-2 text-xs text-slate-500">
+                  New contacts added after outreach has started receive one catch-up intro email, then join the next scheduled drip phase.
                 </div>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs text-slate-600">
@@ -1537,27 +1516,11 @@ export default function Messages() {
                     Org auto-send is paused. Turn it on in Settings when ready.
                   </p>
                 )}
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedContactIds(correctedDraftContacts.map((c) => c.id))
-                  }
-                  disabled={correctedDraftContacts.length === 0 || sendLoading}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
-                >
-                  Select Corrected Contacts ({correctedDraftContacts.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => sendDrip(selectedTemplateKey)}
-                  disabled={sendLoading || (!canSend && !isTestSend)}
-                  className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  Send {TEMPLATE_OPTIONS.find((opt) => opt.key === selectedTemplateKey)?.label || "Message"} ({selectedRecipients.length} recipients)
-                </button>
+                {correctedDraftContacts.length > 0 && (
+                  <p className="mt-2 text-xs text-blue-600">
+                    {correctedDraftContacts.length} corrected contact{correctedDraftContacts.length === 1 ? "" : "s"} will be included automatically in upcoming sends.
+                  </p>
+                )}
               </div>
 
               {!athleteRecord?.campaignId && (
@@ -1574,7 +1537,7 @@ export default function Messages() {
 
               {isAthlete && (
                 <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
-                  Recommended flow: add contacts first, fix any bounced emails, then send your next message phase.
+                  Recommended flow: add contacts, fix any bounced emails, and let automation handle the drip once you meet the minimum requirements.
                 </div>
               )}
             </div>
