@@ -85,6 +85,18 @@ function enforceCents(amount) {
   return Math.round(amount);
 }
 
+function normalizePercent(rate) {
+  const numeric = Number(rate);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return numeric > 1 ? numeric / 100 : numeric;
+}
+
+function calculatePlatformFeeCents(amountCents, rate) {
+  const normalizedRate = normalizePercent(rate);
+  if (!normalizedRate) return 0;
+  return Math.round(enforceCents(amountCents) * normalizedRate);
+}
+
 /* ============================================================
    MAILGUN HTTP API (PREFERRED)
    ============================================================ */
@@ -1698,7 +1710,10 @@ exports.stripeWebhook = onRequest(
         event.type === "checkout.session.completed" &&
         event.data.object.payment_status === "paid"
       ) {
-        const session = event.data.object;
+        const rawSession = event.data.object;
+        const session = await stripe.checkout.sessions.retrieve(rawSession.id, {
+          expand: ["payment_intent.latest_charge.balance_transaction"],
+        });
 
         const db = admin.firestore();
         const donationRef = db.collection("donations").doc(session.id);
@@ -1726,6 +1741,21 @@ exports.stripeWebhook = onRequest(
         const displayName = donorAnonymous
           ? "Anonymous"
           : donorName || "Supporter";
+        const paymentIntent =
+          session.payment_intent &&
+          typeof session.payment_intent === "object"
+            ? session.payment_intent
+            : null;
+        const latestCharge =
+          paymentIntent?.latest_charge &&
+          typeof paymentIntent.latest_charge === "object"
+            ? paymentIntent.latest_charge
+            : null;
+        const balanceTransaction =
+          latestCharge?.balance_transaction &&
+          typeof latestCharge.balance_transaction === "object"
+            ? latestCharge.balance_transaction
+            : null;
 
         logger.info("stripeWebhook: about to write donation", {
           sessionId: session.id,
@@ -1747,6 +1777,22 @@ exports.stripeWebhook = onRequest(
           const campaignData = campaignSnap?.data() || {};
           const campaignOrgMatch =
             !sessionOrgId || (campaignData.orgId || null) === sessionOrgId;
+          const platformFeeRate =
+            campaignData.platformFeePct != null
+              ? campaignData.platformFeePct
+              : campaignData.feePct;
+          const stripeFeeCents = enforceCents(balanceTransaction?.fee || 0);
+          const stripeNetCents = enforceCents(balanceTransaction?.net || 0);
+          const platformFeeCents = calculatePlatformFeeCents(
+            amountCents,
+            platformFeeRate
+          );
+          const processingFeeCents = stripeFeeCents;
+          const totalFeeCents = stripeFeeCents + platformFeeCents;
+          const netAmountCents =
+            stripeNetCents > 0
+              ? stripeNetCents - platformFeeCents
+              : amountCents - totalFeeCents;
 
           const athleteExists = !!athleteSnap?.exists;
           const athleteData = athleteSnap?.data() || {};
@@ -1775,9 +1821,21 @@ exports.stripeWebhook = onRequest(
                 amount: amountCents,
                 currency: session.currency || "usd",
                 status: "paid",
+                grossAmountCents: amountCents,
+                stripeFeeCents,
+                processingFeeCents,
+                platformFeeRate: normalizePercent(platformFeeRate),
+                platformFeeCents,
+                totalFeeCents,
+                netAmountCents,
                 stripeEventId: event.id,
                 stripeEventType: event.type,
-                stripePaymentIntent: session.payment_intent || null,
+                stripePaymentIntent:
+                  typeof session.payment_intent === "string"
+                    ? session.payment_intent
+                    : session.payment_intent?.id || null,
+                stripeChargeId: latestCharge?.id || null,
+                stripeBalanceTransactionId: balanceTransaction?.id || null,
                 stripeCustomer: session.customer || null,
                 stripeLivemode: !!event.livemode,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1907,6 +1965,8 @@ exports.stripeWebhook = onRequest(
 
         logger.info("stripeWebhook: donation saved", {
           sessionId: session.id,
+          stripeFeeCents: enforceCents(balanceTransaction?.fee || 0),
+          hasExactStripeFee: !!balanceTransaction?.id,
           campaignArtifacts: shouldWriteCampaignArtifacts,
           athleteArtifacts: shouldWriteAthleteArtifacts,
         });

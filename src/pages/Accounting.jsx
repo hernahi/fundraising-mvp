@@ -4,6 +4,7 @@ import { FaArrowLeft } from "react-icons/fa";
 import { Link } from "react-router-dom";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
+import { exportToCSV } from "../utils/exportToCSV";
 
 function centsToCurrency(cents) {
   return (Number(cents || 0) / 100).toLocaleString("en-US", {
@@ -43,9 +44,11 @@ export default function Accounting() {
   const [loading, setLoading] = useState(true);
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const [savingTeamStatusId, setSavingTeamStatusId] = useState("");
   const [orgName, setOrgName] = useState("");
   const [campaigns, setCampaigns] = useState([]);
   const [donations, setDonations] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [userPreferences, setUserPreferences] = useState({});
   const [payoutPrefs, setPayoutPrefs] = useState(DEFAULT_PAYOUT_PREFS);
 
@@ -59,10 +62,11 @@ export default function Accounting() {
       try {
         setLoading(true);
 
-        const [orgSnap, campaignsSnap, donationsSnap, userSnap] = await Promise.all([
+        const [orgSnap, campaignsSnap, donationsSnap, teamsSnap, userSnap] = await Promise.all([
           getDoc(doc(db, "organizations", resolvedOrgId)),
           getDocs(query(collection(db, "campaigns"), where("orgId", "==", resolvedOrgId))),
           getDocs(query(collection(db, "donations"), where("orgId", "==", resolvedOrgId))),
+          getDocs(query(collection(db, "teams"), where("orgId", "==", resolvedOrgId))),
           user?.uid ? getDoc(doc(db, "users", user.uid)) : Promise.resolve(null),
         ]);
 
@@ -73,9 +77,14 @@ export default function Accounting() {
         const nextDonations = donationsSnap.docs
           .map((entry) => ({ id: entry.id, ...(entry.data() || {}) }))
           .filter((entry) => String(entry.status || "").toLowerCase() === "paid");
+        const nextTeams = teamsSnap.docs.map((entry) => ({
+          id: entry.id,
+          ...(entry.data() || {}),
+        }));
 
         setCampaigns(nextCampaigns);
         setDonations(nextDonations);
+        setTeams(nextTeams);
         setOrgName(String(orgSnap.exists() ? orgSnap.data()?.name || "" : ""));
 
         const nextPrefs = userSnap?.exists()
@@ -117,10 +126,13 @@ export default function Accounting() {
 
   const campaignSummaries = useMemo(() => {
     const byCampaign = new Map();
+    const campaignById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
 
     for (const campaign of campaigns) {
       byCampaign.set(campaign.id, {
         id: campaign.id,
+        teamId: campaign.teamId || "",
+        teamName: campaign.teamName || "",
         name: campaign.name || campaign.title || "Untitled Campaign",
         isPublic: Boolean(campaign.isPublic),
         goalCents: Math.round(Number(campaign.goal || 0) * 100) || 0,
@@ -128,6 +140,7 @@ export default function Accounting() {
         donationCount: 0,
         stripeFeeCents: 0,
         platformFeeCents: 0,
+        estimatedNetCents: 0,
       });
     }
 
@@ -145,31 +158,177 @@ export default function Accounting() {
           donationCount: 0,
           stripeFeeCents: 0,
           platformFeeCents: 0,
+          estimatedNetCents: 0,
         });
       }
 
       const summary = byCampaign.get(campaignId);
-      const amountCents = Number(donation.amount || 0);
+      const campaign = campaignById.get(summary.id) || {};
+      const amountCents = Number(
+        donation.grossAmountCents || donation.amount || 0
+      );
       const campaignFeePct =
-        summary?.id && campaigns.find((campaign) => campaign.id === summary.id)?.platformFeePct != null
-          ? campaigns.find((campaign) => campaign.id === summary.id)?.platformFeePct
-          : campaigns.find((campaign) => campaign.id === summary.id)?.feePct;
+        campaign.platformFeePct != null
+          ? campaign.platformFeePct
+          : campaign.feePct;
+      const stripeFeeCents =
+        donation.stripeFeeCents != null
+          ? Number(donation.stripeFeeCents || 0)
+          : estimateStripeFeeCents(amountCents);
+      const platformFeeCents =
+        donation.platformFeeCents != null
+          ? Number(donation.platformFeeCents || 0)
+          : percentToCents(amountCents, campaignFeePct);
+      const netAmountCents =
+        donation.netAmountCents != null
+          ? Number(donation.netAmountCents || 0)
+          : amountCents - stripeFeeCents - platformFeeCents;
 
       summary.grossCents += amountCents;
       summary.donationCount += 1;
-      summary.stripeFeeCents += estimateStripeFeeCents(amountCents);
-      summary.platformFeeCents += percentToCents(amountCents, campaignFeePct);
+      summary.stripeFeeCents += stripeFeeCents;
+      summary.platformFeeCents += platformFeeCents;
+      summary.estimatedNetCents = (summary.estimatedNetCents || 0) + netAmountCents;
     }
 
     return Array.from(byCampaign.values())
       .map((summary) => ({
         ...summary,
         estimatedNetCents:
+          summary.estimatedNetCents ??
           summary.grossCents - summary.stripeFeeCents - summary.platformFeeCents,
       }))
       .filter((summary) => summary.grossCents > 0 || summary.goalCents > 0)
       .sort((a, b) => b.grossCents - a.grossCents);
   }, [campaigns, donations]);
+
+  const ledgerRows = useMemo(() => {
+    const campaignById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
+    const teamById = new Map(
+      teams.map((team) => [team.id, team.name || team.teamName || team.id])
+    );
+
+    return donations
+      .map((donation) => {
+        const campaign = campaignById.get(String(donation.campaignId || "")) || {};
+        const grossAmountCents = Number(
+          donation.grossAmountCents || donation.amount || 0
+        );
+        const stripeFeeCents =
+          donation.stripeFeeCents != null
+            ? Number(donation.stripeFeeCents || 0)
+            : estimateStripeFeeCents(grossAmountCents);
+        const platformFeeCents =
+          donation.platformFeeCents != null
+            ? Number(donation.platformFeeCents || 0)
+            : percentToCents(
+                grossAmountCents,
+                campaign.platformFeePct != null
+                  ? campaign.platformFeePct
+                  : campaign.feePct
+              );
+        const netAmountCents =
+          donation.netAmountCents != null
+            ? Number(donation.netAmountCents || 0)
+            : grossAmountCents - stripeFeeCents - platformFeeCents;
+        const createdAt = donation.createdAt?.toDate
+          ? donation.createdAt.toDate()
+          : null;
+
+        return {
+          id: donation.id,
+          createdAt,
+          createdAtLabel: createdAt
+            ? createdAt.toLocaleString()
+            : "Pending timestamp",
+          donorName: donation.donorName || "Anonymous",
+          donorEmail: donation.donorEmail || "N/A",
+          campaignId: donation.campaignId || "",
+          campaignName: campaign.name || campaign.title || donation.campaignId || "Unknown Campaign",
+          teamId: campaign.teamId || "",
+          teamName:
+            teamById.get(String(campaign.teamId || "")) ||
+            campaign.teamName ||
+            "Unassigned Team",
+          grossAmountCents,
+          stripeFeeCents,
+          platformFeeCents,
+          netAmountCents,
+          payoutStatus:
+            donation.payoutStatus ||
+            (campaign.endDate && new Date(campaign.endDate) < new Date()
+              ? "ready_for_review"
+              : "accruing"),
+        };
+      })
+      .sort((a, b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
+  }, [campaigns, donations, teams]);
+
+  const teamPayoutSummaries = useMemo(() => {
+    const teamMap = new Map(
+      teams.map((team) => [
+        team.id,
+        {
+          id: team.id,
+          name: team.name || team.teamName || team.id,
+          coachId: team.coachId || "",
+          payoutStatus: team.payoutStatus || "accruing",
+          payoutNotes: team.payoutNotes || "",
+          payoutMethod:
+            team.payoutMethod ||
+            team.payoutPreference ||
+            DEFAULT_PAYOUT_PREFS.preferredMethod,
+          grossCents: 0,
+          stripeFeeCents: 0,
+          platformFeeCents: 0,
+          netAmountCents: 0,
+          donationCount: 0,
+          campaignCount: 0,
+        },
+      ])
+    );
+
+    const campaignIdsByTeam = new Map();
+    campaignSummaries.forEach((summary) => {
+      const teamId = String(summary.teamId || "");
+      if (!teamId) return;
+      if (!teamMap.has(teamId)) {
+        teamMap.set(teamId, {
+          id: teamId,
+          name: summary.teamName || teamId,
+          coachId: "",
+          payoutStatus: "accruing",
+          payoutNotes: "",
+          payoutMethod: DEFAULT_PAYOUT_PREFS.preferredMethod,
+          grossCents: 0,
+          stripeFeeCents: 0,
+          platformFeeCents: 0,
+          netAmountCents: 0,
+          donationCount: 0,
+          campaignCount: 0,
+        });
+      }
+      if (!campaignIdsByTeam.has(teamId)) {
+        campaignIdsByTeam.set(teamId, new Set());
+      }
+      campaignIdsByTeam.get(teamId).add(summary.id);
+      const row = teamMap.get(teamId);
+      row.grossCents += summary.grossCents;
+      row.stripeFeeCents += summary.stripeFeeCents;
+      row.platformFeeCents += summary.platformFeeCents;
+      row.netAmountCents += summary.estimatedNetCents;
+      row.donationCount += summary.donationCount;
+    });
+
+    for (const [teamId, ids] of campaignIdsByTeam.entries()) {
+      const row = teamMap.get(teamId);
+      if (row) row.campaignCount = ids.size;
+    }
+
+    return Array.from(teamMap.values())
+      .filter((team) => team.grossCents > 0 || team.campaignCount > 0)
+      .sort((a, b) => b.netAmountCents - a.netAmountCents);
+  }, [campaignSummaries, teams]);
 
   const totals = useMemo(() => {
     return campaignSummaries.reduce(
@@ -258,7 +417,7 @@ export default function Accounting() {
                   Campaign Fee / Net Summary
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Live donation totals by campaign. Exact payout ledger and chargeback adjustments will be added in a later accounting phase.
+                  Live donation totals by campaign using stored donation ledger fields when available, with safe fallback for legacy donations.
                 </p>
               </div>
               <span className="text-xs text-slate-400">
@@ -293,7 +452,7 @@ export default function Accounting() {
 
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <MiniMetric label="Gross" value={centsToCurrency(summary.grossCents)} />
-                      <MiniMetric label="Est. Net" value={centsToCurrency(summary.estimatedNetCents)} />
+                      <MiniMetric label="Net" value={centsToCurrency(summary.estimatedNetCents)} />
                       <MiniMetric label="Stripe Fees" value={centsToCurrency(summary.stripeFeeCents)} />
                       <MiniMetric label="Platform Fees" value={centsToCurrency(summary.platformFeeCents)} />
                     </div>
@@ -311,6 +470,87 @@ export default function Accounting() {
           </section>
 
           <section className="space-y-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Team Payout Status
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Track net owed by team and mark where each team sits in the payout review process.
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400">
+                  {teamPayoutSummaries.length} teams
+                </span>
+              </div>
+
+              {teamPayoutSummaries.length === 0 ? (
+                <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  No team payout activity yet.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {teamPayoutSummaries.map((team) => (
+                    <div
+                      key={team.id}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {team.name}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {team.campaignCount} campaigns • {team.donationCount} donations • Net {centsToCurrency(team.netAmountCents)}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={team.payoutStatus}
+                            onChange={async (e) => {
+                              try {
+                                setSavingTeamStatusId(team.id);
+                                await updateDoc(doc(db, "teams", team.id), {
+                                  payoutStatus: e.target.value,
+                                  payoutUpdatedAt: serverTimestamp(),
+                                });
+                                setTeams((prev) =>
+                                  prev.map((entry) =>
+                                    entry.id === team.id
+                                      ? {
+                                          ...entry,
+                                          payoutStatus: e.target.value,
+                                        }
+                                      : entry
+                                  )
+                                );
+                              } catch (err) {
+                                console.error("Failed to update payout status:", err);
+                              } finally {
+                                setSavingTeamStatusId("");
+                              }
+                            }}
+                            disabled={savingTeamStatusId === team.id}
+                            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                          >
+                            <option value="accruing">Accruing</option>
+                            <option value="ready_for_review">Ready for Review</option>
+                            <option value="approved">Approved</option>
+                            <option value="paid">Paid</option>
+                            <option value="on_hold">On Hold</option>
+                          </select>
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">
+                            {team.payoutMethod}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-900">
                 Payout Preferences
@@ -457,6 +697,90 @@ export default function Accounting() {
                   </button>
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Donation Ledger
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Per-donation accounting rows for export and reconciliation.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={!ledgerRows.length}
+                  onClick={() =>
+                    exportToCSV(
+                      ledgerRows.map((row) => ({
+                        createdAt: row.createdAtLabel,
+                        donorName: row.donorName,
+                        donorEmail: row.donorEmail,
+                        campaign: row.campaignName,
+                        team: row.teamName,
+                        grossAmount: centsToCurrency(row.grossAmountCents),
+                        stripeFee: centsToCurrency(row.stripeFeeCents),
+                        platformFee: centsToCurrency(row.platformFeeCents),
+                        netAmount: centsToCurrency(row.netAmountCents),
+                        payoutStatus: row.payoutStatus,
+                      })),
+                      `accounting_ledger_${resolvedOrgId || "org"}.csv`
+                    )
+                  }
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                >
+                  Export CSV
+                </button>
+              </div>
+              {ledgerRows.length === 0 ? (
+                <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  No paid donation ledger rows yet.
+                </div>
+              ) : (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50">
+                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th className="px-3 py-2 font-semibold">Date</th>
+                        <th className="px-3 py-2 font-semibold">Donor</th>
+                        <th className="px-3 py-2 font-semibold">Campaign</th>
+                        <th className="px-3 py-2 font-semibold">Team</th>
+                        <th className="px-3 py-2 font-semibold text-right">Gross</th>
+                        <th className="px-3 py-2 font-semibold text-right">Stripe</th>
+                        <th className="px-3 py-2 font-semibold text-right">Platform</th>
+                        <th className="px-3 py-2 font-semibold text-right">Net</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {ledgerRows.slice(0, 25).map((row) => (
+                        <tr key={row.id}>
+                          <td className="px-3 py-2 text-slate-600">{row.createdAtLabel}</td>
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-slate-800">{row.donorName}</div>
+                            <div className="text-xs text-slate-500">{row.donorEmail}</div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">{row.campaignName}</td>
+                          <td className="px-3 py-2 text-slate-700">{row.teamName}</td>
+                          <td className="px-3 py-2 text-right font-medium text-slate-900">
+                            {centsToCurrency(row.grossAmountCents)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-slate-600">
+                            {centsToCurrency(row.stripeFeeCents)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-slate-600">
+                            {centsToCurrency(row.platformFeeCents)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold text-emerald-700">
+                            {centsToCurrency(row.netAmountCents)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
