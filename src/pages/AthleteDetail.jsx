@@ -221,34 +221,34 @@ export default function AthleteDetail() {
   const readinessSteps = [
     {
       key: "campaign",
-      label: "Join your campaign",
+      label: "Campaign assigned",
       done: Boolean(athlete?.campaignId),
       detail: athlete?.campaignId
-        ? assignedCampaign?.name || assignedCampaign?.title || "Campaign assigned"
-        : "Waiting for coach/admin assignment",
-      actionLabel: "View profile setup",
+        ? "Ready for fundraising outreach"
+        : "Coach/admin still needs to assign a campaign",
+      actionLabel: "Review My Profile",
       actionTo: athleteId ? `/athletes/${athleteId}` : "/athletes",
     },
     {
       key: "contacts",
-      label: "Add supporters",
+      label: "Supporters added",
       done: contactCount >= 20,
       detail:
         contactCount >= 20
           ? `${contactCount} contacts ready`
           : `${contactCount}/20 contacts added`,
-      actionLabel: "Open Messages",
+      actionLabel: "Add Contacts",
       actionTo: "/messages",
     },
     {
       key: "outreach",
-      label: "Send outreach",
+      label: "Outreach sent",
       done: messageCount > 0,
       detail:
         messageCount > 0
           ? `${messageCount} message${messageCount === 1 ? "" : "s"} sent`
           : "No outreach sent yet",
-      actionLabel: "Open Messages",
+      actionLabel: "Send Message",
       actionTo: "/messages",
     },
   ];
@@ -286,10 +286,10 @@ export default function AthleteDetail() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-800">
-                My Fundraising Flow
+                Fundraising Setup
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Keep it simple: confirm your campaign, add supporters, send outreach, and track donations here.
+                Work top to bottom so you do not get stuck: campaign, contacts, then outreach.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">

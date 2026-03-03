@@ -423,7 +423,7 @@ export default function Messages() {
           ? "Ready for fundraising outreach"
           : "Coach/admin still needs to assign a campaign",
         actionTo: athleteId ? `/athletes/${athleteId}` : "/athletes",
-        actionLabel: "Open My Athlete Page",
+        actionLabel: "Review My Profile",
       },
       {
         key: "contacts",
