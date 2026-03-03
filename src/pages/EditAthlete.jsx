@@ -8,6 +8,18 @@ import safeImageURL from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
 import { FaArrowLeft, FaSave, FaUser } from "react-icons/fa";
 
+function normalizeAthleteForEdit(id, data = {}) {
+  return {
+    id,
+    ...data,
+    name: data.name || data.displayName || "",
+    age: data.age ?? "",
+    position: data.position || data.role || "",
+    photoURL: data.photoURL || data.avatar || data.imgUrl || "",
+    bio: data.bio || data.story || data.description || "",
+  };
+}
+
 export default function EditAthlete() {
   const { athleteId } = useParams();
   const navigate = useNavigate();
@@ -29,7 +41,7 @@ export default function EditAthlete() {
         const snap = await getDoc(ref);
 
         if (snap.exists()) {
-          setAthlete({ id: snap.id, ...snap.data() });
+          setAthlete(normalizeAthleteForEdit(snap.id, snap.data() || {}));
         }
       } catch (err) {
         console.error("Error loading athlete:", err);
@@ -49,9 +61,11 @@ export default function EditAthlete() {
       const ref = doc(db, "athletes", athlete.id);
       await updateDoc(ref, {
         name: athlete.name || "",
+        displayName: athlete.name || "",
         age: athlete.age || "",
         position: athlete.position || "",
         photoURL: athlete.photoURL || "",
+        avatar: athlete.photoURL || "",
         bio: athlete.bio || "",
       });
 
