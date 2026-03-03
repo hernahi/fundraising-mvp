@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { FaArrowLeft } from "react-icons/fa";
 import { Link } from "react-router-dom";
@@ -58,67 +58,63 @@ export default function Accounting() {
   const [ledgerTeamFilter, setLedgerTeamFilter] = useState("all");
   const [ledgerPayoutStatusFilter, setLedgerPayoutStatusFilter] = useState("all");
 
-  useEffect(() => {
+  const loadAccounting = useCallback(async () => {
     if (!canAccessAccounting || !resolvedOrgId) {
       setLoading(false);
       return;
     }
 
-    async function loadAccounting() {
-      try {
-        setLoading(true);
+    try {
+      setLoading(true);
 
-        const [orgSnap, campaignsSnap, donationsSnap, teamsSnap, userSnap] = await Promise.all([
-          getDoc(doc(db, "organizations", resolvedOrgId)),
-          getDocs(query(collection(db, "campaigns"), where("orgId", "==", resolvedOrgId))),
-          getDocs(query(collection(db, "donations"), where("orgId", "==", resolvedOrgId))),
-          getDocs(query(collection(db, "teams"), where("orgId", "==", resolvedOrgId))),
-          user?.uid ? getDoc(doc(db, "users", user.uid)) : Promise.resolve(null),
-        ]);
+      const [orgSnap, campaignsSnap, donationsSnap, teamsSnap, userSnap] = await Promise.all([
+        getDoc(doc(db, "organizations", resolvedOrgId)),
+        getDocs(query(collection(db, "campaigns"), where("orgId", "==", resolvedOrgId))),
+        getDocs(query(collection(db, "donations"), where("orgId", "==", resolvedOrgId))),
+        getDocs(query(collection(db, "teams"), where("orgId", "==", resolvedOrgId))),
+        user?.uid ? getDoc(doc(db, "users", user.uid)) : Promise.resolve(null),
+      ]);
 
-        const nextCampaigns = campaignsSnap.docs.map((entry) => ({
-          id: entry.id,
-          ...(entry.data() || {}),
-        }));
-        const nextDonations = donationsSnap.docs
-          .map((entry) => ({ id: entry.id, ...(entry.data() || {}) }))
-          .filter((entry) => String(entry.status || "").toLowerCase() === "paid");
-        const nextTeams = teamsSnap.docs.map((entry) => ({
-          id: entry.id,
-          ...(entry.data() || {}),
-        }));
+      const nextCampaigns = campaignsSnap.docs.map((entry) => ({
+        id: entry.id,
+        ...(entry.data() || {}),
+      }));
+      const nextDonations = donationsSnap.docs
+        .map((entry) => ({ id: entry.id, ...(entry.data() || {}) }))
+        .filter((entry) => String(entry.status || "").toLowerCase() === "paid");
+      const nextTeams = teamsSnap.docs.map((entry) => ({
+        id: entry.id,
+        ...(entry.data() || {}),
+      }));
 
-        setCampaigns(nextCampaigns);
-        setDonations(nextDonations);
-        setTeams(nextTeams);
-        setOrgName(String(orgSnap.exists() ? orgSnap.data()?.name || "" : ""));
+      setCampaigns(nextCampaigns);
+      setDonations(nextDonations);
+      setTeams(nextTeams);
+      setOrgName(String(orgSnap.exists() ? orgSnap.data()?.name || "" : ""));
 
-        const nextPrefs = userSnap?.exists()
-          ? userSnap.data()?.preferences?.payout || {}
-          : {};
-        const nextUserPreferences = userSnap?.exists()
-          ? userSnap.data()?.preferences || {}
-          : {};
+      const nextPrefs = userSnap?.exists()
+        ? userSnap.data()?.preferences?.payout || {}
+        : {};
+      const nextUserPreferences = userSnap?.exists()
+        ? userSnap.data()?.preferences || {}
+        : {};
 
-        setUserPreferences(nextUserPreferences);
-        setPayoutPrefs({
-          ...DEFAULT_PAYOUT_PREFS,
-          payoutPayeeName:
-            nextPrefs.payoutPayeeName ||
-            profile?.displayName ||
-            profile?.name ||
-            "",
-          payoutEmail: nextPrefs.payoutEmail || profile?.email || "",
-          ...nextPrefs,
-        });
-      } catch (err) {
-        console.error("Failed to load accounting data:", err);
-      } finally {
-        setLoading(false);
-      }
+      setUserPreferences(nextUserPreferences);
+      setPayoutPrefs({
+        ...DEFAULT_PAYOUT_PREFS,
+        payoutPayeeName:
+          nextPrefs.payoutPayeeName ||
+          profile?.displayName ||
+          profile?.name ||
+          "",
+        payoutEmail: nextPrefs.payoutEmail || profile?.email || "",
+        ...nextPrefs,
+      });
+    } catch (err) {
+      console.error("Failed to load accounting data:", err);
+    } finally {
+      setLoading(false);
     }
-
-    loadAccounting();
   }, [
     activeOrgId,
     canAccessAccounting,
@@ -129,6 +125,10 @@ export default function Accounting() {
     resolvedOrgId,
     user?.uid,
   ]);
+
+  useEffect(() => {
+    loadAccounting();
+  }, [loadAccounting]);
 
   const campaignSummaries = useMemo(() => {
     const byCampaign = new Map();
@@ -382,6 +382,19 @@ export default function Accounting() {
     );
   }, [campaignSummaries]);
 
+  const exactFeeCoverage = useMemo(() => {
+    const exactRows = ledgerRows.filter((row) => row.hasExactFees).length;
+    const totalRows = ledgerRows.length;
+    const estimatedRows = Math.max(0, totalRows - exactRows);
+
+    return {
+      exactRows,
+      totalRows,
+      estimatedRows,
+      percent: totalRows ? Math.round((exactRows / totalRows) * 100) : 100,
+    };
+  }, [ledgerRows]);
+
   if (!canAccessAccounting) {
     return <div className="p-6 text-red-600">Access Restricted</div>;
   }
@@ -439,6 +452,21 @@ export default function Accounting() {
             value={centsToCurrency(totals.estimatedNetCents)}
             detail="Uses exact stored ledger fields when available"
           />
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-slate-700">
+              <span className="font-semibold text-slate-900">Exact fee coverage:</span>{" "}
+              {exactFeeCoverage.exactRows} of {exactFeeCoverage.totalRows} donations
+              {" "}({exactFeeCoverage.percent}%)
+            </div>
+            <div className="text-xs text-slate-500">
+              {exactFeeCoverage.estimatedRows > 0
+                ? `${exactFeeCoverage.estimatedRows} donation rows still use fallback estimates.`
+                : "All current donation rows are using stored fee fields."}
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[1.7fr_1fr]">
@@ -813,6 +841,7 @@ export default function Accounting() {
                             setBackfillStatus(
                               `Backfill complete. Scanned ${data.scanned || 0}, updated ${data.updated || 0}, failed ${Array.isArray(data.failed) ? data.failed.length : 0}.`
                             );
+                            await loadAccounting();
                           } catch (err) {
                             console.error("Failed to backfill donation fees:", err);
                             setBackfillStatus("Backfill failed. Check function logs and retry.");
