@@ -9,6 +9,7 @@ import {
   Cog6ToothIcon,
   ClipboardDocumentListIcon,
   UserPlusIcon,
+  BanknotesIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../context/AuthContext";
 import { useCampaign } from "../context/CampaignContext";
@@ -77,6 +78,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
         { to: "/donors", label: "Donors", icon: UserGroupIcon },
         { to: "/coaches", label: "Coaches", icon: UserGroupIcon },
         { to: "/teams", label: "Teams", icon: ClipboardDocumentListIcon },
+        { to: "/accounting", label: "Accounting", icon: BanknotesIcon },
         { to: "/messages", label: "Messages", icon: ChatBubbleLeftRightIcon },
         { to: "/settings", label: "Settings", icon: Cog6ToothIcon }
       );
