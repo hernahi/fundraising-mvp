@@ -70,12 +70,20 @@ export default function Campaigns() {
   return (
     <div className="p-4 md:p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 md:gap-4 mb-5 md:mb-6">
-        <h1 className="text-2xl font-semibold">Campaigns</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">Campaigns</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Open a campaign to assign teams, review performance, and launch fundraising activity.
+          </p>
+        </div>
       </div>
 
       {campaigns.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">
           No campaigns found for this organization.
+          <div className="mt-2 text-sm text-slate-500">
+            Create the team structure first, then add campaigns for those teams.
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5 lg:gap-6">

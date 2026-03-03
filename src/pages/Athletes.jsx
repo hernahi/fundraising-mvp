@@ -265,9 +265,12 @@ if (isCoach && teamRows.length > 0) {
             View and manage athletes in your organization.
           </p>
           <p className="text-sm text-slate-500 mt-2">
-            Tip: click the checkbox at the top-left of an athlete card to select
-            it. Selecting athletes reveals the batch assignment bar so you can
-            assign them to a team in one action.
+            {isCoach
+              ? "Recommended flow: open your team, then use Athlete Onboarding to invite new athletes into the right campaign."
+              : "Recommended flow: create or confirm the team first, then use Athlete Onboarding so new athletes land in the right place."}
+          </p>
+          <p className="text-sm text-slate-500 mt-1">
+            Tip: use the checkbox on each athlete card when you need to batch-assign athletes to a team.
           </p>
         </div>
 
@@ -287,6 +290,13 @@ if (isCoach && teamRows.length > 0) {
               </option>
             ))}
           </select>
+
+          <Link
+            to="/teams"
+            className="px-5 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 text-center w-full sm:w-auto"
+          >
+            Open Teams
+          </Link>
 
           {(isAdmin || isCoach) && (
             <Link
@@ -348,8 +358,26 @@ if (isCoach && teamRows.length > 0) {
         <div className="p-10 bg-white border rounded-xl text-center shadow">
           <h2 className="text-xl font-semibold">No Athletes Found</h2>
           <p className="text-gray-500 mt-2">
-            No athletes match the selected filter.
+            {teamFilter === "all"
+              ? "Start with Athlete Onboarding once your team and campaign are ready."
+              : "No athletes match the selected filter."}
           </p>
+          {(isAdmin || isCoach) && teamFilter === "all" && (
+            <div className="mt-4 flex flex-col sm:flex-row justify-center gap-3">
+              <Link
+                to="/teams"
+                className="px-4 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700"
+              >
+                Open Teams
+              </Link>
+              <Link
+                to="/coach/invite"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Onboard Athlete
+              </Link>
+            </div>
+          )}
         </div>
       )}
 

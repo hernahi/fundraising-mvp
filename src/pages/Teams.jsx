@@ -206,6 +206,11 @@ export default function Teams() {
               </>
             )}
           </p>
+          <p className="mt-1 text-sm text-slate-500">
+            {isCoach
+              ? "Open a team to onboard athletes, share join tools, and review campaign history."
+              : "Create the team first, then manage coach assignment, athlete onboarding, and campaign history from the team detail page."}
+          </p>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
