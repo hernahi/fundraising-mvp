@@ -441,7 +441,7 @@ export default function Accounting() {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.7fr_1fr]">
+        <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[1.7fr_1fr]">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -462,7 +462,7 @@ export default function Accounting() {
                 No paid donations found yet for this organization.
               </div>
             ) : (
-              <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="mt-4 grid grid-cols-1 gap-4 2xl:grid-cols-2">
                 {campaignSummaries.map((summary) => (
                   <div
                     key={summary.id}
