@@ -10,12 +10,10 @@ import {
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import { db, functions } from "../firebase/config";
+import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import safeImageURL from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
@@ -26,12 +24,6 @@ export default function AthleteDetail() {
   const { profile } = useAuth();
   const [athlete, setAthlete] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [inviteEmails, setInviteEmails] = useState("");
-  const [inviteMessage, setInviteMessage] = useState("");
-  const [inviteTemplate, setInviteTemplate] = useState("");
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [savingMessage, setSavingMessage] = useState(false);
-  const [messageDirty, setMessageDirty] = useState(false);
   const [athleteDonations, setAthleteDonations] = useState([]);
   const [contactCount, setContactCount] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
@@ -90,29 +82,6 @@ export default function AthleteDetail() {
   useEffect(() => {
     setAssignCampaignId(athlete?.campaignId || "");
   }, [athlete?.campaignId]);
-
-  useEffect(() => {
-    async function loadTemplate() {
-      if (!isSelf || !profile?.orgId) return;
-      try {
-        const ref = doc(db, "organizations", profile.orgId);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          setInviteTemplate(snap.data()?.donorInviteTemplate || "");
-        }
-      } catch (err) {
-        console.error("Failed to load donor invite template:", err);
-      }
-    }
-
-    loadTemplate();
-  }, [isSelf, profile?.orgId]);
-
-  useEffect(() => {
-    if (!isSelf || !athlete) return;
-    if (messageDirty) return;
-    setInviteMessage(athlete.inviteMessage || inviteTemplate || "");
-  }, [athlete, inviteTemplate, isSelf, messageDirty]);
 
   useEffect(() => {
     if (!profile?.orgId || !athleteId) {
@@ -542,106 +511,40 @@ export default function AthleteDetail() {
       </div>
 
       {isSelf && (
-        <div className="mt-8 md:mt-10 grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-          {/* Invite Donors */}
+        <div className="mt-8 md:mt-10 grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 md:gap-6">
           <div className="min-w-0 bg-white rounded-xl shadow p-4 md:p-6">
-            <h2 className="text-xl font-semibold mb-2">Invite Donors</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Add supporter emails below, personalize the note, then send outreach. Use one email per line.
+            <h2 className="text-xl font-semibold mb-2">Next Action</h2>
+            <p className="text-sm text-gray-600">
+              Use Messages to manage contacts, choose your template, and send outreach. Keep this page for your progress, donation page, and supporter activity.
             </p>
-            <textarea
-              className="w-full min-h-[120px] rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"
-              value={inviteEmails}
-              onChange={(e) => setInviteEmails(e.target.value)}
-              placeholder="supporter1@email.com&#10;supporter2@email.com"
-              disabled={inviteLoading}
-            />
-
-            <label className="block text-sm font-medium text-gray-700 mt-4">
-              Message (optional)
-            </label>
-            <textarea
-              className="w-full min-h-[160px] rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"
-              value={inviteMessage}
-              onChange={(e) => {
-                setInviteMessage(e.target.value);
-                setMessageDirty(true);
-              }}
-              placeholder="Add a personal note here..."
-              disabled={inviteLoading || savingMessage}
-            />
-
-            <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                className="rounded-md border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
-                disabled={savingMessage || inviteLoading}
-                onClick={async () => {
-                  if (!athlete?.id) return;
-                  try {
-                    setSavingMessage(true);
-                    await updateDoc(doc(db, "athletes", athlete.id), {
-                      inviteMessage: inviteMessage.trim(),
-                      updatedAt: serverTimestamp(),
-                    });
-                    setMessageDirty(false);
-                  } catch (err) {
-                    console.error("Failed to save invite message:", err);
-                  } finally {
-                    setSavingMessage(false);
-                  }
-                }}
+            <div className="mt-4 space-y-3">
+              <Link
+                to="/messages"
+                className="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               >
-                {savingMessage ? "Saving..." : "Save Message"}
-              </button>
-
-              <button
-                className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                disabled={inviteLoading}
-                onClick={async () => {
-                  if (!athlete?.campaignId) {
-                    alert("No campaign assigned to this athlete yet.");
-                    return;
-                  }
-                  if (!inviteEmails.trim()) {
-                    alert("Please enter at least one email address.");
-                    return;
-                  }
-                  try {
-                    setInviteLoading(true);
-                    const fn = httpsCallable(functions, "sendDonorInvite");
-                    await fn({
-                      campaignId: athlete.campaignId,
-                      athleteId: athlete.id,
-                      emails: inviteEmails,
-                      message: inviteMessage,
-                    });
-                    setInviteEmails("");
-                  } catch (err) {
-                    console.error("Failed to send donor invites:", err);
-                    alert("Failed to send invites. Please try again.");
-                  } finally {
-                    setInviteLoading(false);
-                  }
-                }}
-              >
-                {inviteLoading ? "Sending..." : "Send Invites"}
-              </button>
-            </div>
-
-            {donateLink && (
-              <div className="mt-4 min-w-0 text-xs text-slate-500">
-                Donation page:{" "}
+                Open Messages
+              </Link>
+              {donateLink && (
                 <a
-                  className="inline-block max-w-full break-all text-blue-600 hover:underline"
                   href={donateLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  {donateLink}
+                  View Donation Page
                 </a>
-              </div>
-            )}
+              )}
+            </div>
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <div className="font-medium text-slate-800">Keep moving</div>
+              <ul className="mt-2 space-y-1 text-xs">
+                <li>1. Confirm your campaign is assigned</li>
+                <li>2. Add at least 20 supporter contacts</li>
+                <li>3. Send your first outreach message</li>
+              </ul>
+            </div>
           </div>
 
-          {/* My Donors */}
           <div className="min-w-0 bg-white rounded-xl shadow p-4 md:p-6">
             <h2 className="text-xl font-semibold mb-2">My Donors</h2>
             <p className="text-sm text-gray-600 mb-4">
