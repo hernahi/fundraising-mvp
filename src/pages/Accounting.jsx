@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { FaArrowLeft } from "react-icons/fa";
 import { Link } from "react-router-dom";
-import { db } from "../firebase/config";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { exportToCSV } from "../utils/exportToCSV";
 
@@ -45,12 +46,17 @@ export default function Accounting() {
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [savingTeamStatusId, setSavingTeamStatusId] = useState("");
+  const [backfillingFees, setBackfillingFees] = useState(false);
+  const [backfillStatus, setBackfillStatus] = useState("");
   const [orgName, setOrgName] = useState("");
   const [campaigns, setCampaigns] = useState([]);
   const [donations, setDonations] = useState([]);
   const [teams, setTeams] = useState([]);
   const [userPreferences, setUserPreferences] = useState({});
   const [payoutPrefs, setPayoutPrefs] = useState(DEFAULT_PAYOUT_PREFS);
+  const [ledgerCampaignFilter, setLedgerCampaignFilter] = useState("all");
+  const [ledgerTeamFilter, setLedgerTeamFilter] = useState("all");
+  const [ledgerPayoutStatusFilter, setLedgerPayoutStatusFilter] = useState("all");
 
   useEffect(() => {
     if (!canAccessAccounting || !resolvedOrgId) {
@@ -259,10 +265,32 @@ export default function Accounting() {
             (campaign.endDate && new Date(campaign.endDate) < new Date()
               ? "ready_for_review"
               : "accruing"),
+          hasExactFees:
+            donation.stripeFeeCents != null &&
+            donation.platformFeeCents != null &&
+            donation.netAmountCents != null,
         };
       })
       .sort((a, b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
   }, [campaigns, donations, teams]);
+
+  const filteredLedgerRows = useMemo(() => {
+    return ledgerRows.filter((row) => {
+      if (ledgerCampaignFilter !== "all" && row.campaignId !== ledgerCampaignFilter) {
+        return false;
+      }
+      if (ledgerTeamFilter !== "all" && row.teamId !== ledgerTeamFilter) {
+        return false;
+      }
+      if (
+        ledgerPayoutStatusFilter !== "all" &&
+        row.payoutStatus !== ledgerPayoutStatusFilter
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [ledgerCampaignFilter, ledgerPayoutStatusFilter, ledgerRows, ledgerTeamFilter]);
 
   const teamPayoutSummaries = useMemo(() => {
     const teamMap = new Map(
@@ -274,6 +302,8 @@ export default function Accounting() {
           coachId: team.coachId || "",
           payoutStatus: team.payoutStatus || "accruing",
           payoutNotes: team.payoutNotes || "",
+          payoutReferenceNumber: team.payoutReferenceNumber || "",
+          payoutPaidAt: team.payoutPaidAt || null,
           payoutMethod:
             team.payoutMethod ||
             team.payoutPreference ||
@@ -299,6 +329,8 @@ export default function Accounting() {
           coachId: "",
           payoutStatus: "accruing",
           payoutNotes: "",
+          payoutReferenceNumber: "",
+          payoutPaidAt: null,
           payoutMethod: DEFAULT_PAYOUT_PREFS.preferredMethod,
           grossCents: 0,
           stripeFeeCents: 0,
@@ -395,7 +427,7 @@ export default function Accounting() {
           <SummaryCard
             label="Est. Stripe Fees"
             value={centsToCurrency(totals.stripeFeeCents)}
-            detail="Estimated at 2.9% + $0.30 per paid donation"
+            detail="Exact for backfilled/new donations, estimated for older rows"
           />
           <SummaryCard
             label="Platform Fees"
@@ -405,7 +437,7 @@ export default function Accounting() {
           <SummaryCard
             label="Est. Net Available"
             value={centsToCurrency(totals.estimatedNetCents)}
-            detail="Gross less estimated processing + configured fees"
+            detail="Uses exact stored ledger fields when available"
           />
         </div>
 
@@ -545,6 +577,105 @@ export default function Accounting() {
                           </span>
                         </div>
                       </div>
+                      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <label className="block">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                            Payout Reference
+                          </span>
+                          <input
+                            value={team.payoutReferenceNumber || ""}
+                            onChange={(e) =>
+                              setTeams((prev) =>
+                                prev.map((entry) =>
+                                  entry.id === team.id
+                                    ? { ...entry, payoutReferenceNumber: e.target.value }
+                                    : entry
+                                )
+                              )
+                            }
+                            onBlur={async (e) => {
+                              try {
+                                setSavingTeamStatusId(team.id);
+                                await updateDoc(doc(db, "teams", team.id), {
+                                  payoutReferenceNumber: e.target.value.trim(),
+                                  payoutUpdatedAt: serverTimestamp(),
+                                });
+                              } catch (err) {
+                                console.error("Failed to save payout reference:", err);
+                              } finally {
+                                setSavingTeamStatusId("");
+                              }
+                            }}
+                            className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            placeholder="Check #, ACH trace, wire ref"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                            Paid Date
+                          </span>
+                          <input
+                            type="date"
+                            value={toDateInputValue(team.payoutPaidAt)}
+                            onChange={(e) =>
+                              setTeams((prev) =>
+                                prev.map((entry) =>
+                                  entry.id === team.id
+                                    ? { ...entry, payoutPaidAt: e.target.value || null }
+                                    : entry
+                                )
+                              )
+                            }
+                            onBlur={async (e) => {
+                              try {
+                                setSavingTeamStatusId(team.id);
+                                await updateDoc(doc(db, "teams", team.id), {
+                                  payoutPaidAt: e.target.value || null,
+                                  payoutUpdatedAt: serverTimestamp(),
+                                });
+                              } catch (err) {
+                                console.error("Failed to save payout paid date:", err);
+                              } finally {
+                                setSavingTeamStatusId("");
+                              }
+                            }}
+                            className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                          />
+                        </label>
+                      </div>
+                      <label className="mt-3 block">
+                        <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                          Payout Notes
+                        </span>
+                        <textarea
+                          rows={2}
+                          value={team.payoutNotes || ""}
+                          onChange={(e) =>
+                            setTeams((prev) =>
+                              prev.map((entry) =>
+                                entry.id === team.id
+                                  ? { ...entry, payoutNotes: e.target.value }
+                                  : entry
+                              )
+                            )
+                          }
+                          onBlur={async (e) => {
+                            try {
+                              setSavingTeamStatusId(team.id);
+                              await updateDoc(doc(db, "teams", team.id), {
+                                payoutNotes: e.target.value.trim(),
+                                payoutUpdatedAt: serverTimestamp(),
+                              });
+                            } catch (err) {
+                              console.error("Failed to save payout notes:", err);
+                            } finally {
+                              setSavingTeamStatusId("");
+                            }
+                          }}
+                          className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                          placeholder="Optional notes about payout timing, holds, or reconciliation"
+                        />
+                      </label>
                     </div>
                   ))}
                 </div>
@@ -658,6 +789,48 @@ export default function Accounting() {
                   Standard ACH is the best default when payout operations go live. Check and wire usually create extra handling cost and should remain opt-in.
                 </div>
 
+                {role !== "coach" && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          Historical Fee Backfill
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Populate exact Stripe/platform/net fee fields for older donations that predate the accounting webhook update.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={backfillingFees || !resolvedOrgId}
+                        onClick={async () => {
+                          try {
+                            setBackfillingFees(true);
+                            setBackfillStatus("");
+                            const fn = httpsCallable(functions, "backfillDonationFees");
+                            const result = await fn({ orgId: resolvedOrgId, limit: 150 });
+                            const data = result?.data || {};
+                            setBackfillStatus(
+                              `Backfill complete. Scanned ${data.scanned || 0}, updated ${data.updated || 0}, failed ${Array.isArray(data.failed) ? data.failed.length : 0}.`
+                            );
+                          } catch (err) {
+                            console.error("Failed to backfill donation fees:", err);
+                            setBackfillStatus("Backfill failed. Check function logs and retry.");
+                          } finally {
+                            setBackfillingFees(false);
+                          }
+                        }}
+                        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                      >
+                        {backfillingFees ? "Backfilling..." : "Backfill Historical Fees"}
+                      </button>
+                    </div>
+                    {backfillStatus ? (
+                      <p className="mt-2 text-xs text-slate-600">{backfillStatus}</p>
+                    ) : null}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-slate-500">{saveStatus || "Preferences save to your account profile."}</span>
                   <button
@@ -711,10 +884,10 @@ export default function Accounting() {
                 </div>
                 <button
                   type="button"
-                  disabled={!ledgerRows.length}
+                  disabled={!filteredLedgerRows.length}
                   onClick={() =>
                     exportToCSV(
-                      ledgerRows.map((row) => ({
+                      filteredLedgerRows.map((row) => ({
                         createdAt: row.createdAtLabel,
                         donorName: row.donorName,
                         donorEmail: row.donorEmail,
@@ -725,6 +898,7 @@ export default function Accounting() {
                         platformFee: centsToCurrency(row.platformFeeCents),
                         netAmount: centsToCurrency(row.netAmountCents),
                         payoutStatus: row.payoutStatus,
+                        exactFeeFields: row.hasExactFees ? "yes" : "estimated",
                       })),
                       `accounting_ledger_${resolvedOrgId || "org"}.csv`
                     )
@@ -734,9 +908,62 @@ export default function Accounting() {
                   Export CSV
                 </button>
               </div>
-              {ledgerRows.length === 0 ? (
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                    Campaign
+                  </span>
+                  <select
+                    value={ledgerCampaignFilter}
+                    onChange={(e) => setLedgerCampaignFilter(e.target.value)}
+                    className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    <option value="all">All campaigns</option>
+                    {campaignSummaries.map((campaign) => (
+                      <option key={campaign.id} value={campaign.id}>
+                        {campaign.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                    Team
+                  </span>
+                  <select
+                    value={ledgerTeamFilter}
+                    onChange={(e) => setLedgerTeamFilter(e.target.value)}
+                    className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    <option value="all">All teams</option>
+                    {teamPayoutSummaries.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                    Payout Status
+                  </span>
+                  <select
+                    value={ledgerPayoutStatusFilter}
+                    onChange={(e) => setLedgerPayoutStatusFilter(e.target.value)}
+                    className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="accruing">Accruing</option>
+                    <option value="ready_for_review">Ready for Review</option>
+                    <option value="approved">Approved</option>
+                    <option value="paid">Paid</option>
+                    <option value="on_hold">On Hold</option>
+                  </select>
+                </label>
+              </div>
+              {filteredLedgerRows.length === 0 ? (
                 <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  No paid donation ledger rows yet.
+                  No ledger rows match the current filters.
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto">
@@ -751,10 +978,11 @@ export default function Accounting() {
                         <th className="px-3 py-2 font-semibold text-right">Stripe</th>
                         <th className="px-3 py-2 font-semibold text-right">Platform</th>
                         <th className="px-3 py-2 font-semibold text-right">Net</th>
+                        <th className="px-3 py-2 font-semibold text-right">Exact</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                      {ledgerRows.slice(0, 25).map((row) => (
+                      {filteredLedgerRows.slice(0, 50).map((row) => (
                         <tr key={row.id}>
                           <td className="px-3 py-2 text-slate-600">{row.createdAtLabel}</td>
                           <td className="px-3 py-2">
@@ -774,6 +1002,9 @@ export default function Accounting() {
                           </td>
                           <td className="px-3 py-2 text-right font-semibold text-emerald-700">
                             {centsToCurrency(row.netAmountCents)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs text-slate-500">
+                            {row.hasExactFees ? "Yes" : "Est."}
                           </td>
                         </tr>
                       ))}
@@ -801,6 +1032,18 @@ export default function Accounting() {
       </div>
     </div>
   );
+}
+
+function toDateInputValue(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value.slice(0, 10);
+  if (value?.toDate) {
+    return value.toDate().toISOString().slice(0, 10);
+  }
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  return "";
 }
 
 function SummaryCard({ label, value, detail }) {

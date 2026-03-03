@@ -97,6 +97,58 @@ function calculatePlatformFeeCents(amountCents, rate) {
   return Math.round(enforceCents(amountCents) * normalizedRate);
 }
 
+async function buildExactDonationFeeFields({
+  stripe,
+  paymentIntentId,
+  amountCents,
+  platformFeeRate,
+}) {
+  const normalizedPlatformFeeRate = normalizePercent(platformFeeRate);
+  let latestCharge = null;
+  let balanceTransaction = null;
+
+  if (paymentIntentId) {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge.balance_transaction"],
+    });
+    latestCharge =
+      paymentIntent?.latest_charge &&
+      typeof paymentIntent.latest_charge === "object"
+        ? paymentIntent.latest_charge
+        : null;
+    balanceTransaction =
+      latestCharge?.balance_transaction &&
+      typeof latestCharge.balance_transaction === "object"
+        ? latestCharge.balance_transaction
+        : null;
+  }
+
+  const stripeFeeCents = enforceCents(balanceTransaction?.fee || 0);
+  const stripeNetCents = enforceCents(balanceTransaction?.net || 0);
+  const platformFeeCents = calculatePlatformFeeCents(
+    amountCents,
+    normalizedPlatformFeeRate
+  );
+  const processingFeeCents = stripeFeeCents;
+  const totalFeeCents = stripeFeeCents + platformFeeCents;
+  const netAmountCents =
+    stripeNetCents > 0
+      ? stripeNetCents - platformFeeCents
+      : amountCents - totalFeeCents;
+
+  return {
+    stripeFeeCents,
+    processingFeeCents,
+    platformFeeRate: normalizedPlatformFeeRate,
+    platformFeeCents,
+    totalFeeCents,
+    netAmountCents,
+    stripeChargeId: latestCharge?.id || null,
+    stripeBalanceTransactionId: balanceTransaction?.id || null,
+    hasExactStripeFee: !!balanceTransaction?.id,
+  };
+}
+
 /* ============================================================
    MAILGUN HTTP API (PREFERRED)
    ============================================================ */
@@ -1781,18 +1833,15 @@ exports.stripeWebhook = onRequest(
             campaignData.platformFeePct != null
               ? campaignData.platformFeePct
               : campaignData.feePct;
-          const stripeFeeCents = enforceCents(balanceTransaction?.fee || 0);
-          const stripeNetCents = enforceCents(balanceTransaction?.net || 0);
-          const platformFeeCents = calculatePlatformFeeCents(
+          const exactFeeFields = await buildExactDonationFeeFields({
+            stripe,
+            paymentIntentId:
+              typeof session.payment_intent === "string"
+                ? session.payment_intent
+                : session.payment_intent?.id || "",
             amountCents,
-            platformFeeRate
-          );
-          const processingFeeCents = stripeFeeCents;
-          const totalFeeCents = stripeFeeCents + platformFeeCents;
-          const netAmountCents =
-            stripeNetCents > 0
-              ? stripeNetCents - platformFeeCents
-              : amountCents - totalFeeCents;
+            platformFeeRate,
+          });
 
           const athleteExists = !!athleteSnap?.exists;
           const athleteData = athleteSnap?.data() || {};
@@ -1822,20 +1871,20 @@ exports.stripeWebhook = onRequest(
                 currency: session.currency || "usd",
                 status: "paid",
                 grossAmountCents: amountCents,
-                stripeFeeCents,
-                processingFeeCents,
-                platformFeeRate: normalizePercent(platformFeeRate),
-                platformFeeCents,
-                totalFeeCents,
-                netAmountCents,
+                stripeFeeCents: exactFeeFields.stripeFeeCents,
+                processingFeeCents: exactFeeFields.processingFeeCents,
+                platformFeeRate: exactFeeFields.platformFeeRate,
+                platformFeeCents: exactFeeFields.platformFeeCents,
+                totalFeeCents: exactFeeFields.totalFeeCents,
+                netAmountCents: exactFeeFields.netAmountCents,
                 stripeEventId: event.id,
                 stripeEventType: event.type,
                 stripePaymentIntent:
                   typeof session.payment_intent === "string"
                     ? session.payment_intent
                     : session.payment_intent?.id || null,
-                stripeChargeId: latestCharge?.id || null,
-                stripeBalanceTransactionId: balanceTransaction?.id || null,
+                stripeChargeId: exactFeeFields.stripeChargeId,
+                stripeBalanceTransactionId: exactFeeFields.stripeBalanceTransactionId,
                 stripeCustomer: session.customer || null,
                 stripeLivemode: !!event.livemode,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1965,8 +2014,11 @@ exports.stripeWebhook = onRequest(
 
         logger.info("stripeWebhook: donation saved", {
           sessionId: session.id,
-          stripeFeeCents: enforceCents(balanceTransaction?.fee || 0),
-          hasExactStripeFee: !!balanceTransaction?.id,
+          stripeFeeCents:
+            typeof session.payment_intent === "string" ||
+            session.payment_intent?.id
+              ? "stored"
+              : "missing-payment-intent",
           campaignArtifacts: shouldWriteCampaignArtifacts,
           athleteArtifacts: shouldWriteAthleteArtifacts,
         });
@@ -2249,6 +2301,133 @@ exports.dailyDonationRollups = onSchedule(
       orgsProcessed: rollups.size,
       dateKey,
     });
+  }
+);
+
+exports.backfillDonationFees = onCall(
+  {
+    secrets: ["STRIPE_SECRET_KEY"],
+    timeoutSeconds: 120,
+    memory: "512MiB",
+  },
+  async (request) => {
+    const profile = await assertAdmin(request);
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const db = admin.firestore();
+
+    const requestedOrgId = String(request?.data?.orgId || profile.orgId || "").trim();
+    const limitRaw = Number(request?.data?.limit || 100);
+    const limit = Math.max(1, Math.min(250, Math.round(limitRaw)));
+
+    if (!requestedOrgId) {
+      throw new HttpsError("failed-precondition", "orgId is required");
+    }
+    if (profile.role !== "super-admin" && requestedOrgId !== profile.orgId) {
+      throw new HttpsError(
+        "permission-denied",
+        "Admins may only backfill donations in their own org"
+      );
+    }
+
+    const [donationsSnap, campaignsSnap] = await Promise.all([
+      db.collection("donations").where("orgId", "==", requestedOrgId).limit(limit).get(),
+      db.collection("campaigns").where("orgId", "==", requestedOrgId).get(),
+    ]);
+
+    const campaignById = new Map(
+      campaignsSnap.docs.map((docSnap) => [docSnap.id, docSnap.data() || {}])
+    );
+
+    let scanned = 0;
+    let updated = 0;
+    const skipped = [];
+    const failed = [];
+
+    for (const docSnap of donationsSnap.docs) {
+      scanned += 1;
+      const donation = docSnap.data() || {};
+      const needsBackfill =
+        donation.stripeFeeCents == null ||
+        donation.platformFeeCents == null ||
+        donation.netAmountCents == null ||
+        donation.stripeBalanceTransactionId == null;
+
+      if (!needsBackfill) {
+        skipped.push({ id: docSnap.id, reason: "already-populated" });
+        continue;
+      }
+
+      const paymentIntentId = String(donation.stripePaymentIntent || "").trim();
+      if (!paymentIntentId) {
+        skipped.push({ id: docSnap.id, reason: "missing-payment-intent" });
+        continue;
+      }
+
+      const amountCents = enforceCents(
+        donation.grossAmountCents != null ? donation.grossAmountCents : donation.amount
+      );
+      if (!amountCents) {
+        skipped.push({ id: docSnap.id, reason: "missing-amount" });
+        continue;
+      }
+
+      const campaign = campaignById.get(String(donation.campaignId || "")) || {};
+      const platformFeeRate =
+        campaign.platformFeePct != null ? campaign.platformFeePct : campaign.feePct;
+
+      try {
+        const exactFeeFields = await buildExactDonationFeeFields({
+          stripe,
+          paymentIntentId,
+          amountCents,
+          platformFeeRate,
+        });
+
+        await docSnap.ref.set(
+          {
+            grossAmountCents: amountCents,
+            stripeFeeCents: exactFeeFields.stripeFeeCents,
+            processingFeeCents: exactFeeFields.processingFeeCents,
+            platformFeeRate: exactFeeFields.platformFeeRate,
+            platformFeeCents: exactFeeFields.platformFeeCents,
+            totalFeeCents: exactFeeFields.totalFeeCents,
+            netAmountCents: exactFeeFields.netAmountCents,
+            stripeChargeId: exactFeeFields.stripeChargeId,
+            stripeBalanceTransactionId: exactFeeFields.stripeBalanceTransactionId,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        updated += 1;
+      } catch (err) {
+        logger.error("backfillDonationFees: failed donation", {
+          donationId: docSnap.id,
+          message: err?.message,
+        });
+        failed.push({
+          id: docSnap.id,
+          reason: err?.message || "unknown",
+        });
+      }
+    }
+
+    logger.info("backfillDonationFees: complete", {
+      orgId: requestedOrgId,
+      scanned,
+      updated,
+      skipped: skipped.length,
+      failed: failed.length,
+    });
+
+    return {
+      ok: true,
+      orgId: requestedOrgId,
+      scanned,
+      updated,
+      skipped,
+      failed,
+    };
   }
 );
 
