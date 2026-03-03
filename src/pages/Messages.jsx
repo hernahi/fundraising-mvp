@@ -387,6 +387,43 @@ export default function Messages() {
     counts.total,
     orgDripEnabled,
   ]);
+  const athleteReadinessSteps = useMemo(
+    () => [
+      {
+        key: "campaign",
+        label: "Campaign assigned",
+        done: Boolean(athleteRecord?.campaignId),
+        detail: athleteRecord?.campaignId
+          ? "Ready for fundraising outreach"
+          : "Coach/admin still needs to assign a campaign",
+        actionTo: athleteId ? `/athletes/${athleteId}` : "/athletes",
+        actionLabel: "Open My Athlete Page",
+      },
+      {
+        key: "contacts",
+        label: "Supporters added",
+        done: counts.total >= 20,
+        detail:
+          counts.total >= 20
+            ? `${counts.total} contacts ready`
+            : `${counts.total}/20 contacts added`,
+        actionTo: "#contacts",
+        actionLabel: "Add Contacts",
+      },
+      {
+        key: "outreach",
+        label: "Outreach sent",
+        done: messageStats.total > 0,
+        detail:
+          messageStats.total > 0
+            ? `${messageStats.total} message${messageStats.total === 1 ? "" : "s"} sent`
+            : "No outreach sent yet",
+        actionTo: "#drip-campaign",
+        actionLabel: "Send Message",
+      },
+    ],
+    [athleteId, athleteRecord?.campaignId, counts.total, messageStats.total]
+  );
 
   const messageStats = useMemo(() => {
     const now = Date.now();
@@ -692,6 +729,66 @@ export default function Messages() {
         ) : null}
       </div>
 
+      {isAthlete && (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">
+                Fundraising Setup
+              </h2>
+              <p className="text-sm text-slate-500">
+                Work top to bottom so you do not get stuck: campaign, contacts, then outreach.
+              </p>
+            </div>
+            <Link
+              to={athleteId ? `/athletes/${athleteId}` : "/athletes"}
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Open My Athlete Page
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {athleteReadinessSteps.map((step) => (
+              <div
+                key={step.key}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium text-slate-800">
+                    {step.label}
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                      step.done
+                        ? "bg-green-100 text-green-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {step.done ? "Done" : "Next"}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">{step.detail}</p>
+                {step.actionTo.startsWith("#") ? (
+                  <a
+                    href={step.actionTo}
+                    className="mt-3 inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    {step.actionLabel}
+                  </a>
+                ) : (
+                  <Link
+                    to={step.actionTo}
+                    className="mt-3 inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    {step.actionLabel}
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-50/70 px-3 py-3 shadow-sm">
           <div className="text-[11px] uppercase tracking-wide text-slate-500">
@@ -818,7 +915,7 @@ export default function Messages() {
       {isAthlete && (
         <div className="grid gap-6 md:gap-7 lg:grid-cols-[1.2fr_1fr]">
           <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+            <div id="contacts" className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
               <div className="flex flex-col gap-3 md:gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-800">
@@ -1223,7 +1320,7 @@ export default function Messages() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+            <div id="drip-campaign" className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
               <div className="flex flex-col gap-3 md:gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-800">

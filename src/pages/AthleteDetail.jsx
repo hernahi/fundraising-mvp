@@ -33,6 +33,8 @@ export default function AthleteDetail() {
   const [savingMessage, setSavingMessage] = useState(false);
   const [messageDirty, setMessageDirty] = useState(false);
   const [athleteDonations, setAthleteDonations] = useState([]);
+  const [contactCount, setContactCount] = useState(0);
+  const [messageCount, setMessageCount] = useState(0);
   const [campaigns, setCampaigns] = useState([]);
   const [assignCampaignId, setAssignCampaignId] = useState("");
   const [savingCampaign, setSavingCampaign] = useState(false);
@@ -141,6 +143,41 @@ export default function AthleteDetail() {
     return () => unsubscribe();
   }, [athleteId, profile?.orgId]);
 
+  useEffect(() => {
+    if (!isSelf || !profile?.orgId || !athleteId) {
+      setContactCount(0);
+      setMessageCount(0);
+      return;
+    }
+
+    async function loadAthleteReadiness() {
+      try {
+        const [contactsSnap, messagesSnap] = await Promise.all([
+          getDocs(
+            query(
+              collection(db, "athlete_contacts"),
+              where("orgId", "==", profile.orgId),
+              where("athleteId", "==", athleteId)
+            )
+          ),
+          getDocs(
+            query(
+              collection(db, "messages"),
+              where("orgId", "==", profile.orgId),
+              where("athleteId", "==", athleteId)
+            )
+          ),
+        ]);
+        setContactCount(contactsSnap.size || 0);
+        setMessageCount(messagesSnap.size || 0);
+      } catch (err) {
+        console.error("Failed to load athlete readiness:", err);
+      }
+    }
+
+    loadAthleteReadiness();
+  }, [athleteId, isSelf, profile?.orgId]);
+
   const donateLink = useMemo(() => {
     if (!athlete?.campaignId) return "";
     if (typeof window === "undefined") return "";
@@ -148,6 +185,46 @@ export default function AthleteDetail() {
   }, [athlete?.campaignId, athlete?.id]);
 
   const assignedCampaign = campaigns.find((c) => c.id === athlete?.campaignId);
+  const goalProgress = goalAmount > 0
+    ? Math.min(
+        100,
+        Math.round((Number(computedStats.totalRaised || 0) / goalAmount) * 100)
+      )
+    : null;
+  const readinessSteps = [
+    {
+      key: "campaign",
+      label: "Join your campaign",
+      done: Boolean(athlete?.campaignId),
+      detail: athlete?.campaignId
+        ? assignedCampaign?.name || assignedCampaign?.title || "Campaign assigned"
+        : "Waiting for coach/admin assignment",
+      actionLabel: "View profile setup",
+      actionTo: `/athletes/${athlete.id}`,
+    },
+    {
+      key: "contacts",
+      label: "Add supporters",
+      done: contactCount >= 20,
+      detail:
+        contactCount >= 20
+          ? `${contactCount} contacts ready`
+          : `${contactCount}/20 contacts added`,
+      actionLabel: "Open Messages",
+      actionTo: "/messages",
+    },
+    {
+      key: "outreach",
+      label: "Send outreach",
+      done: messageCount > 0,
+      detail:
+        messageCount > 0
+          ? `${messageCount} message${messageCount === 1 ? "" : "s"} sent`
+          : "No outreach sent yet",
+      actionLabel: "Open Messages",
+      actionTo: "/messages",
+    },
+  ];
 
   const totalRaisedCents = athleteDonations.reduce(
     (sum, donor) => sum + Number(donor.amount || 0),
@@ -234,6 +311,36 @@ export default function AthleteDetail() {
                 </a>
               )}
             </div>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {readinessSteps.map((step) => (
+              <div
+                key={step.key}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium text-slate-800">
+                    {step.label}
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                      step.done
+                        ? "bg-green-100 text-green-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {step.done ? "Done" : "Next"}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">{step.detail}</p>
+                <Link
+                  to={step.actionTo}
+                  className="mt-3 inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  {step.actionLabel}
+                </Link>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -363,14 +470,7 @@ export default function AthleteDetail() {
               />
               <StatCard
                 label="Goal Progress"
-                value={
-                  goalAmount > 0
-                    ? `${Math.min(
-                        100,
-                        Math.round((Number(computedStats.totalRaised || 0) / goalAmount) * 100)
-                      )}%`
-                    : "No Goal"
-                }
+                value={goalProgress == null ? "No Goal" : `${goalProgress}%`}
               />
             </>
           ) : (
