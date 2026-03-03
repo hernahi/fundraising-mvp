@@ -202,6 +202,39 @@ export default function AthleteDetail() {
         </Link>
       </div>
 
+      {isSelf && (
+        <div className="mb-8 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 md:px-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">
+                My Fundraising Flow
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Keep it simple: confirm your campaign, add supporters, send outreach, and track donations here.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Link
+                to="/messages"
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 text-center"
+              >
+                Open Messages
+              </Link>
+              {donateLink && (
+                <a
+                  href={donateLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 text-center"
+                >
+                  View Donation Page
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Athlete Card */}
       <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7 grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
         {/* Avatar */}
@@ -273,6 +306,11 @@ export default function AthleteDetail() {
                 {assignedCampaign?.name || assignedCampaign?.title || "Not assigned"}
               </p>
             )}
+            {isSelf && !athlete?.campaignId && (
+              <p className="mt-2 text-xs text-amber-600">
+                Your coach or admin needs to assign you to a campaign before you can send fundraising outreach.
+              </p>
+            )}
           </div>
 
           <div>
@@ -322,7 +360,7 @@ export default function AthleteDetail() {
           <div className="min-w-0 bg-white rounded-xl shadow p-4 md:p-6">
             <h2 className="text-xl font-semibold mb-2">Invite Donors</h2>
             <p className="text-sm text-gray-600 mb-4">
-              Send an invite to supporters. Use one email per line.
+              Add supporter emails below, personalize the note, then send outreach. Use one email per line.
             </p>
             <textarea
               className="w-full min-h-[120px] rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"
@@ -405,7 +443,7 @@ export default function AthleteDetail() {
 
             {donateLink && (
               <div className="mt-4 min-w-0 text-xs text-slate-500">
-                Share link:{" "}
+                Donation page:{" "}
                 <a
                   className="inline-block max-w-full break-all text-blue-600 hover:underline"
                   href={donateLink}
@@ -420,7 +458,7 @@ export default function AthleteDetail() {
           <div className="min-w-0 bg-white rounded-xl shadow p-4 md:p-6">
             <h2 className="text-xl font-semibold mb-2">My Donors</h2>
             <p className="text-sm text-gray-600 mb-4">
-              Total raised: ${totalRaisedDollars}
+              Track who has already supported you. Total raised: ${totalRaisedDollars}
             </p>
             {athleteDonations.length === 0 ? (
               <p className="text-sm text-gray-500">

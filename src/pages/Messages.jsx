@@ -825,7 +825,7 @@ export default function Messages() {
                     Contacts
                   </h2>
                   <p className="text-sm text-slate-500">
-                    Add at least 20 contacts to start your drip campaign.
+                    Start here: add supporter contacts, clean up bounced emails, then send outreach.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 md:gap-3 sm:justify-end">
@@ -1230,8 +1230,7 @@ export default function Messages() {
                     Invite Message
                   </h2>
                   <p className="text-sm text-slate-500">
-                    You can edit the template. Keep the core message intact for
-                    best results.
+                    Next step: choose the message phase, personalize it, and keep the main structure intact for best results.
                   </p>
                 </div>
                 <button
@@ -1299,7 +1298,7 @@ export default function Messages() {
                 </span>
               </div>
               <p className="text-sm text-slate-500 mt-1">
-                Select recipients and the message you want to send.
+                Final step: confirm recipients, review the selected message, then send or let auto-send handle the next phase.
               </p>
 
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
@@ -1407,6 +1406,12 @@ export default function Messages() {
                   Add at least 20 contacts to start sending. Test sends are
                   limited to 3 recipients.
                 </p>
+              )}
+
+              {isAthlete && (
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                  Recommended flow: add contacts first, fix any bounced emails, then send your next message phase.
+                </div>
               )}
             </div>
           </div>
