@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { FaArrowLeft } from "react-icons/fa";
 
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
@@ -104,6 +105,12 @@ export default function AddTeam() {
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-8">
+      <Link
+        to="/teams"
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
+      >
+        <FaArrowLeft /> Back to Teams
+      </Link>
 
       {/* PAGE HEADER */}
       <div>

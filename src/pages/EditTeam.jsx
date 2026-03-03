@@ -148,7 +148,7 @@ export default function EditTeam() {
         to={`/teams/${teamId}`}
         className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
       >
-        <FaArrowLeft /> Back to Team
+        <FaArrowLeft /> Back to Team Details
       </Link>
 
       {/* PAGE HEADER */}
