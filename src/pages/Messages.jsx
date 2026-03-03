@@ -387,6 +387,31 @@ export default function Messages() {
     counts.total,
     orgDripEnabled,
   ]);
+  const messageStats = useMemo(() => {
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    let email = 0;
+    let sms = 0;
+    let week = 0;
+
+    messages.forEach((m) => {
+      const channel = String(m.channel || "").toLowerCase();
+      if (channel === "email") email += 1;
+      if (channel === "sms") sms += 1;
+
+      const ts =
+        m.createdAt?.toDate?.()?.getTime?.() ||
+        (m.createdAt?.seconds ? m.createdAt.seconds * 1000 : 0);
+      if (ts >= weekAgo) week += 1;
+    });
+
+    return {
+      total: messages.length,
+      email,
+      sms,
+      week,
+    };
+  }, [messages]);
   const athleteReadinessSteps = useMemo(
     () => [
       {
@@ -424,32 +449,6 @@ export default function Messages() {
     ],
     [athleteId, athleteRecord?.campaignId, counts.total, messageStats.total]
   );
-
-  const messageStats = useMemo(() => {
-    const now = Date.now();
-    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-    let email = 0;
-    let sms = 0;
-    let week = 0;
-
-    messages.forEach((m) => {
-      const channel = String(m.channel || "").toLowerCase();
-      if (channel === "email") email += 1;
-      if (channel === "sms") sms += 1;
-
-      const ts =
-        m.createdAt?.toDate?.()?.getTime?.() ||
-        (m.createdAt?.seconds ? m.createdAt.seconds * 1000 : 0);
-      if (ts >= weekAgo) week += 1;
-    });
-
-    return {
-      total: messages.length,
-      email,
-      sms,
-      week,
-    };
-  }, [messages]);
 
   const filteredMessages = useMemo(() => {
     const now = Date.now();

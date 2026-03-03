@@ -185,6 +185,33 @@ export default function AthleteDetail() {
   }, [athlete?.campaignId, athlete?.id]);
 
   const assignedCampaign = campaigns.find((c) => c.id === athlete?.campaignId);
+  const totalRaisedCents = athleteDonations.reduce(
+    (sum, donor) => sum + Number(donor.amount || 0),
+    0
+  );
+  const totalRaisedDollars = (totalRaisedCents / 100).toFixed(2);
+  const goalAmount = Number(athlete?.goal || 0);
+  const computedStats = useMemo(() => {
+    const uniqueCampaigns = new Set();
+    const uniqueSupporters = new Set();
+    let totalAmount = 0;
+
+    for (const d of athleteDonations) {
+      if (d.campaignId) uniqueCampaigns.add(d.campaignId);
+      const supporterKey =
+        d.donorEmail ||
+        d.donorName ||
+        d.id;
+      uniqueSupporters.add(supporterKey);
+      totalAmount += Number(d.amount || 0);
+    }
+
+    return {
+      campaignCount: uniqueCampaigns.size,
+      supporters: uniqueSupporters.size,
+      totalRaised: (totalAmount / 100).toFixed(2),
+    };
+  }, [athleteDonations]);
   const goalProgress = goalAmount > 0
     ? Math.min(
         100,
@@ -225,34 +252,6 @@ export default function AthleteDetail() {
       actionTo: "/messages",
     },
   ];
-
-  const totalRaisedCents = athleteDonations.reduce(
-    (sum, donor) => sum + Number(donor.amount || 0),
-    0
-  );
-  const totalRaisedDollars = (totalRaisedCents / 100).toFixed(2);
-  const goalAmount = Number(athlete?.goal || 0);
-  const computedStats = useMemo(() => {
-    const uniqueCampaigns = new Set();
-    const uniqueSupporters = new Set();
-    let totalAmount = 0;
-
-    for (const d of athleteDonations) {
-      if (d.campaignId) uniqueCampaigns.add(d.campaignId);
-      const supporterKey =
-        d.donorEmail ||
-        d.donorName ||
-        d.id;
-      uniqueSupporters.add(supporterKey);
-      totalAmount += Number(d.amount || 0);
-    }
-
-    return {
-      campaignCount: uniqueCampaigns.size,
-      supporters: uniqueSupporters.size,
-      totalRaised: (totalAmount / 100).toFixed(2),
-    };
-  }, [athleteDonations]);
 
   if (loading) return <div className="p-4 md:p-6">Loading athlete...</div>;
   if (!athlete) return <div className="p-4 md:p-6">Athlete not found.</div>;
