@@ -61,18 +61,20 @@ export default function EditAthlete() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <Link
-          to={`/athletes/${athlete.id}`}
-          className="flex items-center gap-2 text-gray-700 hover:text-black"
-        >
-          <FaArrowLeft /> Back to Athlete
-        </Link>
+      <Link
+        to={`/athletes/${athlete.id}`}
+        className="inline-flex items-center gap-2 text-gray-700 hover:text-black"
+      >
+        <FaArrowLeft /> Back to Athlete
+      </Link>
 
+      <div className="mb-6">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <FaUser /> Edit Athlete
         </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Update the athlete profile details shown across the app.
+        </p>
       </div>
 
       <form
@@ -160,13 +162,21 @@ export default function EditAthlete() {
         </div>
 
         {/* Save */}
-        <button
-          type="submit"
-          disabled={saving}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition disabled:opacity-50"
-        >
-          <FaSave /> {saving ? "Saving..." : "Save Changes"}
-        </button>
+        <div className="flex justify-end gap-3">
+          <Link
+            to={`/athletes/${athlete.id}`}
+            className="px-4 py-3 bg-gray-200 rounded-lg hover:bg-gray-300 text-slate-700"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={saving}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition disabled:opacity-50"
+          >
+            <FaSave /> {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
       </form>
     </div>
   );

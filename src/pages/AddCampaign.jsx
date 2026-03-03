@@ -70,11 +70,14 @@ export default function AddCampaign() {
         <FaArrowLeft /> Back to Campaigns
       </Link>
 
-      <h1 className="text-2xl font-bold text-slate-800 border-b-2 border-yellow-400 pb-1">
-        New Campaign
-      </h1>
+      <div className="mb-4">
+        <h1 className="text-3xl font-bold text-slate-800">New Campaign</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Set up a campaign and prepare it for team fundraising.
+        </p>
+      </div>
 
-      <form onSubmit={submit} className="mt-4 bg-white p-5 rounded-xl shadow space-y-4 max-w-lg">
+      <form onSubmit={submit} className="max-w-lg space-y-4 rounded-xl bg-white p-6 shadow">
 
         <div>
           <label className="text-sm text-slate-600">Campaign Name</label>
@@ -82,7 +85,7 @@ export default function AddCampaign() {
             name="name"
             value={form.name}
             onChange={onChange}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-yellow-300"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
             placeholder="Downey Football 2025"
           />
         </div>
@@ -93,7 +96,7 @@ export default function AddCampaign() {
             name="org"
             value={form.org}
             onChange={onChange}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-yellow-300"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
             placeholder="Downey High School"
           />
         </div>
@@ -105,7 +108,7 @@ export default function AddCampaign() {
             value={form.goal}
             onChange={onChange}
             type="number"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-yellow-300"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
             placeholder="10000"
           />
         </div>
@@ -116,7 +119,7 @@ export default function AddCampaign() {
             name="description"
             value={form.description}
             onChange={onChange}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 h-28 focus:ring-2 focus:ring-yellow-300"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 h-28 focus:ring-2 focus:ring-blue-200"
             placeholder="Help support our season..."
           />
         </div>
@@ -127,7 +130,7 @@ export default function AddCampaign() {
             name="videoUrl"
             value={form.videoUrl}
             onChange={onChange}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-yellow-300"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
             placeholder="https://youtu.be/VIDEO_ID"
           />
         </div>
@@ -138,7 +141,7 @@ export default function AddCampaign() {
             name="imageURL"
             value={form.imageURL}
             onChange={onChange}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-yellow-300"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
             placeholder="/campaigns/your-image.jpg"
           />
         </div>
@@ -159,13 +162,21 @@ export default function AddCampaign() {
           Make this campaign public (donation page visible)
         </label>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-yellow-400 text-slate-900 font-semibold px-6 py-2 rounded-lg hover:brightness-110 disabled:opacity-60"
-        >
-          {loading ? "Creating…" : "Create Campaign"}
-        </button>
+        <div className="flex justify-end gap-3 pt-2">
+          <Link
+            to="/campaigns"
+            className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-slate-700"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-6 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
+          >
+            {loading ? "Creating..." : "Create Campaign"}
+          </button>
+        </div>
       </form>
     </div>
   );

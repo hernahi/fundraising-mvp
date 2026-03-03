@@ -101,7 +101,12 @@ export default function EditCampaign() {
       </Link>
 
       {/* Page title */}
-      <h1 className="text-3xl font-bold text-gray-800">Edit Campaign</h1>
+      <div>
+        <h1 className="text-3xl font-bold text-gray-800">Edit Campaign</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Update the campaign content, visibility, and schedule.
+        </p>
+      </div>
 
       {/* Form container */}
       <div className="bg-white p-6 rounded-xl shadow space-y-6">
@@ -227,7 +232,13 @@ export default function EditCampaign() {
         </div>
 
         {/* Save button */}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-3">
+          <Link
+            to={`/campaigns/${campaignId}`}
+            className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-slate-700"
+          >
+            Cancel
+          </Link>
           <button
             onClick={handleSave}
             disabled={saving}

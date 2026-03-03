@@ -88,13 +88,16 @@ export default function AddDonor() {
         <FaArrowLeft /> Back to Donors
       </Link>
 
-      <h1 className="text-2xl font-bold text-slate-800 border-b-2 border-yellow-400 pb-1">
-        New Donor
-      </h1>
+      <div className="mb-4">
+        <h1 className="text-3xl font-bold text-slate-800">New Donor</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Add a donor record to your organization.
+        </p>
+      </div>
 
       <form
         onSubmit={submit}
-        className="mt-4 space-y-4 max-w-lg bg-white p-4 rounded-xl shadow"
+        className="max-w-lg space-y-4 rounded-xl bg-white p-6 shadow"
       >
         <div>
           <label className="block text-sm text-slate-600 mb-1">Full Name</label>
@@ -151,13 +154,21 @@ export default function AddDonor() {
           </p>
         </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="bg-yellow-400 hover:brightness-110 text-slate-900 font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
-        >
-          {saving ? "Saving..." : "Create Donor"}
-        </button>
+        <div className="flex justify-end gap-3 pt-2">
+          <Link
+            to="/donors"
+            className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-slate-700"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Create Donor"}
+          </button>
+        </div>
       </form>
     </div>
   );
