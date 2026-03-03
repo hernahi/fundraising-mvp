@@ -103,6 +103,9 @@ export default function Messages() {
   const [templateDraft, setTemplateDraft] = useState("");
   const [templateDirty, setTemplateDirty] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [personalNoteDraft, setPersonalNoteDraft] = useState("");
+  const [personalNoteDirty, setPersonalNoteDirty] = useState(false);
+  const [savingPersonalNote, setSavingPersonalNote] = useState(false);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState("week1a");
   const [logChannelFilter, setLogChannelFilter] = useState("all");
   const [logWindowFilter, setLogWindowFilter] = useState("all");
@@ -266,6 +269,12 @@ export default function Messages() {
     selectedTemplateKey,
     templateDirty,
   ]);
+
+  useEffect(() => {
+    if (!isAthlete) return;
+    if (personalNoteDirty) return;
+    setPersonalNoteDraft(athleteRecord?.inviteMessage || "");
+  }, [athleteRecord?.inviteMessage, isAthlete, personalNoteDirty]);
 
   const counts = useMemo(() => {
     const donated = contacts.filter((c) => c.status === "donated").length;
@@ -514,6 +523,35 @@ export default function Messages() {
       return channelOk && windowOk;
     });
   }, [logChannelFilter, logWindowFilter, messages]);
+  const athleteTemplatePreview = useMemo(() => {
+    if (!isAthlete) return templateDraft;
+
+    const athleteName =
+      athleteRecord?.name || athleteRecord?.displayName || "Your athlete profile";
+    const teamName = athleteRecord?.teamName || "your team";
+    const campaignName = athleteRecord?.campaignName || "your fundraiser";
+    const donateUrl =
+      athleteRecord?.campaignId && athleteId
+        ? `${window.location.origin}/donate/${athleteRecord.campaignId}/athlete/${athleteId}`
+        : "";
+
+    return templateDraft
+      .replace(/{{\s*athleteName\s*}}/g, athleteName)
+      .replace(/{{\s*teamName\s*}}/g, teamName)
+      .replace(/{{\s*campaignName\s*}}/g, campaignName)
+      .replace(/{{\s*donateUrl\s*}}/g, donateUrl)
+      .replace(/{{\s*personalMessage\s*}}/g, personalNoteDraft.trim());
+  }, [
+    athleteId,
+    athleteRecord?.campaignId,
+    athleteRecord?.campaignName,
+    athleteRecord?.displayName,
+    athleteRecord?.name,
+    athleteRecord?.teamName,
+    isAthlete,
+    personalNoteDraft,
+    templateDraft,
+  ]);
 
   const addContact = async () => {
     const name = contactName.trim();
@@ -656,6 +694,23 @@ export default function Messages() {
       console.error("Failed to save template:", err);
     } finally {
       setSavingTemplate(false);
+    }
+  };
+
+  const savePersonalNote = async () => {
+    if (!athleteId) return;
+    try {
+      setSavingPersonalNote(true);
+      await updateDoc(doc(db, "athletes", athleteId), {
+        inviteMessage: personalNoteDraft.trim(),
+        updatedAt: serverTimestamp(),
+      });
+      setPersonalNoteDirty(false);
+    } catch (err) {
+      console.error("Failed to save personal note:", err);
+      alert("Failed to save your note. Please try again.");
+    } finally {
+      setSavingPersonalNote(false);
     }
   };
 
@@ -1399,16 +1454,18 @@ export default function Messages() {
                     Invite Message
                   </h2>
                   <p className="text-sm text-slate-500">
-                    Next step: choose the message phase, personalize it, and keep the main structure intact for best results.
+                    The campaign message stays consistent across the team. Add a short personal note if you want to make it feel more personal for friends and family.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={resetTemplate}
-                  className="w-full sm:w-auto rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:text-slate-700 hover:bg-slate-50"
-                >
-                  Use org template
-                </button>
+                {!isAthlete && (
+                  <button
+                    type="button"
+                    onClick={resetTemplate}
+                    className="w-full sm:w-auto rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:text-slate-700 hover:bg-slate-50"
+                  >
+                    Use org template
+                  </button>
+                )}
               </div>
 
               <div className="mt-4">
@@ -1431,26 +1488,72 @@ export default function Messages() {
                 </select>
               </div>
 
-              <textarea
-                value={templateDraft}
-                onChange={(e) => {
-                  setTemplateDraft(e.target.value);
-                  setTemplateDirty(true);
-                }}
-                rows={10}
-                className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-              />
+              {isAthlete ? (
+                <>
+                  <div className="mt-4">
+                    <label className="text-xs uppercase tracking-wide text-slate-400">
+                      Personal Note (Optional)
+                    </label>
+                    <textarea
+                      value={personalNoteDraft}
+                      onChange={(e) => {
+                        setPersonalNoteDraft(e.target.value);
+                        setPersonalNoteDirty(true);
+                      }}
+                      rows={4}
+                      maxLength={280}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      placeholder="Add a short personal note for family, friends, or close supporters."
+                    />
+                    <p className="mt-2 text-xs text-slate-500">
+                      This note is added to the existing team campaign message. The base message stays consistent for everyone.
+                    </p>
+                  </div>
 
-              <div className="mt-3 flex justify-stretch sm:justify-end">
-                <button
-                  type="button"
-                  onClick={saveTemplate}
-                  disabled={savingTemplate || selectedTemplateKey === "custom"}
-                  className="w-full sm:w-auto rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                >
-                  {savingTemplate ? "Saving..." : "Save Template"}
-                </button>
-              </div>
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-xs uppercase tracking-wide text-slate-400">
+                      Message Preview
+                    </div>
+                    <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700 font-sans">
+                      {athleteTemplatePreview}
+                    </pre>
+                  </div>
+
+                  <div className="mt-3 flex justify-stretch sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={savePersonalNote}
+                      disabled={savingPersonalNote}
+                      className="w-full sm:w-auto rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      {savingPersonalNote ? "Saving..." : "Save Personal Note"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <textarea
+                    value={templateDraft}
+                    onChange={(e) => {
+                      setTemplateDraft(e.target.value);
+                      setTemplateDirty(true);
+                    }}
+                    rows={10}
+                    className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  />
+
+                  <div className="mt-3 flex justify-stretch sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={saveTemplate}
+                      disabled={savingTemplate || selectedTemplateKey === "custom"}
+                      className="w-full sm:w-auto rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      {savingTemplate ? "Saving..." : "Save Template"}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

@@ -184,6 +184,15 @@ Every gift helps cover the season and keeps the team strong.
 Donate here: {{donateUrl}}
 
 Thank you for supporting our community.`;
+const DEFAULT_LATE_CONTACT_TEMPLATE = `Hi there,
+
+I am reaching out because my team is currently fundraising for our season. Every donation helps with important costs and supports the team as we work toward our goals together.
+
+If you would like to help, your support would truly mean a lot.
+
+Donate here: {{donateUrl}}
+
+Thank you for being part of it.`;
 
 function renderInviteTemplate(template, data) {
   const base = (template || DEFAULT_DONOR_INVITE_TEMPLATE).toString();
@@ -232,7 +241,16 @@ const DRIP_SUBJECTS = {
   week3: "We are getting closer to our goal",
   week4: "Last chance to support our fundraiser",
   week5: "Final week to support our fundraiser",
+  lateIntro: "A personal fundraiser update from our team",
 };
+
+function timestampToDate(value) {
+  if (!value) return null;
+  if (typeof value?.toDate === "function") return value.toDate();
+  if (Number.isFinite(value?.seconds)) return new Date(value.seconds * 1000);
+  if (value instanceof Date) return value;
+  return null;
+}
 
 function getTimeZoneOffsetMs(date, timeZone) {
   const tzDate = new Date(date.toLocaleString("en-US", { timeZone }));
@@ -412,14 +430,24 @@ async function sendDripToContacts({
   const batch = db.batch();
   sentContacts.forEach((contact) => {
     const contactRef = db.collection("athlete_contacts").doc(contact.id);
+    const contactUpdate =
+      phase === "lateIntro"
+        ? {
+            status: "sent",
+            lateIntroPending: false,
+            lateIntroSentAt: now,
+            joinedDripAt: now,
+            updatedAt: now,
+          }
+        : {
+            status: "sent",
+            lastSentAt: now,
+            lastPhase: phase,
+            updatedAt: now,
+          };
     batch.set(
       contactRef,
-      {
-        status: "sent",
-        lastSentAt: now,
-        lastPhase: phase,
-        updatedAt: now,
-      },
+      contactUpdate,
       { merge: true }
     );
 
@@ -440,18 +468,20 @@ async function sendDripToContacts({
     });
   });
 
-  const athleteRef = db.collection("athletes").doc(athleteId);
-  batch.set(
-    athleteRef,
-    {
-      drip: {
-        lastPhaseSent: phase,
-        lastSentAt: now,
+  if (phase !== "lateIntro") {
+    const athleteRef = db.collection("athletes").doc(athleteId);
+    batch.set(
+      athleteRef,
+      {
+        drip: {
+          lastPhaseSent: phase,
+          lastSentAt: now,
+        },
+        updatedAt: now,
       },
-      updatedAt: now,
-    },
-    { merge: true }
-  );
+      { merge: true }
+    );
+  }
 
   await batch.commit();
 
@@ -984,7 +1014,7 @@ exports.sendAthleteDripMessage = onCall(
       teamName,
       campaignName,
       donateUrl,
-      personalMessage: "",
+      personalMessage: athlete.inviteMessage || "",
     });
 
     const messageSubject =
@@ -1256,50 +1286,6 @@ exports.runAthleteDrip = onSchedule(
         }
       }
 
-      if (!duePhase) {
-        if (nextPhase) {
-          await db
-            .collection("athletes")
-            .doc(athleteId)
-            .set(
-              {
-                drip: {
-                  nextPhase: nextPhase.key,
-                  nextSendAt: admin.firestore.Timestamp.fromDate(
-                    nextPhase.sendAt
-                  ),
-                },
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              },
-              { merge: true }
-            );
-        }
-        continue;
-      }
-
-      const orgTemplates = orgData.donorInviteTemplates || {};
-      const athleteTemplates = athlete.donorInviteTemplates || {};
-      const phaseTemplate =
-        athleteTemplates[duePhase.key] ||
-        orgTemplates[duePhase.key] ||
-        orgData.donorInviteTemplate ||
-        DEFAULT_DONOR_INVITE_TEMPLATE;
-
-      const donateUrl = `${orgData.frontendUrl || process.env.FRONTEND_URL || ""}/donate/${athlete.campaignId}/athlete/${athleteId}`;
-      const templateText = renderInviteTemplate(phaseTemplate, {
-        athleteName: athlete.name || athlete.displayName || "our athlete",
-        teamName: campaign.teamName || "our team",
-        campaignName: campaign.name || campaign.title || "our fundraiser",
-        donateUrl,
-        personalMessage: "",
-      });
-
-      const orgSubjects = orgData.donorInviteSubjects || {};
-      const subject =
-        orgSubjects[duePhase.key] ||
-        DRIP_SUBJECTS[duePhase.key] ||
-        "Fundraiser update";
-
       const contactsSnap = await db
         .collection("athlete_contacts")
         .where("orgId", "==", athlete.orgId)
@@ -1323,6 +1309,101 @@ exports.runAthleteDrip = onSchedule(
         });
         continue;
       }
+
+      const donateUrl = `${orgData.frontendUrl || process.env.FRONTEND_URL || ""}/donate/${athlete.campaignId}/athlete/${athleteId}`;
+      const orgTemplates = orgData.donorInviteTemplates || {};
+      const athleteTemplates = athlete.donorInviteTemplates || {};
+      const orgSubjects = orgData.donorInviteSubjects || {};
+      const athleteLastSentAt = timestampToDate(athlete?.drip?.lastSentAt);
+      const lateIntroCandidates = athlete?.drip?.lastPhaseSent
+        ? contacts.filter((contact) => {
+            if (contact.lateIntroSentAt) return false;
+            if (contact.lateIntroPending === true) return true;
+            const createdAt = timestampToDate(contact.createdAt);
+            return Boolean(athleteLastSentAt && createdAt && createdAt > athleteLastSentAt);
+          })
+        : [];
+
+      if (lateIntroCandidates.length > 0) {
+        const lateIntroTemplate =
+          athleteTemplates.lateIntro ||
+          orgTemplates.lateIntro ||
+          DEFAULT_LATE_CONTACT_TEMPLATE;
+        const lateIntroText = renderInviteTemplate(lateIntroTemplate, {
+          athleteName: athlete.name || athlete.displayName || "our athlete",
+          teamName: campaign.teamName || "our team",
+          campaignName: campaign.name || campaign.title || "our fundraiser",
+          donateUrl,
+          personalMessage: athlete.inviteMessage || "",
+        });
+        const lateIntroSubject =
+          orgSubjects.lateIntro || DRIP_SUBJECTS.lateIntro || "Fundraiser update";
+
+        try {
+          const introResult = await sendDripToContacts({
+            db,
+            orgId: athlete.orgId,
+            campaignId: athlete.campaignId,
+            athleteId,
+            contacts: lateIntroCandidates,
+            templateText: lateIntroText,
+            subject: lateIntroSubject,
+            phase: "lateIntro",
+            isAutomated: true,
+          });
+          logger.info("runAthleteDrip: sent late intro", {
+            athleteId,
+            campaignId: athlete.campaignId,
+            contacts: introResult.sentCount,
+            failedCount: introResult.failedCount,
+          });
+        } catch (err) {
+          logger.error("runAthleteDrip: late intro failed", {
+            athleteId,
+            campaignId: athlete.campaignId,
+            message: err?.message,
+            stack: err?.stack,
+          });
+        }
+      }
+
+      if (!duePhase) {
+        if (nextPhase) {
+          await db
+            .collection("athletes")
+            .doc(athleteId)
+            .set(
+              {
+                drip: {
+                  nextPhase: nextPhase.key,
+                  nextSendAt: admin.firestore.Timestamp.fromDate(
+                    nextPhase.sendAt
+                  ),
+                },
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+        }
+        continue;
+      }
+
+      const phaseTemplate =
+        athleteTemplates[duePhase.key] ||
+        orgTemplates[duePhase.key] ||
+        orgData.donorInviteTemplate ||
+        DEFAULT_DONOR_INVITE_TEMPLATE;
+      const templateText = renderInviteTemplate(phaseTemplate, {
+        athleteName: athlete.name || athlete.displayName || "our athlete",
+        teamName: campaign.teamName || "our team",
+        campaignName: campaign.name || campaign.title || "our fundraiser",
+        donateUrl,
+        personalMessage: athlete.inviteMessage || "",
+      });
+      const subject =
+        orgSubjects[duePhase.key] ||
+        DRIP_SUBJECTS[duePhase.key] ||
+        "Fundraiser update";
 
       let sendResult;
       try {
