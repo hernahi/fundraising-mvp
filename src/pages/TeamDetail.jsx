@@ -48,6 +48,10 @@ export default function TeamDetail() {
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super-admin";
   const isCoach = profile?.role === "coach";
+  const primaryActionClass =
+    "px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm text-center shadow-sm";
+  const secondaryActionClass =
+    "px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm text-center";
 
   const canManage = isAdmin; // keep strict for Phase 12.1
 
@@ -185,27 +189,27 @@ export default function TeamDetail() {
             <>
               <button
                 onClick={() => setShowAssignCoach(true)}
-                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-medium text-sm"
+                className={secondaryActionClass}
               >
                 Assign Coach
               </button>
 
               <button
                 onClick={() => setShowManageAthletes(true)}
-                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm"
+                className={secondaryActionClass}
               >
                 Manage Athletes
               </button>
             </>
           )}
 
-          <Link to={`/teams/${id}/edit`} className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm text-center shadow-sm">
+          <Link to={`/teams/${id}/edit`} className={primaryActionClass}>
             Edit Team
           </Link>
 
           <Link
             to={`/coach/invite?teamId=${encodeURIComponent(id)}&campaignId=${encodeURIComponent(activeCampaign?.id || "")}&lockCampaign=1`}
-            className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm text-center"
+            className={secondaryActionClass}
           >
             Onboard Athlete
           </Link>

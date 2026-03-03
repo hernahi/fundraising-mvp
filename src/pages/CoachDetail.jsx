@@ -125,6 +125,10 @@ export default function CoachDetail() {
     const ts = coach?.createdAt?.toDate?.();
     return ts ? ts.toLocaleDateString() : "N/A";
   }, [coach?.createdAt]);
+  const primaryActionClass =
+    "rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60";
+  const secondaryActionClass =
+    "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60";
 
   async function saveProfile() {
     if (!isAdmin || !coach) return;
@@ -332,12 +336,20 @@ export default function CoachDetail() {
           </label>
 
           {isAdmin && (
-            <div className="pt-2">
+            <div className="pt-2 flex justify-end gap-3">
+              {form.teamId && (
+                <Link
+                  to={`/teams/${form.teamId}`}
+                  className={secondaryActionClass}
+                >
+                  View Team
+                </Link>
+              )}
               <button
                 type="button"
                 onClick={saveProfile}
                 disabled={saving}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                className={primaryActionClass}
               >
                 {saving ? "Saving..." : "Save Profile"}
               </button>

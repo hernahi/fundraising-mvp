@@ -23,6 +23,10 @@ export default function CampaignDetail() {
   const navigate = useNavigate();
   const canEditTeams =
     profile?.role === "admin" || profile?.role === "super-admin";
+  const primaryActionClass =
+    "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-flex items-center justify-center gap-2 text-sm";
+  const secondaryActionClass =
+    "px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 inline-flex items-center justify-center gap-2 text-sm";
     // ---------------------------------------------------
     // Phase 12.4.3 — Derived campaign totals
     // ---------------------------------------------------
@@ -225,9 +229,25 @@ useEffect(() => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2 md:gap-3 mt-6">
               <Link
                 to={`/campaigns/${campaign.id}/edit`}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-flex items-center justify-center gap-2 text-sm"
+                className={primaryActionClass}
               >
                 <FaEdit /> Edit Campaign
+              </Link>
+
+              {canEditTeams && (
+                <button
+                  onClick={() => setShowAssignTeams(true)}
+                  className={secondaryActionClass}
+                >
+                  Assign Teams
+                </button>
+              )}
+
+              <Link
+                to={`/coach/invite?campaignId=${encodeURIComponent(campaign.id)}&lockCampaign=1`}
+                className={secondaryActionClass}
+              >
+                Add Athletes to Campaign
               </Link>
 
               <button
@@ -236,26 +256,10 @@ useEffect(() => {
                     `${window.location.origin}/donate/${campaign.id}`
                   )
                 }
-                className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 inline-flex items-center justify-center gap-2 text-sm"
+                className={secondaryActionClass}
               >
                 <FaShareAlt /> Copy Share Link
               </button>
-
-              <Link
-                to={`/coach/invite?campaignId=${encodeURIComponent(campaign.id)}&lockCampaign=1`}
-                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 inline-flex items-center justify-center gap-2 text-sm"
-              >
-                Add Athletes to Campaign
-              </Link>
-
-              {canEditTeams && (
-                <button
-                  onClick={() => setShowAssignTeams(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
-                >
-                  Assign Teams
-                </button>
-              )}
             </div>
           </div>
         </div>
