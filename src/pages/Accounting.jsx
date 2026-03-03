@@ -462,7 +462,7 @@ export default function Accounting() {
                 No paid donations found yet for this organization.
               </div>
             ) : (
-              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
                 {campaignSummaries.map((summary) => (
                   <div
                     key={summary.id}
