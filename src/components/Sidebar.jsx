@@ -34,13 +34,6 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   const [mainOpen, setMainOpen] = useState(true);
   const [orgOpen, setOrgOpen] = useState(true);
 
-  const quickStartItems = [
-    { to: "/teams", label: "1) New Team" },
-    ...(isAdmin ? [{ to: "/coaches", label: "2) Invite Coach" }] : []),
-    { to: "/coach/invite", label: isAdmin ? "3) Onboard Athlete" : "2) Onboard Athlete" },
-    { to: "/campaigns", label: isAdmin ? "4) New Campaign" : "3) New Campaign" },
-  ];
-
   const mainNavItems = useMemo(() => {
     const items = [
       {
@@ -115,26 +108,6 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
           <div className="text-lg font-semibold">Fundraising MVP</div>
           <div className="text-xs text-gray-500">{profile?.orgId}</div>
         </div>
-
-        {canManageOrg && (
-          <div className="px-4 py-3 border-b bg-slate-50/70 lg:sticky lg:top-0 lg:z-10">
-            <div className="text-xs font-semibold text-gray-600 mb-2">
-              QUICK START
-            </div>
-            <div className="grid grid-cols-1 gap-2">
-              {quickStartItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={onClose}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Navigation */}
         <nav className="mt-4 space-y-2 px-2 overflow-y-auto">
