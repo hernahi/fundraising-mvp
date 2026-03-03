@@ -227,7 +227,7 @@ export default function AthleteDetail() {
         ? assignedCampaign?.name || assignedCampaign?.title || "Campaign assigned"
         : "Waiting for coach/admin assignment",
       actionLabel: "View profile setup",
-      actionTo: `/athletes/${athlete.id}`,
+      actionTo: athleteId ? `/athletes/${athleteId}` : "/athletes",
     },
     {
       key: "contacts",
