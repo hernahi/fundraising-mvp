@@ -359,7 +359,7 @@ export default function Messages() {
 
     if (counts.total < 20) {
       return {
-        label: "Needs contacts",
+        label: "Needs 20 contacts",
         className: "bg-amber-50 border border-amber-200 text-amber-700",
       };
     }
@@ -1474,8 +1474,8 @@ export default function Messages() {
                     </p>
                     <p className="text-xs text-slate-500">
                       {orgTimeZone
-                        ? `Org time zone: ${orgTimeZone}`
-                        : "Org time zone not set yet."}
+                        ? `Org time zone: ${orgTimeZone}. Auto-send starts after 20 eligible contacts.`
+                        : "Org time zone not set yet. Auto-send starts after 20 eligible contacts."}
                     </p>
                   </div>
                   <label className="flex items-center gap-2 text-xs text-slate-600">
@@ -1568,8 +1568,7 @@ export default function Messages() {
 
               {counts.total < 20 && (
                 <p className="mt-3 text-xs text-amber-600">
-                  Add at least 20 contacts to start sending. Test sends are
-                  limited to 3 recipients.
+                  Add at least 20 eligible contacts before auto-send will start. Test sends are limited to 3 recipients.
                 </p>
               )}
 

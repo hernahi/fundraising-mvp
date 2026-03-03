@@ -1315,7 +1315,12 @@ exports.runAthleteDrip = onSchedule(
             contact.status !== "complained"
         );
 
-      if (contacts.length === 0) {
+      if (contacts.length < 20) {
+        logger.info("runAthleteDrip: waiting for minimum contacts", {
+          athleteId,
+          campaignId: athlete.campaignId,
+          eligibleContacts: contacts.length,
+        });
         continue;
       }
 
