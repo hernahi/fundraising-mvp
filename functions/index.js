@@ -273,6 +273,50 @@ function isValidEmailAddress(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function extractFirstName(name) {
+  const raw = String(name || "").trim();
+  if (!raw) return "";
+  return raw.split(/\s+/)[0] || "";
+}
+
+function applyRecipientPlaceholders(text, contact) {
+  const firstName = extractFirstName(
+    contact?.firstName || contact?.name || contact?.toName || ""
+  );
+  let output = String(text || "");
+  output = output.replace(/{{\s*(recipientFirstName|RECIPIENT_FIRST_NAME)\s*}}/g, firstName);
+  output = output.replace(
+    /{{\s*(recipientGreeting|RECIPIENT_GREETING)\s*}}/g,
+    firstName ? `Hello ${firstName},` : "Hello,"
+  );
+  output = output.replace(/Hello\s+,/g, "Hello,");
+  output = output.replace(/\n{3,}/g, "\n\n").trim();
+  return output;
+}
+
+function renderEmailHtml(text) {
+  const paragraphs = String(text || "")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  return paragraphs
+    .map(
+      (paragraph) =>
+        `<p style="margin:0 0 12px; line-height:1.5;">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`
+    )
+    .join("");
+}
+
 async function buildDripRenderPayload({ profile, athleteId, phase }) {
   const db = admin.firestore();
   const athleteSnap = await db.collection("athletes").doc(athleteId).get();
@@ -486,23 +530,23 @@ async function sendDripToContacts({
   const { client, domain } = getMailgunClient();
   const from = `Fundraising MVP <no-reply@${domain}>`;
   const now = admin.firestore.FieldValue.serverTimestamp();
-  const htmlBody = templateText
-    .split("\n")
-    .map((line) => (line ? `<p>${line}</p>` : "<br>"))
-    .join("");
 
   const sends = validContacts.map((contact) =>
-    client.messages.create(domain, {
-      from,
-      to: [contact.email],
-      subject,
-      text: templateText,
-      html: htmlBody,
-      "v:contactId": contact.id,
-      "v:athleteId": athleteId,
-      "v:campaignId": campaignId,
-      "v:orgId": orgId,
-    })
+    {
+      const personalizedText = applyRecipientPlaceholders(templateText, contact);
+      const personalizedHtml = renderEmailHtml(personalizedText);
+      return client.messages.create(domain, {
+        from,
+        to: [contact.email],
+        subject,
+        text: personalizedText,
+        html: personalizedHtml,
+        "v:contactId": contact.id,
+        "v:athleteId": athleteId,
+        "v:campaignId": campaignId,
+        "v:orgId": orgId,
+      });
+    }
   );
 
   const results = await Promise.allSettled(sends);
@@ -558,7 +602,7 @@ async function sendDripToContacts({
       to: contact.email,
       toName: contact.name || "",
       subject,
-      body: templateText,
+      body: applyRecipientPlaceholders(templateText, contact),
       channel: "email",
       phase,
       isAutomated: !!isAutomated,
@@ -951,10 +995,7 @@ exports.sendDonorInvite = onCall(
 
     const bodyHtml = `
       <div style="font-family: Arial, sans-serif; color: #0f172a;">
-        ${bodyText
-          .split("\n")
-          .map((line) => (line ? `<p>${line}</p>` : "<br>"))
-          .join("")}
+        ${renderEmailHtml(bodyText)}
         <p>
           <a href="${donateUrl}"
              style="display:inline-block;padding:12px 18px;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">
@@ -1665,10 +1706,7 @@ exports.sendTestDripEmail = onCall(
     const { client, domain } = getMailgunClient();
     const from = `Fundraising MVP <no-reply@${domain}>`;
     const testBodyText = `TEST SEND ONLY - this does not advance campaign state.\n\n${payload.bodyText}`;
-    const testHtml = testBodyText
-      .split("\n")
-      .map((line) => (line ? `<p>${line}</p>` : "<br>"))
-      .join("");
+    const testHtml = renderEmailHtml(testBodyText);
 
     try {
       await client.messages.create(domain, {
