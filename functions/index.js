@@ -293,11 +293,18 @@ function applyRecipientPlaceholders(text, contact) {
     contact?.firstName || contact?.name || contact?.toName || ""
   );
   let output = String(text || "");
-  output = output.replace(/{{\s*(recipientFirstName|RECIPIENT_FIRST_NAME)\s*}}/g, firstName);
+  output = output.replace(
+    /{{\s*(recipientFirstName|RECIPIENT_FIRST_NAME|FIRST_NAME)\s*}}/g,
+    firstName
+  );
   output = output.replace(
     /{{\s*(recipientGreeting|RECIPIENT_GREETING)\s*}}/g,
     firstName ? `Hello ${firstName},` : "Hello,"
   );
+  if (firstName) {
+    // If template uses a plain standalone greeting line, personalize it.
+    output = output.replace(/^\s*Hello\s*,?\s*$/m, `Hello ${firstName},`);
+  }
   output = output.replace(/Hello\s+,/g, "Hello,");
   output = output.replace(/\n{3,}/g, "\n\n").trim();
   return output;
