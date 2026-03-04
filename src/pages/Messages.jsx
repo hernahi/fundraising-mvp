@@ -534,13 +534,22 @@ export default function Messages() {
       athleteRecord?.campaignId && athleteId
         ? `${window.location.origin}/donate/${athleteRecord.campaignId}/athlete/${athleteId}`
         : "";
-
-    return templateDraft
+    let preview = templateDraft
       .replace(/{{\s*athleteName\s*}}/g, athleteName)
       .replace(/{{\s*teamName\s*}}/g, teamName)
       .replace(/{{\s*campaignName\s*}}/g, campaignName)
       .replace(/{{\s*donateUrl\s*}}/g, donateUrl)
       .replace(/{{\s*personalMessage\s*}}/g, personalNoteDraft.trim());
+
+    if (!templateDraft.includes("{{personalMessage}}") && personalNoteDraft.trim()) {
+      preview = `${preview}\n\n${personalNoteDraft.trim()}`;
+    }
+
+    if (!templateDraft.includes("{{donateUrl}}") && donateUrl) {
+      preview = `${preview}\n\nDonate here: ${donateUrl}`;
+    }
+
+    return preview.replace(/\n{3,}/g, "\n\n").trim();
   }, [
     athleteId,
     athleteRecord?.campaignId,
