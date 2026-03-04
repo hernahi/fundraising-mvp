@@ -118,6 +118,7 @@ export default function Messages() {
   const [testAthleteId, setTestAthleteId] = useState("");
   const [testPhase, setTestPhase] = useState("week1a");
   const [testEmail, setTestEmail] = useState("");
+  const [testRecipientName, setTestRecipientName] = useState("");
   const [testPreviewLoading, setTestPreviewLoading] = useState(false);
   const [testSendLoading, setTestSendLoading] = useState(false);
   const [testPreviewData, setTestPreviewData] = useState(null);
@@ -832,6 +833,7 @@ export default function Messages() {
       const response = await fn({
         athleteId: testAthleteId,
         phase: testPhase,
+        recipientName: testRecipientName.trim(),
       });
       setTestPreviewData(response?.data || null);
       setTestStatus("Preview loaded.");
@@ -857,6 +859,7 @@ export default function Messages() {
         athleteId: testAthleteId,
         phase: testPhase,
         toEmail: testEmail.trim(),
+        recipientName: testRecipientName.trim(),
       });
       setTestPreviewData(response?.data || testPreviewData);
       setTestStatus(`Test email sent to ${testEmail.trim()}.`);
@@ -1079,7 +1082,7 @@ export default function Messages() {
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-4">
                 <div>
                   <label className="text-xs uppercase tracking-wide text-slate-400">
                     Athlete
@@ -1125,6 +1128,18 @@ export default function Messages() {
                     className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                   />
                 </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Recipient Name (optional)
+                  </label>
+                  <input
+                    value={testRecipientName}
+                    onChange={(e) => setTestRecipientName(e.target.value)}
+                    type="text"
+                    placeholder="Jamie Smith"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  />
+                </div>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1156,6 +1171,12 @@ export default function Messages() {
                     <span className="font-semibold text-slate-700">Athlete:</span> {testPreviewData.athleteName}{" "}
                     <span className="font-semibold text-slate-700">• Team:</span> {testPreviewData.teamName}{" "}
                     <span className="font-semibold text-slate-700">• Phase:</span> {PHASE_LABELS[testPreviewData.phase] || testPreviewData.phase}
+                    {testPreviewData.recipientName ? (
+                      <>
+                        {" "}
+                        <span className="font-semibold text-slate-700">• Recipient:</span> {testPreviewData.recipientName}
+                      </>
+                    ) : null}
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-wide text-slate-400">Subject</div>

@@ -1662,7 +1662,7 @@ exports.previewDripTemplate = onCall(
   },
   async (request) => {
     const profile = await assertAdmin(request);
-    const { athleteId, phase } = request.data || {};
+    const { athleteId, phase, recipientName } = request.data || {};
 
     if (!athleteId || typeof athleteId !== "string") {
       throw new HttpsError("invalid-argument", "athleteId is required");
@@ -1673,10 +1673,15 @@ exports.previewDripTemplate = onCall(
       athleteId,
       phase,
     });
+    const bodyText = applyRecipientPlaceholders(payload.bodyText, {
+      name: recipientName || "",
+    });
 
     return {
       ok: true,
       ...payload,
+      bodyText,
+      recipientName: recipientName || "",
     };
   }
 );
@@ -1688,7 +1693,7 @@ exports.sendTestDripEmail = onCall(
   },
   async (request) => {
     const profile = await assertAdmin(request);
-    const { athleteId, phase, toEmail } = request.data || {};
+    const { athleteId, phase, toEmail, recipientName } = request.data || {};
 
     if (!athleteId || typeof athleteId !== "string") {
       throw new HttpsError("invalid-argument", "athleteId is required");
@@ -1705,7 +1710,10 @@ exports.sendTestDripEmail = onCall(
 
     const { client, domain } = getMailgunClient();
     const from = `Fundraising MVP <no-reply@${domain}>`;
-    const testBodyText = `TEST SEND ONLY - this does not advance campaign state.\n\n${payload.bodyText}`;
+    const renderedBody = applyRecipientPlaceholders(payload.bodyText, {
+      name: recipientName || "",
+    });
+    const testBodyText = `TEST SEND ONLY - this does not advance campaign state.\n\n${renderedBody}`;
     const testHtml = renderEmailHtml(testBodyText);
 
     try {
@@ -1722,6 +1730,7 @@ exports.sendTestDripEmail = onCall(
         campaignId: payload.campaignId,
         phase: payload.phase,
         toEmail: toEmail.trim(),
+        recipientName: recipientName || "",
         uid: request.auth.uid,
       });
 
@@ -1729,11 +1738,12 @@ exports.sendTestDripEmail = onCall(
         ok: true,
         toEmail: toEmail.trim(),
         subject: payload.subject,
-        bodyText: payload.bodyText,
+        bodyText: renderedBody,
         athleteName: payload.athleteName,
         teamName: payload.teamName,
         campaignName: payload.campaignName,
         phase: payload.phase,
+        recipientName: recipientName || "",
       };
     } catch (err) {
       logger.error("sendTestDripEmail failed", {
