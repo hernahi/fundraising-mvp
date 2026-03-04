@@ -15,6 +15,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -113,6 +114,14 @@ export default function Messages() {
   const [athleteRecord, setAthleteRecord] = useState(null);
   const [sendLoading, setSendLoading] = useState(false);
   const [dedupeLoading, setDedupeLoading] = useState(false);
+  const [orgAthletes, setOrgAthletes] = useState([]);
+  const [testAthleteId, setTestAthleteId] = useState("");
+  const [testPhase, setTestPhase] = useState("week1a");
+  const [testEmail, setTestEmail] = useState("");
+  const [testPreviewLoading, setTestPreviewLoading] = useState(false);
+  const [testSendLoading, setTestSendLoading] = useState(false);
+  const [testPreviewData, setTestPreviewData] = useState(null);
+  const [testStatus, setTestStatus] = useState("");
 
   useEffect(() => {
     if (authLoading || !profile?.orgId) return;
@@ -223,6 +232,36 @@ export default function Messages() {
 
     loadOrgTemplate();
   }, [orgId, orgTemplateDirty, orgWeekDirty]);
+
+  useEffect(() => {
+    if (!isAdmin || !orgId) {
+      setOrgAthletes([]);
+      return;
+    }
+
+    const loadOrgAthletes = async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, "athletes"), where("orgId", "==", orgId))
+        );
+        const rows = snap.docs
+          .map((entry) => ({ id: entry.id, ...entry.data() }))
+          .sort((a, b) =>
+            String(a.name || a.displayName || "").localeCompare(
+              String(b.name || b.displayName || "")
+            )
+          );
+        setOrgAthletes(rows);
+        if (!testAthleteId && rows[0]?.id) {
+          setTestAthleteId(rows[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load org athletes for testing:", err);
+      }
+    };
+
+    loadOrgAthletes();
+  }, [isAdmin, orgId, testAthleteId]);
 
   useEffect(() => {
     if (!isAthlete || !athleteId) return;
@@ -575,6 +614,10 @@ export default function Messages() {
     personalNoteDraft,
     templateDraft,
   ]);
+  const testPhaseOptions = useMemo(
+    () => [...TEMPLATE_OPTIONS.filter((option) => option.key !== "custom"), { key: "lateIntro", label: "Late Contact Intro" }],
+    []
+  );
 
   const addContact = async () => {
     const name = contactName.trim();
@@ -774,6 +817,55 @@ export default function Messages() {
           DEFAULT_DONOR_INVITE_TEMPLATE;
     setTemplateDraft(nextTemplate);
     setTemplateDirty(true);
+  };
+
+  const runTestPreview = async () => {
+    if (!testAthleteId) {
+      setTestStatus("Choose an athlete first.");
+      return;
+    }
+
+    try {
+      setTestPreviewLoading(true);
+      setTestStatus("");
+      const fn = httpsCallable(functions, "previewDripTemplate");
+      const response = await fn({
+        athleteId: testAthleteId,
+        phase: testPhase,
+      });
+      setTestPreviewData(response?.data || null);
+      setTestStatus("Preview loaded.");
+    } catch (err) {
+      console.error("Failed to preview drip template:", err);
+      setTestStatus(err?.message || "Failed to load preview.");
+    } finally {
+      setTestPreviewLoading(false);
+    }
+  };
+
+  const runTestSend = async () => {
+    if (!testAthleteId || !testEmail.trim()) {
+      setTestStatus("Choose an athlete and enter a test email.");
+      return;
+    }
+
+    try {
+      setTestSendLoading(true);
+      setTestStatus("");
+      const fn = httpsCallable(functions, "sendTestDripEmail");
+      const response = await fn({
+        athleteId: testAthleteId,
+        phase: testPhase,
+        toEmail: testEmail.trim(),
+      });
+      setTestPreviewData(response?.data || testPreviewData);
+      setTestStatus(`Test email sent to ${testEmail.trim()}.`);
+    } catch (err) {
+      console.error("Failed to send test drip email:", err);
+      setTestStatus(err?.message || "Failed to send test email.");
+    } finally {
+      setTestSendLoading(false);
+    }
   };
 
   const sendDrip = async (templateKey) => {
@@ -976,6 +1068,112 @@ export default function Messages() {
 
       {(isCoach || isAdmin) && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-6">
+          {isAdmin && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">
+                  Drip Template Testing
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Preview or send a test drip email without advancing campaign state.
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Athlete
+                  </label>
+                  <select
+                    value={testAthleteId}
+                    onChange={(e) => setTestAthleteId(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    <option value="">Select athlete</option>
+                    {orgAthletes.map((athlete) => (
+                      <option key={athlete.id} value={athlete.id}>
+                        {athlete.name || athlete.displayName || athlete.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Phase
+                  </label>
+                  <select
+                    value={testPhase}
+                    onChange={(e) => setTestPhase(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    {testPhaseOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Test Email
+                  </label>
+                  <input
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    type="email"
+                    placeholder="you@example.com"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={runTestPreview}
+                  disabled={testPreviewLoading}
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {testPreviewLoading ? "Loading Preview..." : "Preview Render"}
+                </button>
+                <button
+                  type="button"
+                  onClick={runTestSend}
+                  disabled={testSendLoading}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                >
+                  {testSendLoading ? "Sending Test..." : "Send Test Email"}
+                </button>
+              </div>
+
+              {testStatus ? (
+                <div className="text-xs text-slate-500">{testStatus}</div>
+              ) : null}
+
+              {testPreviewData ? (
+                <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+                  <div className="text-xs text-slate-500">
+                    <span className="font-semibold text-slate-700">Athlete:</span> {testPreviewData.athleteName}{" "}
+                    <span className="font-semibold text-slate-700">• Team:</span> {testPreviewData.teamName}{" "}
+                    <span className="font-semibold text-slate-700">• Phase:</span> {PHASE_LABELS[testPreviewData.phase] || testPreviewData.phase}
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Subject</div>
+                    <div className="mt-1 text-sm font-medium text-slate-800">
+                      {testPreviewData.subject}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Resolved Body</div>
+                    <pre className="mt-1 whitespace-pre-wrap text-sm text-slate-700 font-sans">
+                      {testPreviewData.bodyText}
+                    </pre>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+
           <div>
             <h2 className="text-lg font-semibold text-slate-800">
               Org Invite Template

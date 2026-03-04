@@ -269,6 +269,87 @@ function timestampToDate(value) {
   return null;
 }
 
+function isValidEmailAddress(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+async function buildDripRenderPayload({ profile, athleteId, phase }) {
+  const db = admin.firestore();
+  const athleteSnap = await db.collection("athletes").doc(athleteId).get();
+  if (!athleteSnap.exists) {
+    throw new HttpsError("not-found", "Athlete not found");
+  }
+
+  const athlete = athleteSnap.data() || {};
+  if (!athlete.orgId) {
+    throw new HttpsError("failed-precondition", "Athlete org is missing");
+  }
+  if (profile.role !== "super-admin" && athlete.orgId !== profile.orgId) {
+    throw new HttpsError("permission-denied", "Org mismatch");
+  }
+  if (!athlete.campaignId) {
+    throw new HttpsError("failed-precondition", "Athlete is not assigned to a campaign");
+  }
+
+  const [campaignSnap, orgSnap] = await Promise.all([
+    db.collection("campaigns").doc(athlete.campaignId).get(),
+    db.collection("organizations").doc(athlete.orgId).get(),
+  ]);
+  if (!campaignSnap.exists) {
+    throw new HttpsError("not-found", "Campaign not found");
+  }
+
+  const campaign = campaignSnap.data() || {};
+  const orgData = orgSnap.exists ? orgSnap.data() || {} : {};
+  const baseUrl = (orgData.frontendUrl || process.env.FRONTEND_URL || "").trim();
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
+    throw new HttpsError("failed-precondition", "FRONTEND_URL is not configured");
+  }
+
+  const donateUrl = `${baseUrl}/donate/${athlete.campaignId}/athlete/${athleteId}`;
+  const athleteName = athlete.name || athlete.displayName || "our athlete";
+  const teamName =
+    athlete.teamName ||
+    campaign.teamName ||
+    (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
+    "our team";
+  const campaignName = campaign.name || campaign.title || "our fundraiser";
+  const orgTemplates = orgData.donorInviteTemplates || {};
+  const athleteTemplates = athlete.donorInviteTemplates || {};
+  const orgSubjects = orgData.donorInviteSubjects || {};
+  const templateKey = phase || "week1a";
+  const template =
+    athleteTemplates[templateKey] ||
+    orgTemplates[templateKey] ||
+    orgData.donorInviteTemplate ||
+    DEFAULT_DONOR_INVITE_TEMPLATE;
+  const subject =
+    orgSubjects[templateKey] ||
+    DRIP_SUBJECTS[templateKey] ||
+    "Fundraiser update";
+  const bodyText = renderInviteTemplate(template, {
+    athleteName,
+    senderName: athleteName,
+    teamName,
+    campaignName,
+    donateUrl,
+    personalMessage: athlete.inviteMessage || "",
+  });
+
+  return {
+    athleteId,
+    athleteName,
+    teamName,
+    campaignId: athlete.campaignId,
+    campaignName,
+    orgId: athlete.orgId,
+    donateUrl,
+    subject,
+    bodyText,
+    phase: templateKey,
+  };
+}
+
 function getTimeZoneOffsetMs(date, timeZone) {
   const tzDate = new Date(date.toLocaleString("en-US", { timeZone }));
   return date.getTime() - tzDate.getTime();
@@ -1530,6 +1611,101 @@ exports.testMailgunSend = onCall(
         "internal",
         err?.message || "Failed to send test message"
       );
+    }
+  }
+);
+
+exports.previewDripTemplate = onCall(
+  {
+    timeoutSeconds: 20,
+  },
+  async (request) => {
+    const profile = await assertAdmin(request);
+    const { athleteId, phase } = request.data || {};
+
+    if (!athleteId || typeof athleteId !== "string") {
+      throw new HttpsError("invalid-argument", "athleteId is required");
+    }
+
+    const payload = await buildDripRenderPayload({
+      profile,
+      athleteId,
+      phase,
+    });
+
+    return {
+      ok: true,
+      ...payload,
+    };
+  }
+);
+
+exports.sendTestDripEmail = onCall(
+  {
+    secrets: ["MAILGUN_API_KEY"],
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    const profile = await assertAdmin(request);
+    const { athleteId, phase, toEmail } = request.data || {};
+
+    if (!athleteId || typeof athleteId !== "string") {
+      throw new HttpsError("invalid-argument", "athleteId is required");
+    }
+    if (!toEmail || typeof toEmail !== "string" || !isValidEmailAddress(toEmail)) {
+      throw new HttpsError("invalid-argument", "A valid toEmail is required");
+    }
+
+    const payload = await buildDripRenderPayload({
+      profile,
+      athleteId,
+      phase,
+    });
+
+    const { client, domain } = getMailgunClient();
+    const from = `Fundraising MVP <no-reply@${domain}>`;
+    const testBodyText = `TEST SEND ONLY - this does not advance campaign state.\n\n${payload.bodyText}`;
+    const testHtml = testBodyText
+      .split("\n")
+      .map((line) => (line ? `<p>${line}</p>` : "<br>"))
+      .join("");
+
+    try {
+      await client.messages.create(domain, {
+        from,
+        to: [toEmail.trim()],
+        subject: `[TEST] ${payload.subject}`,
+        text: testBodyText,
+        html: testHtml,
+      });
+
+      logger.info("sendTestDripEmail: sent", {
+        athleteId: payload.athleteId,
+        campaignId: payload.campaignId,
+        phase: payload.phase,
+        toEmail: toEmail.trim(),
+        uid: request.auth.uid,
+      });
+
+      return {
+        ok: true,
+        toEmail: toEmail.trim(),
+        subject: payload.subject,
+        bodyText: payload.bodyText,
+        athleteName: payload.athleteName,
+        teamName: payload.teamName,
+        campaignName: payload.campaignName,
+        phase: payload.phase,
+      };
+    } catch (err) {
+      logger.error("sendTestDripEmail failed", {
+        athleteId,
+        phase,
+        toEmail,
+        message: err?.message,
+        stack: err?.stack,
+      });
+      throw new HttpsError("internal", err?.message || "Failed to send test drip email");
     }
   }
 );
