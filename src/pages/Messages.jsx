@@ -1698,6 +1698,11 @@ export default function Messages() {
                   <p className="text-sm text-slate-500">
                     The campaign message stays consistent across the team. Add a short personal note if you want to make it feel more personal for friends and family.
                   </p>
+                  {isAthlete && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      How this works: 1) choose the phase template, 2) add your optional note, 3) review the final preview below, 4) save your note.
+                    </p>
+                  )}
                 </div>
                 {!isAthlete && (
                   <button
@@ -1748,13 +1753,13 @@ export default function Messages() {
                       placeholder="Add a short personal note for family, friends, or close supporters."
                     />
                     <p className="mt-2 text-xs text-slate-500">
-                      This note is added to the existing team campaign message. The base message stays consistent for everyone.
+                      This note is appended to the team message. It is for friendly context, not for rewriting the main campaign content.
                     </p>
                   </div>
 
                   <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                     <div className="text-xs uppercase tracking-wide text-slate-400">
-                      Message Preview
+                      Final Email Preview (Base Message + Your Personal Note)
                     </div>
                     <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700 font-sans">
                       {athleteTemplatePreview}

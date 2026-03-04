@@ -306,6 +306,9 @@ function applyRecipientPlaceholders(text, contact) {
     output = output.replace(/^\s*Hello\s*,?\s*$/m, `Hello ${firstName},`);
   }
   output = output.replace(/Hello\s+,/g, "Hello,");
+  // Keep a readable blank line after greetings.
+  output = output.replace(/^(Hello(?:\s+\S+)?,)\s+(?=\S)/m, "$1\n\n");
+  output = output.replace(/^(Hello(?:\s+\S+)?,)\n(?!\n)/m, "$1\n\n");
   output = output.replace(/\n{3,}/g, "\n\n").trim();
   return output;
 }
