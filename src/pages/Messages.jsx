@@ -536,16 +536,30 @@ export default function Messages() {
         : "";
     let preview = templateDraft
       .replace(/{{\s*athleteName\s*}}/g, athleteName)
+      .replace(/{{\s*ATHLETE_NAME\s*}}/g, athleteName)
+      .replace(/{{\s*senderName\s*}}/g, athleteName)
+      .replace(/{{\s*SENDER_NAME\s*}}/g, athleteName)
       .replace(/{{\s*teamName\s*}}/g, teamName)
+      .replace(/{{\s*TEAM_NAME\s*}}/g, teamName)
       .replace(/{{\s*campaignName\s*}}/g, campaignName)
+      .replace(/{{\s*CAMPAIGN_NAME\s*}}/g, campaignName)
       .replace(/{{\s*donateUrl\s*}}/g, donateUrl)
+      .replace(/{{\s*DONATION_LINK\s*}}/g, donateUrl)
+      .replace(/{{\s*donationLink\s*}}/g, donateUrl)
       .replace(/{{\s*personalMessage\s*}}/g, personalNoteDraft.trim());
+      preview = preview.replace(/{{\s*PERSONAL_MESSAGE\s*}}/g, personalNoteDraft.trim());
 
-    if (!templateDraft.includes("{{personalMessage}}") && personalNoteDraft.trim()) {
+    if (
+      !/{{\s*(personalMessage|PERSONAL_MESSAGE)\s*}}/.test(templateDraft) &&
+      personalNoteDraft.trim()
+    ) {
       preview = `${preview}\n\n${personalNoteDraft.trim()}`;
     }
 
-    if (!templateDraft.includes("{{donateUrl}}") && donateUrl) {
+    if (
+      !/{{\s*(donateUrl|DONATION_LINK|donationLink)\s*}}/.test(templateDraft) &&
+      donateUrl
+    ) {
       preview = `${preview}\n\nDonate here: ${donateUrl}`;
     }
 

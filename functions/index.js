@@ -198,6 +198,7 @@ function renderInviteTemplate(template, data) {
   const base = (template || DEFAULT_DONOR_INVITE_TEMPLATE).toString();
   const replacements = {
     athleteName: data.athleteName || "Our athlete",
+    senderName: data.senderName || data.athleteName || "Our athlete",
     teamName: data.teamName || "our team",
     campaignName: data.campaignName || "our fundraiser",
     donateUrl: data.donateUrl || "",
@@ -205,19 +206,35 @@ function renderInviteTemplate(template, data) {
   };
 
   let output = base;
-  Object.keys(replacements).forEach((key) => {
-    const value = replacements[key];
-    output = output.replace(
-      new RegExp(`{{\\s*${key}\\s*}}`, "g"),
-      value
-    );
+  const placeholderAliases = {
+    athleteName: ["athleteName", "ATHLETE_NAME"],
+    senderName: ["senderName", "SENDER_NAME"],
+    teamName: ["teamName", "TEAM_NAME"],
+    campaignName: ["campaignName", "CAMPAIGN_NAME"],
+    donateUrl: ["donateUrl", "DONATION_LINK", "donationLink"],
+    personalMessage: ["personalMessage", "PERSONAL_MESSAGE"],
+  };
+  Object.keys(placeholderAliases).forEach((replacementKey) => {
+    const value = replacements[replacementKey];
+    placeholderAliases[replacementKey].forEach((alias) => {
+      output = output.replace(
+        new RegExp(`{{\\s*${alias}\\s*}}`, "g"),
+        value
+      );
+    });
   });
 
-  if (!base.includes("{{personalMessage}}") && replacements.personalMessage) {
+  if (
+    !/{{\s*(personalMessage|PERSONAL_MESSAGE)\s*}}/.test(base) &&
+    replacements.personalMessage
+  ) {
     output = `${output}\n\n${replacements.personalMessage}`;
   }
 
-  if (!base.includes("{{donateUrl}}") && replacements.donateUrl) {
+  if (
+    !/{{\s*(donateUrl|DONATION_LINK|donationLink)\s*}}/.test(base) &&
+    replacements.donateUrl
+  ) {
     output = `${output}\n\nDonate here: ${replacements.donateUrl}`;
   }
 
@@ -826,6 +843,7 @@ exports.sendDonorInvite = onCall(
 
     const donateUrl = `${baseUrl}/donate/${campaignId}/athlete/${athleteId}`;
     const teamName =
+      athlete.teamName ||
       campaign.teamName ||
       (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
       "our team";
@@ -843,6 +861,7 @@ exports.sendDonorInvite = onCall(
 
     const bodyText = renderInviteTemplate(orgTemplate, {
       athleteName,
+      senderName: athleteName,
       teamName,
       campaignName,
       donateUrl,
@@ -998,6 +1017,7 @@ exports.sendAthleteDripMessage = onCall(
 
     const donateUrl = `${baseUrl}/donate/${campaignId}/athlete/${athleteId}`;
     const teamName =
+      athlete.teamName ||
       campaign.teamName ||
       (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
       "our team";
@@ -1011,6 +1031,7 @@ exports.sendAthleteDripMessage = onCall(
 
     const bodyText = renderInviteTemplate(contentTemplate, {
       athleteName,
+      senderName: athleteName,
       teamName,
       campaignName,
       donateUrl,
@@ -1331,7 +1352,12 @@ exports.runAthleteDrip = onSchedule(
           DEFAULT_LATE_CONTACT_TEMPLATE;
         const lateIntroText = renderInviteTemplate(lateIntroTemplate, {
           athleteName: athlete.name || athlete.displayName || "our athlete",
-          teamName: campaign.teamName || "our team",
+          senderName: athlete.name || athlete.displayName || "our athlete",
+          teamName:
+            athlete.teamName ||
+            campaign.teamName ||
+            (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
+            "our team",
           campaignName: campaign.name || campaign.title || "our fundraiser",
           donateUrl,
           personalMessage: athlete.inviteMessage || "",
@@ -1395,7 +1421,12 @@ exports.runAthleteDrip = onSchedule(
         DEFAULT_DONOR_INVITE_TEMPLATE;
       const templateText = renderInviteTemplate(phaseTemplate, {
         athleteName: athlete.name || athlete.displayName || "our athlete",
-        teamName: campaign.teamName || "our team",
+        senderName: athlete.name || athlete.displayName || "our athlete",
+        teamName:
+          athlete.teamName ||
+          campaign.teamName ||
+          (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
+          "our team",
         campaignName: campaign.name || campaign.title || "our fundraiser",
         donateUrl,
         personalMessage: athlete.inviteMessage || "",
