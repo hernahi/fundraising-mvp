@@ -156,12 +156,13 @@ service cloud.firestore {
           .hasOnly([
             "donorInviteTemplate",
             "donorInviteTemplates",
-            "donorInviteSubjects",
-            "orgTimeZone",
-            "dripGlobalEnabled",
-            "dripStartedAt",
-            "updatedAt"
-          ]);
+              "donorInviteSubjects",
+              "orgTimeZone",
+              "dripGlobalEnabled",
+              "dripStartedAt",
+              "reporting",
+              "updatedAt"
+            ]);
 
       allow write: if isSuperAdmin();
     }
