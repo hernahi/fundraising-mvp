@@ -27,6 +27,11 @@ export default function Settings() {
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [sendingTestSummary, setSendingTestSummary] = useState(false);
   const [testSummaryStatus, setTestSummaryStatus] = useState("");
+  const [reportingSettings, setReportingSettings] = useState({
+    excludeEndedCampaigns: true,
+    sendWhenNoActiveCampaigns: false,
+  });
+  const [savingReportingSettings, setSavingReportingSettings] = useState(false);
   const [notificationPrefs, setNotificationPrefs] = useState({
     emailNotifications: true,
     smsNotifications: false,
@@ -77,6 +82,12 @@ export default function Settings() {
           setOrgTimeZone(nextTimeZone);
           setTimeZoneDraft(nextTimeZone || browserTimeZone);
           setOrgDripEnabled(Boolean(data.dripGlobalEnabled));
+          setReportingSettings({
+            excludeEndedCampaigns:
+              data.reporting?.excludeEndedCampaigns !== false,
+            sendWhenNoActiveCampaigns:
+              data.reporting?.sendWhenNoActiveCampaigns === true,
+          });
 
           if (isOrgAdmin && !nextTimeZone && browserTimeZone) {
             await updateDoc(ref, {
@@ -152,7 +163,7 @@ export default function Settings() {
               Settings
             </h1>
             <p className="text-sm text-slate-500">
-              Account profile, workspace controls, and org messaging defaults.
+              Account profile, notification preferences, and organization controls.
             </p>
           </div>
           <span className="text-xs px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
@@ -352,12 +363,12 @@ export default function Settings() {
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      Summary Test
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      Send a test digest email immediately to your account.
-                    </p>
+                      <p className="text-sm font-semibold text-slate-800">
+                      Test Summary Email
+                      </p>
+                      <p className="text-xs text-slate-500">
+                      Send a sample digest to your own inbox right away.
+                      </p>
                   </div>
                   <button
                     type="button"
@@ -367,12 +378,20 @@ export default function Settings() {
                         setSendingTestSummary(true);
                         setTestSummaryStatus("");
                         const fn = httpsCallable(functions, "sendTestSummaryNow");
-                        await fn({});
-                        setTestSummaryStatus("Test summary queued. Check your inbox.");
+                        const result = await fn({});
+                        const payload = result?.data || {};
+                        if (payload?.skipped) {
+                          setTestSummaryStatus(
+                            payload?.message ||
+                              "No summary queued because no active campaigns are in scope."
+                          );
+                        } else {
+                          setTestSummaryStatus("Test summary queued. Check your inbox.");
+                        }
                       } catch (err) {
                         console.error("Failed to send test summary:", err);
                         setTestSummaryStatus(
-                          "Failed to queue test summary. Please try again."
+                          "Could not queue the test summary. Please try again."
                         );
                       } finally {
                         setSendingTestSummary(false);
@@ -398,8 +417,8 @@ export default function Settings() {
                 Drip Campaign Scheduler
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Defaulted from your browser timezone. You can change it any
-                time. Auto-sends run at 6:30 PM local time for the org.
+                Starts with your browser time zone. You can change it any
+                time. Scheduled sends run at 6:30 PM local time for the organization.
               </p>
             </div>
 
@@ -509,6 +528,75 @@ export default function Settings() {
                   ? "Pause Drip"
                   : "Start Drip"}
               </button>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  Reporting Controls
+                </p>
+                <p className="text-xs text-slate-500">
+                  Control summary behavior for ended campaigns and inactive org periods.
+                </p>
+              </div>
+              <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                <span className="text-slate-700">
+                  Exclude ended campaigns from daily/weekly summaries
+                </span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(reportingSettings.excludeEndedCampaigns)}
+                  onChange={(e) =>
+                    setReportingSettings((prev) => ({
+                      ...prev,
+                      excludeEndedCampaigns: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
+              <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                <span className="text-slate-700">
+                  Send summaries even when no active campaigns are in scope
+                </span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(reportingSettings.sendWhenNoActiveCampaigns)}
+                  onChange={(e) =>
+                    setReportingSettings((prev) => ({
+                      ...prev,
+                      sendWhenNoActiveCampaigns: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={savingReportingSettings}
+                  onClick={async () => {
+                    if (!profile?.orgId) return;
+                    try {
+                      setSavingReportingSettings(true);
+                      await updateDoc(doc(db, "organizations", profile.orgId), {
+                        reporting: {
+                          excludeEndedCampaigns:
+                            reportingSettings.excludeEndedCampaigns !== false,
+                          sendWhenNoActiveCampaigns:
+                            reportingSettings.sendWhenNoActiveCampaigns === true,
+                        },
+                        updatedAt: serverTimestamp(),
+                      });
+                    } catch (err) {
+                      console.error("Failed to save reporting settings:", err);
+                    } finally {
+                      setSavingReportingSettings(false);
+                    }
+                  }}
+                  className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                >
+                  {savingReportingSettings ? "Saving..." : "Save Reporting Controls"}
+                </button>
+              </div>
             </div>
           </div>
         )}

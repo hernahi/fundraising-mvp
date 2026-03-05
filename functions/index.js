@@ -2829,6 +2829,35 @@ function getSummaryPreference(userData = {}) {
   };
 }
 
+function valueToDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value?.toDate === "function") return value.toDate();
+  if (typeof value?.seconds === "number") return new Date(value.seconds * 1000);
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isCampaignEnded(campaign = {}, now = new Date()) {
+  const status = String(campaign.status || "").toLowerCase();
+  if (["ended", "complete", "completed", "archived", "inactive", "closed"].includes(status)) {
+    return true;
+  }
+  if (campaign.isActive === false) return true;
+  const endDate = valueToDate(campaign.endDate);
+  return Boolean(endDate && now > endDate);
+}
+
+function getReportingSummaryConfig(orgData = {}) {
+  const reporting = orgData.reporting || {};
+  return {
+    // Safe default: avoid sending summaries for campaigns that are clearly ended.
+    excludeEndedCampaigns: reporting.excludeEndedCampaigns !== false,
+    // Safe default: skip summary emails when no in-scope active campaigns remain.
+    sendWhenNoActiveCampaigns: reporting.sendWhenNoActiveCampaigns === true,
+  };
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -2977,6 +3006,7 @@ exports.runEmailSummaries = onSchedule(
 
     let sentCount = 0;
     let skippedCount = 0;
+    let skippedNoActiveCampaignsCount = 0;
 
     for (const recipient of recipients) {
       const runId = `${dateKey}_${recipient.summaryFrequency}_${recipient.uid}`;
@@ -3003,6 +3033,7 @@ exports.runEmailSummaries = onSchedule(
       try {
         await ensureOrgData(recipient.orgId);
         const orgData = orgCache.get(recipient.orgId) || {};
+        const reportingConfig = getReportingSummaryConfig(orgData);
         const teams = teamsByOrg.get(recipient.orgId) || [];
         const campaigns = campaignsByOrg.get(recipient.orgId) || [];
         const donations = donationsByOrg.get(recipient.orgId) || [];
@@ -3018,11 +3049,27 @@ exports.runEmailSummaries = onSchedule(
           scopedTeamIds = new Set(scopedTeams.map((t) => t.id));
         }
 
-        const scopedCampaigns =
+        const scopedCampaignsRaw =
           recipient.role === "coach"
             ? campaigns.filter((c) => scopedTeamIds.has(String(c.teamId || "")))
             : campaigns;
+        const scopedCampaigns = reportingConfig.excludeEndedCampaigns
+          ? scopedCampaignsRaw.filter((c) => !isCampaignEnded(c, periodEnd))
+          : scopedCampaignsRaw;
         const scopedCampaignIds = new Set(scopedCampaigns.map((c) => c.id));
+
+        if (!scopedCampaigns.length && !reportingConfig.sendWhenNoActiveCampaigns) {
+          await runRef.set(
+            {
+              status: "skipped_no_active_campaigns",
+              skippedAt: admin.firestore.FieldValue.serverTimestamp(),
+              reason: "No active campaigns in summary scope",
+            },
+            { merge: true }
+          );
+          skippedNoActiveCampaignsCount += 1;
+          continue;
+        }
 
         const scopedAthletes =
           recipient.role === "coach"
@@ -3185,6 +3232,7 @@ exports.runEmailSummaries = onSchedule(
       recipients: recipients.length,
       sentCount,
       skippedCount,
+      skippedNoActiveCampaignsCount,
       dateKey,
     });
   }
@@ -3271,6 +3319,7 @@ exports.sendTestSummaryNow = onCall(
       ]);
 
     const orgData = orgSnap.exists ? orgSnap.data() || {} : {};
+    const reportingConfig = getReportingSummaryConfig(orgData);
     const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
     const campaigns = campaignsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
     const athletes = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
@@ -3285,11 +3334,27 @@ exports.sendTestSummaryNow = onCall(
       scopedTeamIds = new Set(scopedTeams.map((t) => t.id));
     }
 
-    const scopedCampaigns =
+    const scopedCampaignsRaw =
       role === "coach"
         ? campaigns.filter((c) => scopedTeamIds.has(String(c.teamId || "")))
         : campaigns;
+    const scopedCampaigns = reportingConfig.excludeEndedCampaigns
+      ? scopedCampaignsRaw.filter((c) => !isCampaignEnded(c, periodEnd))
+      : scopedCampaignsRaw;
     const scopedCampaignIds = new Set(scopedCampaigns.map((c) => c.id));
+
+    if (!scopedCampaigns.length && !reportingConfig.sendWhenNoActiveCampaigns) {
+      return {
+        ok: true,
+        queued: false,
+        skipped: true,
+        reason: "no_active_campaigns",
+        message: "No summary queued because no active campaigns are in scope.",
+        targetUid,
+        orgId,
+        role,
+      };
+    }
 
     const scopedAthletes =
       role === "coach"
@@ -3410,6 +3475,7 @@ exports.sendTestSummaryNow = onCall(
 
     return {
       ok: true,
+      queued: true,
       targetUid,
       orgId,
       role,
