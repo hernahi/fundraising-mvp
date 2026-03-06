@@ -210,6 +210,7 @@ export default function Accounting() {
 
   const ledgerRows = useMemo(() => {
     const campaignById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
+    const teamByIdDetailed = new Map(teams.map((team) => [team.id, team]));
     const teamById = new Map(
       teams.map((team) => [team.id, team.name || team.teamName || team.id])
     );
@@ -217,6 +218,8 @@ export default function Accounting() {
     return donations
       .map((donation) => {
         const campaign = campaignById.get(String(donation.campaignId || "")) || {};
+        const teamId = String(campaign.teamId || "");
+        const team = teamByIdDetailed.get(teamId) || {};
         const grossAmountCents = Number(
           donation.grossAmountCents || donation.amount || 0
         );
@@ -251,16 +254,16 @@ export default function Accounting() {
           donorEmail: donation.donorEmail || "N/A",
           campaignId: donation.campaignId || "",
           campaignName: campaign.name || campaign.title || donation.campaignId || "Unknown Campaign",
-          teamId: campaign.teamId || "",
+          teamId,
           teamName:
-            teamById.get(String(campaign.teamId || "")) ||
+            teamById.get(teamId) ||
             campaign.teamName ||
             "Unassigned Team",
           grossAmountCents,
           stripeFeeCents,
           platformFeeCents,
           netAmountCents,
-          payoutStatus:
+          payoutStatus: team.payoutStatus ||
             donation.payoutStatus ||
             (campaign.endDate && new Date(campaign.endDate) < new Date()
               ? "ready_for_review"
