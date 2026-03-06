@@ -427,7 +427,7 @@ export default function Accounting() {
             </p>
           </div>
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-            Reporting-first accounting pass
+            Accounting Overview
           </span>
         </div>
 
@@ -438,7 +438,7 @@ export default function Accounting() {
             detail={`${totals.donationCount} paid donations`}
           />
           <SummaryCard
-            label="Est. Stripe Fees"
+            label="Stripe Fees"
             value={centsToCurrency(totals.stripeFeeCents)}
             detail="Exact for backfilled/new donations, estimated for older rows"
           />
@@ -448,7 +448,7 @@ export default function Accounting() {
             detail="Uses configured campaign fee % when available"
           />
           <SummaryCard
-            label="Est. Net Available"
+            label="Net Available"
             value={centsToCurrency(totals.estimatedNetCents)}
             detail="Uses exact stored ledger fields when available"
           />
@@ -474,10 +474,10 @@ export default function Accounting() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">
-                  Campaign Fee / Net Summary
+                    Campaign Accounting Summary
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Live donation totals by campaign using stored donation ledger fields when available, with safe fallback for legacy donations.
+                    Live donation totals by campaign, using stored fee data when available and safe fallback estimates for older donations.
                 </p>
               </div>
               <span className="text-xs text-slate-400">
@@ -569,24 +569,29 @@ export default function Accounting() {
                           <select
                             value={team.payoutStatus}
                             onChange={async (e) => {
+                              const nextStatus = e.target.value;
+                              const previousTeams = teams;
+                              // Optimistic local update so UI reflects the change instantly.
+                              setTeams((prev) =>
+                                prev.map((entry) =>
+                                  entry.id === team.id
+                                    ? {
+                                        ...entry,
+                                        payoutStatus: nextStatus,
+                                      }
+                                    : entry
+                                )
+                              );
                               try {
                                 setSavingTeamStatusId(team.id);
                                 await updateDoc(doc(db, "teams", team.id), {
-                                  payoutStatus: e.target.value,
+                                  payoutStatus: nextStatus,
                                   payoutUpdatedAt: serverTimestamp(),
                                 });
-                                setTeams((prev) =>
-                                  prev.map((entry) =>
-                                    entry.id === team.id
-                                      ? {
-                                          ...entry,
-                                          payoutStatus: e.target.value,
-                                        }
-                                      : entry
-                                  )
-                                );
                               } catch (err) {
                                 console.error("Failed to update payout status:", err);
+                                // Revert if the write fails.
+                                setTeams(previousTeams);
                               } finally {
                                 setSavingTeamStatusId("");
                               }
@@ -908,7 +913,7 @@ export default function Accounting() {
                     Donation Ledger
                   </h2>
                   <p className="mt-1 text-xs text-slate-500">
-                    Per-donation accounting rows for export and reconciliation.
+                    Per-donation accounting rows for export, review, and reconciliation.
                   </p>
                 </div>
                 <button
@@ -1007,7 +1012,7 @@ export default function Accounting() {
                         <th className="px-3 py-2 font-semibold text-right">Stripe</th>
                         <th className="px-3 py-2 font-semibold text-right">Platform</th>
                         <th className="px-3 py-2 font-semibold text-right">Net</th>
-                        <th className="px-3 py-2 font-semibold text-right">Exact</th>
+                        <th className="px-3 py-2 font-semibold text-right">Fee Data</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
@@ -1033,7 +1038,7 @@ export default function Accounting() {
                             {centsToCurrency(row.netAmountCents)}
                           </td>
                           <td className="px-3 py-2 text-right text-xs text-slate-500">
-                            {row.hasExactFees ? "Yes" : "Est."}
+                            {row.hasExactFees ? "Exact" : "Estimated"}
                           </td>
                         </tr>
                       ))}
@@ -1049,10 +1054,10 @@ export default function Accounting() {
               </h2>
                 <div className="mt-3 space-y-3 text-sm text-slate-600">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                  Campaign closes, net is reviewed, payout is approved, and funds are released.
+                  Campaign closes, net proceeds are reviewed, payout is approved, and funds are released.
                   </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                  This first pass does not move money. It prepares payout preference data and gives finance visibility before Stripe Connect or manual check workflows are added.
+                  This page does not move money yet. It prepares payout preference data and gives finance visibility before Stripe Connect or manual check workflows are added.
                 </div>
               </div>
             </div>
