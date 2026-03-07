@@ -3,8 +3,8 @@ import { useSearchParams, Link } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 
-const POLL_INTERVAL_MS = 2000; // 2 seconds
-const MAX_ATTEMPTS = 20;       // ~40 seconds total
+const POLL_INTERVAL_MS = 1200; // 1.2 seconds
+const MAX_ATTEMPTS = 8;        // ~9.6 seconds total
 
 export default function DonateSuccess() {
   const [params] = useSearchParams();
@@ -100,7 +100,7 @@ export default function DonateSuccess() {
       <div className="max-w-lg mx-auto p-8 text-center">
         <h1 className="text-xl font-semibold">Thank you!</h1>
         <p className="mt-2 text-gray-600">
-          Your donation is being processed.  
+          Your donation is being processed.
           You will receive a confirmation email shortly.
         </p>
         {campaignIdParam || pendingReturnPath ? (
