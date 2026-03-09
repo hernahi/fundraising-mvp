@@ -97,6 +97,13 @@ function calculatePlatformFeeCents(amountCents, rate) {
   return Math.round(enforceCents(amountCents) * normalizedRate);
 }
 
+function estimateStripeProcessingFeeCents(amountCents) {
+  const amount = enforceCents(amountCents);
+  if (amount <= 0) return 0;
+  // Stripe card estimate fallback (US): 2.9% + 30c.
+  return Math.round(amount * 0.029) + 30;
+}
+
 async function buildExactDonationFeeFields({
   stripe,
   paymentIntentId,
@@ -325,6 +332,20 @@ function renderEmailHtml(text) {
         `<p style="margin:0 0 12px; line-height:1.5;">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`
     )
     .join("");
+}
+
+function renderTransactionalShell({ subject, bodyText }) {
+  const bodyHtml = renderEmailHtml(bodyText || "");
+  return `
+    <div style="background:#f8fafc;padding:24px;font-family:Arial,sans-serif;color:#0f172a;">
+      <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;">
+        <h2 style="margin:0 0 14px 0;font-size:20px;line-height:1.3;">${escapeHtml(subject || "Fundraising MVP Update")}</h2>
+        ${bodyHtml || `<p style="margin:0;line-height:1.5;">Thank you for supporting Fundraising MVP.</p>`}
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:18px 0;" />
+        <p style="margin:0;font-size:12px;color:#64748b;">Fundraising MVP</p>
+      </div>
+    </div>
+  `;
 }
 
 async function buildDripRenderPayload({ profile, athleteId, phase }) {
@@ -727,12 +748,14 @@ exports.sendMail = onDocumentCreated(
       const { client, domain } = getMailgunClient();
       const from =
         process.env.MAIL_DEFAULT_FROM || `Fundraising MVP <no-reply@${domain}>`;
+      const resolvedHtml =
+        html || (text ? renderTransactionalShell({ subject, bodyText: text }) : "");
 
       await client.messages.create(domain, {
         from,
         to: [to],
         subject,
-        html,
+        html: resolvedHtml,
         text,
       });
 
@@ -2114,9 +2137,9 @@ exports.stripeWebhook = onRequest(
         event.data.object.payment_status === "paid"
       ) {
         const rawSession = event.data.object;
-        const session = await stripe.checkout.sessions.retrieve(rawSession.id, {
-          expand: ["payment_intent.latest_charge.balance_transaction"],
-        });
+        // Hardening: avoid dependency on extra Stripe API calls in webhook path.
+        // The event payload is sufficient to write donation state and queue receipts.
+        const session = rawSession;
 
         const db = admin.firestore();
         const donationRef = db.collection("donations").doc(session.id);
@@ -2184,15 +2207,24 @@ exports.stripeWebhook = onRequest(
             campaignData.platformFeePct != null
               ? campaignData.platformFeePct
               : campaignData.feePct;
-          const exactFeeFields = await buildExactDonationFeeFields({
-            stripe,
-            paymentIntentId:
-              typeof session.payment_intent === "string"
-                ? session.payment_intent
-                : session.payment_intent?.id || "",
+          const normalizedPlatformFeeRate = normalizePercent(platformFeeRate);
+          const stripeFeeCents = estimateStripeProcessingFeeCents(amountCents);
+          const platformFeeCents = calculatePlatformFeeCents(
             amountCents,
-            platformFeeRate,
-          });
+            normalizedPlatformFeeRate
+          );
+          const totalFeeCents = stripeFeeCents + platformFeeCents;
+          const exactFeeFields = {
+            stripeFeeCents,
+            processingFeeCents: stripeFeeCents,
+            platformFeeRate: normalizedPlatformFeeRate,
+            platformFeeCents,
+            totalFeeCents,
+            netAmountCents: amountCents - totalFeeCents,
+            stripeChargeId: null,
+            stripeBalanceTransactionId: null,
+            hasExactStripeFee: false,
+          };
 
           const athleteExists = !!athleteSnap?.exists;
           const athleteData = athleteSnap?.data() || {};
@@ -2819,6 +2851,22 @@ function getSummaryPreference(userData = {}) {
   const summaryEmailEnabled = typeof prefs.summaryEmailEnabled === "boolean" ?
     prefs.summaryEmailEnabled :
     summaryEnabled;
+  const summaryDeliveryHourRaw = Number(prefs.summaryDeliveryHour);
+  const summaryDeliveryHour = Number.isInteger(summaryDeliveryHourRaw) &&
+    summaryDeliveryHourRaw >= 0 &&
+    summaryDeliveryHourRaw <= 23 ?
+    summaryDeliveryHourRaw :
+    7;
+  const summaryDeliveryMinuteRaw = Number(prefs.summaryDeliveryMinute);
+  const summaryDeliveryMinute = [0, 15, 30, 45].includes(summaryDeliveryMinuteRaw) ?
+    summaryDeliveryMinuteRaw :
+    0;
+  const summaryTimeZone = String(
+    prefs.summaryTimeZone ||
+    userData.orgTimeZone ||
+    userData.timeZone ||
+    "America/Los_Angeles"
+  ).trim();
 
   return {
     role,
@@ -2826,7 +2874,65 @@ function getSummaryPreference(userData = {}) {
     summaryEnabled,
     summaryFrequency,
     summaryEmailEnabled,
+    summaryDeliveryHour,
+    summaryDeliveryMinute,
+    summaryTimeZone,
   };
+}
+
+function getTimeZoneParts(date, timeZone) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    weekday: "short",
+  });
+
+  const parts = formatter.formatToParts(date);
+  const byType = {};
+  for (const part of parts) {
+    byType[part.type] = part.value;
+  }
+
+  const weekdayMap = {
+    sun: 0,
+    mon: 1,
+    tue: 2,
+    wed: 3,
+    thu: 4,
+    fri: 5,
+    sat: 6,
+  };
+  const weekday = weekdayMap[String(byType.weekday || "").slice(0, 3).toLowerCase()] ?? 0;
+  const year = Number(byType.year || 0);
+  const month = Number(byType.month || 0);
+  const day = Number(byType.day || 0);
+  const hour = Number(byType.hour || 0);
+  const minute = Number(byType.minute || 0);
+
+  return {
+    weekday,
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    dateKey: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+  };
+}
+
+function isSummaryDeliveryWindow(now, pref) {
+  const timeZone = pref.summaryTimeZone || "America/Los_Angeles";
+  const nowLocal = getTimeZoneParts(now, timeZone);
+  const deliveryHour = Number(pref.summaryDeliveryHour ?? 7);
+  const deliveryMinute = Number(pref.summaryDeliveryMinute ?? 0);
+
+  // Scheduler runs every 15 min; honor user-selected quarter-hour window.
+  return nowLocal.hour === deliveryHour && nowLocal.minute === deliveryMinute;
 }
 
 function valueToDate(value) {
@@ -2912,8 +3018,8 @@ async function getPaidDonationsForWindow(db, orgId, periodStart, periodEnd) {
 
 exports.runEmailSummaries = onSchedule(
   {
-    schedule: "every day 07:00",
-    timeZone: "America/Los_Angeles",
+    schedule: "every 15 minutes",
+    timeZone: "UTC",
     memory: "512MiB",
     timeoutSeconds: 120,
   },
@@ -2922,8 +3028,6 @@ exports.runEmailSummaries = onSchedule(
     const now = new Date();
     const periodEnd = new Date(now);
     const periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const dateKey = periodEnd.toISOString().slice(0, 10);
-
     const usersSnap = await db
       .collection("users")
       .where("role", "in", ["coach", "admin", "super-admin"])
@@ -2945,7 +3049,10 @@ exports.runEmailSummaries = onSchedule(
       if (userData.preferences?.emailNotifications === false) return;
       if (!pref.summaryEnabled || !pref.summaryEmailEnabled) return;
       if (pref.summaryFrequency === "off") return;
-      if (pref.summaryFrequency === "weekly" && now.getUTCDay() !== 1) return;
+      if (!isSummaryDeliveryWindow(now, pref)) return;
+
+      const localNow = getTimeZoneParts(now, pref.summaryTimeZone);
+      if (pref.summaryFrequency === "weekly" && localNow.weekday !== 1) return;
 
       recipients.push({
         uid: docSnap.id,
@@ -2953,6 +3060,10 @@ exports.runEmailSummaries = onSchedule(
         orgId: String(userData.orgId || "").trim(),
         role: pref.role,
         summaryFrequency: pref.summaryFrequency,
+        summaryTimeZone: pref.summaryTimeZone,
+        summaryDeliveryHour: pref.summaryDeliveryHour,
+        summaryDeliveryMinute: pref.summaryDeliveryMinute,
+        localDateKey: localNow.dateKey,
       });
     });
 
@@ -3009,7 +3120,8 @@ exports.runEmailSummaries = onSchedule(
     let skippedNoActiveCampaignsCount = 0;
 
     for (const recipient of recipients) {
-      const runId = `${dateKey}_${recipient.summaryFrequency}_${recipient.uid}`;
+      const runDateKey = recipient.localDateKey || periodEnd.toISOString().slice(0, 10);
+      const runId = `${runDateKey}_${recipient.summaryFrequency}_${recipient.uid}`;
       const runRef = db.collection("summary_runs").doc(runId);
       try {
         await runRef.create({
@@ -3017,7 +3129,10 @@ exports.runEmailSummaries = onSchedule(
           orgId: recipient.orgId,
           role: recipient.role,
           summaryFrequency: recipient.summaryFrequency,
-          dateKey,
+          dateKey: runDateKey,
+          summaryTimeZone: recipient.summaryTimeZone,
+          summaryDeliveryHour: recipient.summaryDeliveryHour,
+          summaryDeliveryMinute: recipient.summaryDeliveryMinute,
           status: "started",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -3195,7 +3310,7 @@ exports.runEmailSummaries = onSchedule(
           },
           kind: "summary",
           summaryFrequency: recipient.summaryFrequency,
-          summaryDateKey: dateKey,
+          summaryDateKey: runDateKey,
           uid: recipient.uid,
           orgId: recipient.orgId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -3233,7 +3348,7 @@ exports.runEmailSummaries = onSchedule(
       sentCount,
       skippedCount,
       skippedNoActiveCampaignsCount,
-      dateKey,
+      windowEnd: periodEnd.toISOString(),
     });
   }
 );
