@@ -1887,6 +1887,211 @@ exports.previewDripTemplate = onCall(
   }
 );
 
+exports.previewAllEmailTypes = onCall(
+  {
+    timeoutSeconds: 60,
+    memory: "512MiB",
+  },
+  async (request) => {
+    const profile = await assertAdmin(request);
+    const db = admin.firestore();
+    const {
+      athleteId,
+      phase = "week1a",
+      recipientName = "",
+      targetUid = request.auth.uid,
+      donorName = "Sample Supporter",
+      donationAmountCents = 2500,
+    } = request.data || {};
+
+    if (!athleteId || typeof athleteId !== "string") {
+      throw new HttpsError("invalid-argument", "athleteId is required");
+    }
+
+    const dripPayload = await buildDripRenderPayload({
+      profile,
+      athleteId,
+      phase,
+    });
+    const dripBodyText = applyRecipientPlaceholders(dripPayload.bodyText, {
+      name: recipientName || "",
+    });
+    const dripHtml = renderTransactionalShell({
+      subject: dripPayload.subject,
+      bodyText: dripBodyText,
+      ctaLabel: "Open Donation Page",
+      ctaUrl: dripPayload.donateUrl,
+      footerText: "Preview only",
+    });
+
+    const [athleteSnap, orgSnap, targetSnap] = await Promise.all([
+      db.collection("athletes").doc(athleteId).get(),
+      db.collection("organizations").doc(dripPayload.orgId).get(),
+      db.collection("users").doc(String(targetUid || "").trim()).get(),
+    ]);
+
+    const athlete = athleteSnap.exists ? athleteSnap.data() || {} : {};
+    const orgData = orgSnap.exists ? orgSnap.data() || {} : {};
+    if (!targetSnap.exists) {
+      throw new HttpsError("not-found", "Target user not found");
+    }
+    const targetUser = targetSnap.data() || {};
+    const targetRole = String(targetUser.role || "").toLowerCase();
+    if (!["coach", "admin", "super-admin"].includes(targetRole)) {
+      throw new HttpsError("failed-precondition", "Target user role is not summary-eligible");
+    }
+    if (
+      profile.role !== "super-admin" &&
+      String(targetUser.orgId || "") !== String(profile.orgId || "")
+    ) {
+      throw new HttpsError("permission-denied", "Target user must be in your organization");
+    }
+
+    const inviteBodyText = buildEmailFromContext({
+      emailKind: "donor_invite",
+      template: orgData.donorInviteTemplate || null,
+      fallbackTemplate: DEFAULT_DONOR_INVITE_TEMPLATE,
+      context: {
+        athleteName: dripPayload.athleteName,
+        senderName: dripPayload.athleteName,
+        teamName: dripPayload.teamName,
+        campaignName: dripPayload.campaignName,
+        donateUrl: dripPayload.donateUrl,
+        personalMessage: athlete.inviteMessage || "",
+      },
+    });
+    const inviteSubject = `Can you support ${dripPayload.athleteName} and ${dripPayload.teamName}?`;
+    const inviteHtml = renderTransactionalShell({
+      subject: inviteSubject,
+      bodyText: inviteBodyText,
+      ctaLabel: `Support ${dripPayload.athleteName}`,
+      ctaUrl: dripPayload.donateUrl,
+      footerText: "Preview only",
+    });
+
+    const receiptBodyLines = [
+      "Thank you for supporting this fundraiser.",
+      `Supporting athlete: ${dripPayload.athleteName}`,
+      `Amount: $${(enforceCents(donationAmountCents) / 100).toFixed(2)}`,
+      `Campaign: ${dripPayload.campaignId}`,
+      `Donor: ${String(donorName || "Sample Supporter").trim()}`,
+    ].filter(Boolean);
+    const receiptBodyText = receiptBodyLines.join("\n");
+    const receiptSubject = "Thank you for your donation!";
+    const receiptHtml = renderTransactionalShell({
+      subject: receiptSubject,
+      bodyText: receiptBodyText,
+      footerText: "Preview only",
+    });
+
+    const now = new Date();
+    const periodEnd = new Date(now);
+    const periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const [teamsSnap, campaignsSnap, athletesSnap, contactsSnap, donations] = await Promise.all([
+      db.collection("teams").where("orgId", "==", String(targetUser.orgId || "")).get(),
+      db.collection("campaigns").where("orgId", "==", String(targetUser.orgId || "")).get(),
+      db.collection("athletes").where("orgId", "==", String(targetUser.orgId || "")).get(),
+      db.collection("athlete_contacts").where("orgId", "==", String(targetUser.orgId || "")).get(),
+      getPaidDonationsForWindow(db, String(targetUser.orgId || ""), periodStart, periodEnd),
+    ]);
+
+    const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    const campaigns = campaignsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    const athletes = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    const athleteContacts = contactsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    const reportingConfig = getReportingSummaryConfig(orgData);
+
+    let scopedTeams = teams;
+    let scopedTeamIds = new Set(teams.map((t) => t.id));
+    if (targetRole === "coach") {
+      scopedTeams = teams.filter((t) => String(t.coachId || "") === String(targetUid || ""));
+      scopedTeamIds = new Set(scopedTeams.map((t) => t.id));
+    }
+
+    const scopedCampaignsRaw =
+      targetRole === "coach"
+        ? campaigns.filter((c) => scopedTeamIds.has(String(c.teamId || "")))
+        : campaigns;
+    const scopedCampaigns = reportingConfig.excludeEndedCampaigns
+      ? scopedCampaignsRaw.filter((c) => !isCampaignEnded(c, periodEnd))
+      : scopedCampaignsRaw;
+    const scopedCampaignIds = new Set(scopedCampaigns.map((c) => c.id));
+
+    const scopedAthletes =
+      targetRole === "coach"
+        ? athletes.filter((a) => scopedTeamIds.has(String(a.teamId || "")))
+        : athletes;
+    const scopedAthleteIds = new Set(scopedAthletes.map((a) => a.id));
+
+    const scopedDonations =
+      targetRole === "coach"
+        ? donations.filter((d) => scopedCampaignIds.has(String(d.campaignId || "")))
+        : donations;
+    const scopedContacts =
+      targetRole === "coach"
+        ? athleteContacts.filter((c) => scopedAthleteIds.has(String(c.athleteId || "")))
+        : athleteContacts;
+
+    const summaryDonationCount = scopedDonations.length;
+    const summaryAmountCents = scopedDonations.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+    const summarySubject = "Preview Daily Fundraising Summary";
+    const summaryScopeLabel =
+      targetRole === "coach"
+        ? `${scopedTeams.length} team(s)`
+        : `Organization: ${orgData.name || targetUser.orgId || "N/A"}`;
+    const summaryLines = [
+      summarySubject,
+      `Period: ${formatDateRange(periodStart, periodEnd)}`,
+      `Scope: ${summaryScopeLabel}`,
+      `Donations: ${summaryDonationCount}`,
+      `Amount Raised: ${formatCurrencyFromCents(summaryAmountCents)}`,
+      `Campaigns in Scope: ${scopedCampaigns.length}`,
+      `Athletes in Scope: ${scopedAthletes.length}`,
+      `Contacts in Scope: ${scopedContacts.length}`,
+    ];
+    const summaryBodyText = summaryLines.join("\n");
+    const summaryHtml = renderTransactionalShell({
+      subject: summarySubject,
+      bodyText: summaryBodyText,
+      footerText: `Summary time zone: ${getSummaryPreference(targetUser).summaryTimeZone}`,
+    });
+
+    return {
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      athleteId,
+      targetUid: String(targetUid || ""),
+      previews: {
+        invite: {
+          subject: inviteSubject,
+          bodyText: inviteBodyText,
+          html: inviteHtml,
+          templateVersion: "donor-invite-v1",
+        },
+        drip: {
+          phase: dripPayload.phase,
+          subject: dripPayload.subject,
+          bodyText: dripBodyText,
+          html: dripHtml,
+          templateVersion: `drip-${dripPayload.phase || "unknown"}-v1`,
+        },
+        receipt: {
+          subject: receiptSubject,
+          bodyText: receiptBodyText,
+          html: receiptHtml,
+          templateVersion: "donation-receipt-v1",
+        },
+        summary: {
+          subject: summarySubject,
+          bodyText: summaryBodyText,
+          html: summaryHtml,
+          templateVersion: "summary-v1",
+        },
+      },
+    };
+  }
+);
+
 exports.sendTestDripEmail = onCall(
   {
     secrets: ["MAILGUN_API_KEY"],
