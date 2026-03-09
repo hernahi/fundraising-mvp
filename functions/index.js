@@ -591,6 +591,30 @@ function getWebhookAlertEmail() {
   );
 }
 
+function logOutboundEmailAudit({
+  source = "unknown",
+  kind = "unknown",
+  to = null,
+  recipientCount = null,
+  orgId = null,
+  campaignId = null,
+  athleteId = null,
+  templateVersion = null,
+  subject = null,
+}) {
+  logger.info("emailAudit: outbound", {
+    source,
+    kind,
+    to: to || null,
+    recipientCount: Number.isFinite(recipientCount) ? recipientCount : null,
+    orgId: orgId || null,
+    campaignId: campaignId || null,
+    athleteId: athleteId || null,
+    templateVersion: templateVersion || null,
+    subject: subject || null,
+  });
+}
+
 async function recordWebhookFailure(source, data = {}) {
   try {
     await admin.firestore().collection("webhook_failures").add({
@@ -775,6 +799,17 @@ async function sendDripToContacts({
     });
   }
 
+  logOutboundEmailAudit({
+    source: "direct_mailgun",
+    kind: "athlete_drip",
+    recipientCount: sentContacts.length,
+    orgId,
+    campaignId,
+    athleteId,
+    templateVersion: `drip-${phase || "unknown"}-v1`,
+    subject,
+  });
+
   return {
     sentCount: sentContacts.length,
     failedCount: failedRecipients.length,
@@ -867,6 +902,17 @@ exports.sendMail = onDocumentCreated(
       });
 
       logger.info("sendMail: sent via mailgun", { to, subject });
+      logOutboundEmailAudit({
+        source: "mail_queue",
+        kind: doc.kind || message.kind || "unknown",
+        to,
+        recipientCount: 1,
+        orgId: doc.orgId || message.orgId || null,
+        campaignId: doc.campaignId || message.campaignId || null,
+        athleteId: doc.athleteId || message.athleteId || null,
+        templateVersion: doc.templateVersion || message.templateVersion || null,
+        subject,
+      });
     } catch (err) {
       logger.error("sendMail failed", { message: err?.message, stack: err?.stack });
       // Do not throw; we don't want infinite retries on delivery errors
@@ -926,6 +972,11 @@ exports.notifyCoachesOnNewDonor = onDocumentCreated(
                 bodyText: `Amount: ${amountStr}\nCampaign: ${donation.campaignName || campaignId}\nDonor: ${donation.donorName || "Anonymous"}`,
               }),
             },
+            kind: "coach_donor_notification",
+            orgId: orgId || null,
+            campaignId: campaignId || null,
+            athleteId: donation.athleteId || null,
+            templateVersion: "coach-donor-notification-v1",
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           })
         );
@@ -960,6 +1011,7 @@ exports.sendInviteEmail = onCall(
     }
 
     const { toEmail, inviteId, appUrl } = request.data || {};
+    const senderProfile = await getUserProfile(request.auth.uid).catch(() => null);
 
     if (!toEmail || !inviteId || !appUrl) {
       throw new HttpsError(
@@ -995,6 +1047,17 @@ exports.sendInviteEmail = onCall(
         inviteId,
         uid: request.auth.uid,
         format: "branded-shell",
+      });
+      logOutboundEmailAudit({
+        source: "direct_mailgun",
+        kind: "user_invite",
+        to: toEmail,
+        recipientCount: 1,
+        orgId: senderProfile?.orgId || null,
+        campaignId: null,
+        athleteId: null,
+        templateVersion: "invite-v1",
+        subject: brandedSubject,
       });
       return { ok: true };
 
@@ -1175,6 +1238,16 @@ exports.sendDonorInvite = onCall(
       campaignId,
       athleteId,
       uid: request.auth.uid,
+    });
+    logOutboundEmailAudit({
+      source: "direct_mailgun",
+      kind: "donor_invite",
+      recipientCount: emailList.length,
+      orgId: profile.orgId || null,
+      campaignId,
+      athleteId,
+      templateVersion: "donor-invite-v1",
+      subject,
     });
 
     return { ok: true, sent: emailList.length };
@@ -1867,6 +1940,17 @@ exports.sendTestDripEmail = onCall(
         recipientName: recipientName || "",
         uid: request.auth.uid,
       });
+      logOutboundEmailAudit({
+        source: "direct_mailgun",
+        kind: "athlete_drip_test",
+        to: toEmail.trim(),
+        recipientCount: 1,
+        orgId: payload.orgId || null,
+        campaignId: payload.campaignId || null,
+        athleteId: payload.athleteId || null,
+        templateVersion: `drip-${payload.phase || "unknown"}-test-v1`,
+        subject: `[TEST] ${payload.subject}`,
+      });
 
       return {
         ok: true,
@@ -1939,6 +2023,11 @@ exports.sendCoachInvite = onCall(async (request) => {
           ctaUrl: inviteUrl,
         }),
       },
+      kind: "coach_invite",
+      orgId: profile.orgId || null,
+      campaignId: null,
+      athleteId: null,
+      templateVersion: "coach-invite-v1",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     return { ok: true };
@@ -2506,6 +2595,11 @@ exports.stripeWebhook = onRequest(
                   bodyText: receiptBodyText,
                 }),
               },
+              kind: "donation_receipt",
+              orgId: sessionOrgId || null,
+              campaignId: campaignId || null,
+              athleteId: athleteId || null,
+              templateVersion: "donation-receipt-v1",
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
           } catch (err) {
@@ -3435,6 +3529,9 @@ exports.runEmailSummaries = onSchedule(
             }),
           },
           kind: "summary",
+          campaignId: null,
+          athleteId: null,
+          templateVersion: "summary-v1",
           summaryFrequency: recipient.summaryFrequency,
           summaryDateKey: runDateKey,
           uid: recipient.uid,
@@ -3679,6 +3776,9 @@ exports.sendTestSummaryNow = onCall(
         }),
       },
       kind: "summary",
+      campaignId: null,
+      athleteId: null,
+      templateVersion: "summary-test-v1",
       isTestSummary: true,
       summaryDateKey: dateKey,
       uid: targetUid,
@@ -3800,6 +3900,11 @@ exports.webhookFailureMonitor = onSchedule(
             subject: `[ALERT] ${source} webhook failures (${rows.length}/${WEBHOOK_ALERT_WINDOW_MINUTES}m)`,
             text: `Detected ${rows.length} ${source} webhook failures in the last ${WEBHOOK_ALERT_WINDOW_MINUTES} minutes.\n\nRecent failures:\n${recentLines}\n\nProject: fundraising-mvp-auth-payments`,
           },
+          kind: "webhook_alert",
+          orgId: null,
+          campaignId: null,
+          athleteId: null,
+          templateVersion: "webhook-alert-v1",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         stateUpdate.lastSentAt = admin.firestore.FieldValue.serverTimestamp();
