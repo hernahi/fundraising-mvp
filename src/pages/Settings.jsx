@@ -32,6 +32,14 @@ export default function Settings() {
     sendWhenNoActiveCampaigns: false,
   });
   const [savingReportingSettings, setSavingReportingSettings] = useState(false);
+  const [athleteOptions, setAthleteOptions] = useState([]);
+  const [previewTargetAthleteId, setPreviewTargetAthleteId] = useState("");
+  const [previewPhase, setPreviewPhase] = useState("week1a");
+  const [previewRecipientName, setPreviewRecipientName] = useState("");
+  const [previewDonorName, setPreviewDonorName] = useState("Sample Supporter");
+  const [previewingEmails, setPreviewingEmails] = useState(false);
+  const [emailPreviewStatus, setEmailPreviewStatus] = useState("");
+  const [emailPreviewData, setEmailPreviewData] = useState(null);
   const [notificationPrefs, setNotificationPrefs] = useState({
     emailNotifications: true,
     smsNotifications: false,
@@ -195,6 +203,31 @@ export default function Settings() {
 
     loadUserPreferences();
   }, [browserTimeZone, profile?.role, profile?.uid, user?.uid]);
+
+  useEffect(() => {
+    async function loadAthleteOptions() {
+      if (!isOrgAdmin || !profile?.orgId) return;
+      try {
+        const snap = await getDocs(
+          query(collection(db, "athletes"), where("orgId", "==", profile.orgId))
+        );
+        const options = snap.docs
+          .map((d) => ({
+            id: d.id,
+            name: d.data()?.name || d.data()?.displayName || d.id,
+            campaignId: d.data()?.campaignId || "",
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setAthleteOptions(options);
+        if (!previewTargetAthleteId && options.length) {
+          setPreviewTargetAthleteId(options[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load athlete options for preview:", err);
+      }
+    }
+    loadAthleteOptions();
+  }, [isOrgAdmin, profile?.orgId, previewTargetAthleteId]);
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
@@ -744,10 +777,162 @@ export default function Settings() {
                 </button>
               </div>
             </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  Email Preview Suite
+                </p>
+                <p className="text-xs text-slate-500">
+                  Preview invite, drip, receipt, and summary emails in one pass.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Athlete
+                  </label>
+                  <select
+                    value={previewTargetAthleteId}
+                    onChange={(e) => setPreviewTargetAthleteId(e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    {athleteOptions.length === 0 ? (
+                      <option value="">No athletes found</option>
+                    ) : (
+                      athleteOptions.map((athlete) => (
+                        <option key={athlete.id} value={athlete.id}>
+                          {athlete.name}
+                          {athlete.campaignId ? ` - ${athlete.campaignId}` : ""}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Drip Phase
+                  </label>
+                  <select
+                    value={previewPhase}
+                    onChange={(e) => setPreviewPhase(e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    {["week1a", "week1b", "week2", "week3", "week4", "week5", "lateIntro"].map(
+                      (phase) => (
+                        <option key={phase} value={phase}>
+                          {phase}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Recipient First Name
+                  </label>
+                  <input
+                    type="text"
+                    value={previewRecipientName}
+                    onChange={(e) => setPreviewRecipientName(e.target.value)}
+                    placeholder="Margarita"
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Receipt Donor Name
+                  </label>
+                  <input
+                    type="text"
+                    value={previewDonorName}
+                    onChange={(e) => setPreviewDonorName(e.target.value)}
+                    placeholder="Sample Supporter"
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={previewingEmails || !previewTargetAthleteId}
+                  onClick={async () => {
+                    try {
+                      setPreviewingEmails(true);
+                      setEmailPreviewStatus("");
+                      setEmailPreviewData(null);
+                      const fn = httpsCallable(functions, "previewAllEmailTypes");
+                      const res = await fn({
+                        athleteId: previewTargetAthleteId,
+                        phase: previewPhase,
+                        recipientName: previewRecipientName.trim(),
+                        donorName: previewDonorName.trim() || "Sample Supporter",
+                        targetUid: user?.uid || profile?.uid || "",
+                      });
+                      setEmailPreviewData(res?.data || null);
+                      setEmailPreviewStatus("Preview generated.");
+                    } catch (err) {
+                      console.error("Failed to generate email preview suite:", err);
+                      setEmailPreviewStatus(
+                        "Failed to generate previews. Check console and function logs."
+                      );
+                    } finally {
+                      setPreviewingEmails(false);
+                    }
+                  }}
+                  className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                >
+                  {previewingEmails ? "Generating..." : "Generate Email Previews"}
+                </button>
+              </div>
+              {emailPreviewStatus ? (
+                <p className="text-xs text-slate-600">{emailPreviewStatus}</p>
+              ) : null}
+              {emailPreviewData?.previews ? (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <EmailPreviewBlock
+                    title="Invite"
+                    preview={emailPreviewData.previews.invite}
+                  />
+                  <EmailPreviewBlock
+                    title="Drip"
+                    preview={emailPreviewData.previews.drip}
+                  />
+                  <EmailPreviewBlock
+                    title="Receipt"
+                    preview={emailPreviewData.previews.receipt}
+                  />
+                  <EmailPreviewBlock
+                    title="Summary"
+                    preview={emailPreviewData.previews.summary}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
 
       </div>
+    </div>
+  );
+}
+
+function EmailPreviewBlock({ title, preview }) {
+  if (!preview) return null;
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {title}
+        </p>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-500">
+          {preview.templateVersion || "v1"}
+        </span>
+      </div>
+      <p className="text-sm font-semibold text-slate-800">{preview.subject || "N/A"}</p>
+      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700">
+        {preview.bodyText || ""}
+      </pre>
     </div>
   );
 }
