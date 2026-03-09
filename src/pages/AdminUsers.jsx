@@ -1,263 +1,467 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  doc,
-  updateDoc,
-  deleteDoc,
   addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
-  Timestamp,
+  updateDoc,
+  where,
 } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "../firebase/config";
 import safeImageURL from "../utils/safeImage.js";
 import { useAuth } from "../context/AuthContext";
-import { Link } from "react-router-dom";
 
-/* =========================
-   HELPERS
-   ========================= */
-const getInitials = (name, email) => {
+const INVITE_ROLES = ["coach", "athlete", "admin"];
+
+function getInitials(name, email) {
   if (name) {
-    const parts = name.trim().split(" ");
-    return parts.length === 1
-      ? parts[0][0].toUpperCase()
-      : (parts[0][0] + parts[1][0]).toUpperCase();
+    const parts = String(name).trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return parts[0]?.[0]?.toUpperCase() || "?";
   }
-  return email ? email[0][0].toUpperCase() : "?";
-};
+  return String(email || "?")[0]?.toUpperCase() || "?";
+}
 
-const getStatus = (u) => {
-  if (u.deletedAt) return { label: "Deactivated", color: "gray" };
-  if (u.status === "pending") return { label: "Pending", color: "amber" };
-  return { label: "Active", color: "green" };
-};
+function getStatusBadge(user) {
+  if (user?.deletedAt) return { label: "Deactivated", classes: "bg-slate-100 text-slate-700" };
+  if (String(user?.status || "").toLowerCase() === "pending") {
+    return { label: "Pending", classes: "bg-amber-100 text-amber-800" };
+  }
+  return { label: "Active", classes: "bg-emerald-100 text-emerald-800" };
+}
 
 export default function AdminUsers() {
-  const { user: currentUser, isSuperAdmin, activeOrgId } = useAuth();
+  const { user: currentUser, profile, isSuperAdmin, activeOrgId } = useAuth();
+  const role = String(profile?.role || "").toLowerCase();
+  const isAdmin = role === "admin" || role === "super-admin";
+  const scopedOrgId = String(activeOrgId || profile?.orgId || "").trim();
 
   const [users, setUsers] = useState([]);
   const [invites, setInvites] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [showDeactivated, setShowDeactivated] = useState(false);
+  const [search, setSearch] = useState("");
 
-  /* =========================
-     USERS LISTENER
-     ========================= */
+  const [inviteForm, setInviteForm] = useState({
+    email: "",
+    role: "coach",
+    teamId: "",
+  });
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState("");
+
   useEffect(() => {
+    if (!isAdmin) return undefined;
+
     const baseRef = collection(db, "users");
-    let q;
-
-    if (isSuperAdmin && !activeOrgId) {
-      q = query(baseRef, orderBy("createdAt", "desc"));
-    } else if (activeOrgId) {
-      q = query(
-        baseRef,
-        where("orgId", "==", activeOrgId),
-        orderBy("createdAt", "desc")
-      );
+    let qRef;
+    if (isSuperAdmin && !scopedOrgId) {
+      qRef = query(baseRef, orderBy("createdAt", "desc"));
+    } else if (scopedOrgId) {
+      qRef = query(baseRef, where("orgId", "==", scopedOrgId), orderBy("createdAt", "desc"));
     } else {
-      return;
+      return undefined;
     }
 
     const unsub = onSnapshot(
-      q,
+      qRef,
       (snap) => {
-        setUsers(
-          snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        );
+        setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       },
-      (err) => console.error("❌ Users listener error:", err)
+      (err) => console.error("Users listener error:", err)
     );
-
     return () => unsub();
-  }, [isSuperAdmin, activeOrgId, currentUser?.uid]);
+  }, [isAdmin, isSuperAdmin, scopedOrgId]);
 
-  /* =========================
-     INVITES LISTENER
-     ========================= */
   useEffect(() => {
-    const baseRef = collection(db, "invites");
-    let q;
+    if (!isAdmin) return undefined;
 
-    if (isSuperAdmin && !activeOrgId) {
-      q = query(baseRef, orderBy("createdAt", "desc"));
-    } else if (activeOrgId) {
-      q = query(
-        baseRef,
-        where("orgId", "==", activeOrgId),
-        orderBy("createdAt", "desc")
-      );
+    const baseRef = collection(db, "invites");
+    let qRef;
+    if (isSuperAdmin && !scopedOrgId) {
+      qRef = query(baseRef, orderBy("createdAt", "desc"));
+    } else if (scopedOrgId) {
+      qRef = query(baseRef, where("orgId", "==", scopedOrgId), orderBy("createdAt", "desc"));
     } else {
-      return;
+      return undefined;
     }
 
     const unsub = onSnapshot(
-      q,
+      qRef,
       (snap) => {
         setInvites(
           snap.docs
             .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((i) => i.status === "pending")
+            .filter((i) => String(i.status || "").toLowerCase() === "pending")
         );
       },
-      (err) => console.error("❌ Invites listener error:", err)
+      (err) => console.error("Invites listener error:", err)
     );
-
     return () => unsub();
-  }, [isSuperAdmin, activeOrgId]);
+  }, [isAdmin, isSuperAdmin, scopedOrgId]);
 
-  /* =========================
-     ACTIONS
-     ========================= */
-  const isSelf = (u) => currentUser?.uid === u.id;
-  const isSuper = (u) => u.role === "super-admin";
+  useEffect(() => {
+    async function loadTeams() {
+      if (!isAdmin || !scopedOrgId) return;
+      try {
+        const snap = await getDocs(
+          query(collection(db, "teams"), where("orgId", "==", scopedOrgId))
+        );
+        const rows = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() || {}) }))
+          .sort((a, b) =>
+            String(a.name || a.teamName || a.id).localeCompare(
+              String(b.name || b.teamName || b.id)
+            )
+          );
+        setTeams(rows);
+      } catch (err) {
+        console.error("Failed to load teams for invites:", err);
+      }
+    }
+    loadTeams();
+  }, [isAdmin, scopedOrgId]);
 
-  const handleRoleChange = async (userId, role) => {
-    await updateDoc(doc(db, "users", userId), { role });
-  };
+  const filteredUsers = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return users.filter((u) => {
+      if (!showDeactivated && u.deletedAt) return false;
+      const status = String(u.status || "active").toLowerCase();
+      if (statusFilter === "pending" && status !== "pending") return false;
+      if (statusFilter === "active" && status === "pending") return false;
+      if (!needle) return true;
+      const haystack = [
+        u.displayName,
+        u.name,
+        u.email,
+        u.role,
+        u.orgId,
+      ]
+        .map((v) => String(v || "").toLowerCase())
+        .join(" ");
+      return haystack.includes(needle);
+    });
+  }, [users, showDeactivated, statusFilter, search]);
 
-  const handleDeactivateUser = async (userId) => {
-    if (!confirm("Deactivate this user?")) return;
+  if (!isAdmin) {
+    return <div className="p-6 text-red-600">Access restricted.</div>;
+  }
+
+  async function handleInviteSubmit(e) {
+    e.preventDefault();
+    setInviteStatus("");
+    setInviteLoading(true);
+    try {
+      if (!scopedOrgId) {
+        throw new Error("Select an active organization before inviting users.");
+      }
+      const email = String(inviteForm.email || "").trim().toLowerCase();
+      if (!email) {
+        throw new Error("Email is required.");
+      }
+      if (!INVITE_ROLES.includes(inviteForm.role)) {
+        throw new Error("Invalid role selected.");
+      }
+
+      const inviteRef = await addDoc(collection(db, "invites"), {
+        email,
+        role: inviteForm.role,
+        orgId: scopedOrgId,
+        teamId: inviteForm.teamId || null,
+        status: "pending",
+        invitedBy: currentUser?.uid || "",
+        createdAt: serverTimestamp(),
+      });
+
+      const appUrl = window.location.origin;
+      const sendInviteEmail = httpsCallable(functions, "sendInviteEmail");
+      await sendInviteEmail({
+        toEmail: email,
+        inviteId: inviteRef.id,
+        appUrl,
+      });
+
+      setInviteForm({ email: "", role: "coach", teamId: "" });
+      setInviteStatus("Invite sent.");
+    } catch (err) {
+      console.error("Invite failed:", err);
+      setInviteStatus("Failed to send invite.");
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  async function handleRevokeInvite(inviteId) {
+    if (!window.confirm("Revoke this invite?")) return;
+    await deleteDoc(doc(db, "invites", inviteId));
+  }
+
+  async function handleDeactivateUser(userId) {
+    if (!window.confirm("Deactivate this user?")) return;
     await updateDoc(doc(db, "users", userId), {
       deletedAt: serverTimestamp(),
-      deletedBy: currentUser.uid,
+      deletedBy: currentUser?.uid || null,
     });
-  };
+  }
 
-  const handleRevokeInvite = async (inviteId) => {
-    if (!confirm("Revoke this invite?")) return;
-    await deleteDoc(doc(db, "invites", inviteId));
-  };
+  async function handleReactivateUser(userId) {
+    await updateDoc(doc(db, "users", userId), {
+      deletedAt: null,
+      deletedBy: null,
+      status: "active",
+      updatedAt: serverTimestamp(),
+    });
+  }
 
-  /* =========================
-     FILTERING
-     ========================= */
-  const filteredUsers = users.filter((u) => {
-    if (!showDeactivated && u.deletedAt) return false;
+  async function handleRoleChange(userId, nextRole) {
+    await updateDoc(doc(db, "users", userId), {
+      role: nextRole,
+      updatedAt: serverTimestamp(),
+    });
+  }
 
-  const status = u.status ?? "active";
-    if (statusFilter === "pending") return status === "pending";
-    if (statusFilter === "active") return status !== "pending";
-
-  return true;
-  });
-
-  /* =========================
-     RENDER
-     ========================= */
   return (
-    <div className="page-container">
-      <h1 className="page-title">Users</h1>
-
-      <div className="flex items-center gap-4 mb-4">
-        <label className="text-sm font-medium">Status:</label>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="border rounded px-2 py-1 text-sm"
-        >
-          <option value="all">All</option>
-          <option value="active">Active</option>
-          <option value="pending">Pending</option>
-        </select>
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={showDeactivated}
-            onChange={(e) => setShowDeactivated(e.target.checked)}
-          />
-          Show deactivated
-        </label>
+    <div className="p-4 md:p-6 lg:p-8 space-y-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-800">Users</h1>
+          <p className="text-sm text-slate-500">
+            User management and invitations in one workspace.
+          </p>
+        </div>
+        <span className="text-xs rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+          Org: {scopedOrgId || "none selected"}
+        </span>
       </div>
 
-      {filteredUsers.length === 0 ? (
-        <div className="text-center py-10 text-gray-500">
-          <p className="mb-2">No users found.</p>
-          <Link to="/admin/invite" className="text-blue-600 underline">
-            Invite your first coach or athlete
-          </Link>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">Invite User</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Creates a pending invite and sends an email invite link.
+          </p>
         </div>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredUsers.map((u) => {
-              const status = getStatus(u);
-              return (
-                <tr key={u.id}>
-                  <td className="flex items-center gap-2">
-                    {safeImageURL(u.photoURL) ? (
-                      <img
-                        src={safeImageURL(u.photoURL)}
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-slate-400 text-white flex items-center justify-center text-xs font-semibold">
-                        {getInitials(u.displayName, u.email)}
-                      </div>
-                    )}
-                    {u.displayName || "Unnamed"}
-                  </td>
-                  <td>{u.email}</td>
-                  <td className="capitalize">{u.role}</td>
-                  <td>{status.label}</td>
-                  <td>
-                    {!isSelf(u) && !isSuper(u) && !u.deletedAt && (
-                      <button
-                        onClick={() => handleDeactivateUser(u.id)}
-                        className="text-xs text-red-600"
-                      >
-                        Deactivate
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+        <form
+          onSubmit={handleInviteSubmit}
+          className="grid grid-cols-1 gap-3 md:grid-cols-4"
+        >
+          <input
+            type="email"
+            required
+            value={inviteForm.email}
+            onChange={(e) =>
+              setInviteForm((prev) => ({ ...prev, email: e.target.value }))
+            }
+            placeholder="email@example.com"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 md:col-span-2"
+          />
+          <select
+            value={inviteForm.role}
+            onChange={(e) =>
+              setInviteForm((prev) => ({ ...prev, role: e.target.value }))
+            }
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          >
+            {INVITE_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+          <select
+            value={inviteForm.teamId}
+            onChange={(e) =>
+              setInviteForm((prev) => ({ ...prev, teamId: e.target.value }))
+            }
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          >
+            <option value="">No team assignment</option>
+            {teams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name || team.teamName || team.id}
+              </option>
+            ))}
+          </select>
+          <div className="md:col-span-4 flex items-center justify-between">
+            <p className="text-xs text-slate-500">{inviteStatus}</p>
+            <button
+              type="submit"
+              disabled={inviteLoading || !scopedOrgId}
+              className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+            >
+              {inviteLoading ? "Sending..." : "Send Invite"}
+            </button>
+          </div>
+        </form>
+      </div>
 
-      {invites.length > 0 && (
-        <div className="mt-10">
-          <h2 className="page-subtitle">Pending Invites</h2>
-          <table className="table">
-            <tbody>
-              {invites.map((i) => (
-                <tr key={i.id}>
-                  <td>{i.email}</td>
-                  <td>{i.role}</td>
-                  <td>Pending</td>
-                  <td>
-                    <button
-                      onClick={() => handleRevokeInvite(i.id)}
-                      className="text-xs text-red-600"
-                    >
-                      Revoke
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search users..."
+            className="min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          >
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="pending">Pending</option>
+          </select>
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={showDeactivated}
+              onChange={(e) => setShowDeactivated(e.target.checked)}
+            />
+            Show deactivated
+          </label>
         </div>
-      )}
+
+        {filteredUsers.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+            No users found.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-2 pr-3">User</th>
+                  <th className="py-2 pr-3">Role</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2 pr-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map((u) => {
+                  const isSelf = currentUser?.uid === u.id;
+                  const isSuperAdminUser = String(u.role || "") === "super-admin";
+                  const badge = getStatusBadge(u);
+                  const canEditRole = !isSelf && !isSuperAdminUser;
+                  const canDeactivate = !isSelf && !isSuperAdminUser && !u.deletedAt;
+                  const canReactivate = !isSelf && !isSuperAdminUser && !!u.deletedAt;
+                  return (
+                    <tr key={u.id} className="border-b border-slate-100">
+                      <td className="py-2 pr-3">
+                        <div className="flex items-center gap-2">
+                          {safeImageURL(u.photoURL) ? (
+                            <img
+                              src={safeImageURL(u.photoURL)}
+                              alt=""
+                              className="h-8 w-8 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-400 text-xs font-semibold text-white">
+                              {getInitials(u.displayName || u.name, u.email)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-800">
+                              {u.displayName || u.name || "Unnamed"}
+                            </p>
+                            <p className="truncate text-xs text-slate-500">{u.email || "N/A"}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3">
+                        {canEditRole ? (
+                          <select
+                            value={String(u.role || "coach")}
+                            onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+                          >
+                            <option value="coach">coach</option>
+                            <option value="athlete">athlete</option>
+                            <option value="admin">admin</option>
+                          </select>
+                        ) : (
+                          <span className="capitalize text-slate-700">{String(u.role || "n/a")}</span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span className={`rounded-full px-2 py-1 text-xs ${badge.classes}`}>
+                          {badge.label}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {canDeactivate ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDeactivateUser(u.id)}
+                              className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700"
+                            >
+                              Deactivate
+                            </button>
+                          ) : null}
+                          {canReactivate ? (
+                            <button
+                              type="button"
+                              onClick={() => handleReactivateUser(u.id)}
+                              className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700"
+                            >
+                              Reactivate
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {invites.length > 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-slate-800">Pending Invites</h2>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-2 pr-3">Email</th>
+                  <th className="py-2 pr-3">Role</th>
+                  <th className="py-2 pr-3">Team</th>
+                  <th className="py-2 pr-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invites.map((invite) => (
+                  <tr key={invite.id} className="border-b border-slate-100">
+                    <td className="py-2 pr-3">{invite.email}</td>
+                    <td className="py-2 pr-3 capitalize">{invite.role || "n/a"}</td>
+                    <td className="py-2 pr-3">{invite.teamId || "-"}</td>
+                    <td className="py-2 pr-3">
+                      <button
+                        type="button"
+                        onClick={() => handleRevokeInvite(invite.id)}
+                        className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700"
+                      >
+                        Revoke
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

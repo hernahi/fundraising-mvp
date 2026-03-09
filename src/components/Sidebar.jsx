@@ -8,7 +8,6 @@ import {
   ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
   ClipboardDocumentListIcon,
-  UserPlusIcon,
   BanknotesIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../context/AuthContext";
@@ -88,7 +87,6 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
     if (!isAdmin || isAthlete) return [];
     return [
       { to: "/admin/users", label: "Users", icon: UsersIcon },
-      { to: "/admin/invite", label: "Invite User", icon: UserPlusIcon },
       { to: "/accounting", label: "Accounting", icon: BanknotesIcon },
     ];
   }, [isAdmin, isAthlete]);
