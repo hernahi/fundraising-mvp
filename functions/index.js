@@ -249,6 +249,54 @@ function renderInviteTemplate(template, data) {
   return output;
 }
 
+const EMAIL_CONTEXT_REQUIREMENTS = {
+  donor_invite: ["athleteName", "teamName", "campaignName", "donateUrl"],
+  drip_phase: ["athleteName", "teamName", "campaignName", "donateUrl"],
+  drip_late_intro: ["athleteName", "teamName", "campaignName", "donateUrl"],
+};
+
+const ALLOWED_UNRESOLVED_EMAIL_TOKENS = new Set([
+  "recipientFirstName",
+  "RECIPIENT_FIRST_NAME",
+  "FIRST_NAME",
+  "recipientGreeting",
+  "RECIPIENT_GREETING",
+]);
+
+function extractUnresolvedTemplateTokens(text) {
+  const tokens = [];
+  const regex = /{{\s*([^}\s]+)\s*}}/g;
+  let match = regex.exec(String(text || ""));
+  while (match) {
+    tokens.push(match[1]);
+    match = regex.exec(String(text || ""));
+  }
+  return tokens;
+}
+
+function buildEmailFromContext({ emailKind, template, context, fallbackTemplate }) {
+  const normalizedKind = String(emailKind || "").trim();
+  const requiredKeys = EMAIL_CONTEXT_REQUIREMENTS[normalizedKind] || [];
+  const missingKeys = requiredKeys.filter((key) => !String(context?.[key] || "").trim());
+  if (missingKeys.length) {
+    throw new Error(
+      `buildEmailFromContext: missing required context for ${normalizedKind || "unknown"}: ${missingKeys.join(", ")}`
+    );
+  }
+
+  const rendered = renderInviteTemplate(template || fallbackTemplate, context || {});
+  const unresolved = extractUnresolvedTemplateTokens(rendered).filter(
+    (token) => !ALLOWED_UNRESOLVED_EMAIL_TOKENS.has(token)
+  );
+  if (unresolved.length) {
+    throw new Error(
+      `buildEmailFromContext: unresolved placeholders for ${normalizedKind || "unknown"}: ${unresolved.join(", ")}`
+    );
+  }
+
+  return rendered;
+}
+
 const DRIP_PHASES = [
   { key: "week1a", offsetDays: 0 },
   { key: "week1b", offsetDays: 3 },
@@ -453,13 +501,18 @@ async function buildDripRenderPayload({ profile, athleteId, phase }) {
     orgSubjects[templateKey] ||
     DRIP_SUBJECTS[templateKey] ||
     "Fundraiser update";
-  const bodyText = renderInviteTemplate(template, {
+  const bodyText = buildEmailFromContext({
+    emailKind: "drip_phase",
+    template,
+    fallbackTemplate: DEFAULT_DONOR_INVITE_TEMPLATE,
+    context: {
     athleteName,
     senderName: athleteName,
     teamName,
     campaignName,
     donateUrl,
     personalMessage: athlete.inviteMessage || "",
+    },
   });
 
   return {
@@ -1054,13 +1107,18 @@ exports.sendDonorInvite = onCall(
         ? message.trim().slice(0, 800)
         : "";
 
-    const bodyText = renderInviteTemplate(orgTemplate, {
-      athleteName,
-      senderName: athleteName,
-      teamName,
-      campaignName,
-      donateUrl,
-      personalMessage,
+    const bodyText = buildEmailFromContext({
+      emailKind: "donor_invite",
+      template: orgTemplate,
+      fallbackTemplate: DEFAULT_DONOR_INVITE_TEMPLATE,
+      context: {
+        athleteName,
+        senderName: athleteName,
+        teamName,
+        campaignName,
+        donateUrl,
+        personalMessage,
+      },
     });
 
     const bodyHtml = renderTransactionalShell({
@@ -1213,13 +1271,18 @@ exports.sendAthleteDripMessage = onCall(
         ? template.trim()
         : DEFAULT_DONOR_INVITE_TEMPLATE;
 
-    const bodyText = renderInviteTemplate(contentTemplate, {
-      athleteName,
-      senderName: athleteName,
-      teamName,
-      campaignName,
-      donateUrl,
-      personalMessage: athlete.inviteMessage || "",
+    const bodyText = buildEmailFromContext({
+      emailKind: "drip_phase",
+      template: contentTemplate,
+      fallbackTemplate: DEFAULT_DONOR_INVITE_TEMPLATE,
+      context: {
+        athleteName,
+        senderName: athleteName,
+        teamName,
+        campaignName,
+        donateUrl,
+        personalMessage: athlete.inviteMessage || "",
+      },
     });
 
     const messageSubject =
@@ -1535,18 +1598,23 @@ exports.runAthleteDrip = onSchedule(
           athleteTemplates.lateIntro ||
           orgTemplates.lateIntro ||
           DEFAULT_LATE_CONTACT_TEMPLATE;
-        const lateIntroText = renderInviteTemplate(lateIntroTemplate, {
-          athleteName: athlete.name || athlete.displayName || "our athlete",
-          senderName: athlete.name || athlete.displayName || "our athlete",
-          teamName: resolvedTeamName,
-          campaignName: campaign.name || campaign.title || "our fundraiser",
-          donateUrl,
-          personalMessage: athlete.inviteMessage || "",
-        });
         const lateIntroSubject =
           orgSubjects.lateIntro || DRIP_SUBJECTS.lateIntro || "Fundraiser update";
 
         try {
+          const lateIntroText = buildEmailFromContext({
+            emailKind: "drip_late_intro",
+            template: lateIntroTemplate,
+            fallbackTemplate: DEFAULT_LATE_CONTACT_TEMPLATE,
+            context: {
+              athleteName: athlete.name || athlete.displayName || "our athlete",
+              senderName: athlete.name || athlete.displayName || "our athlete",
+              teamName: resolvedTeamName,
+              campaignName: campaign.name || campaign.title || "our fundraiser",
+              donateUrl,
+              personalMessage: athlete.inviteMessage || "",
+            },
+          });
           const introResult = await sendDripToContacts({
             db,
             orgId: athlete.orgId,
@@ -1600,14 +1668,6 @@ exports.runAthleteDrip = onSchedule(
         orgTemplates[duePhase.key] ||
         orgData.donorInviteTemplate ||
         DEFAULT_DONOR_INVITE_TEMPLATE;
-      const templateText = renderInviteTemplate(phaseTemplate, {
-        athleteName: athlete.name || athlete.displayName || "our athlete",
-        senderName: athlete.name || athlete.displayName || "our athlete",
-        teamName: resolvedTeamName,
-        campaignName: campaign.name || campaign.title || "our fundraiser",
-        donateUrl,
-        personalMessage: athlete.inviteMessage || "",
-      });
       const subject =
         orgSubjects[duePhase.key] ||
         DRIP_SUBJECTS[duePhase.key] ||
@@ -1615,6 +1675,19 @@ exports.runAthleteDrip = onSchedule(
 
       let sendResult;
       try {
+        const templateText = buildEmailFromContext({
+          emailKind: "drip_phase",
+          template: phaseTemplate,
+          fallbackTemplate: DEFAULT_DONOR_INVITE_TEMPLATE,
+          context: {
+            athleteName: athlete.name || athlete.displayName || "our athlete",
+            senderName: athlete.name || athlete.displayName || "our athlete",
+            teamName: resolvedTeamName,
+            campaignName: campaign.name || campaign.title || "our fundraiser",
+            donateUrl,
+            personalMessage: athlete.inviteMessage || "",
+          },
+        });
         sendResult = await sendDripToContacts({
           db,
           orgId: athlete.orgId,
