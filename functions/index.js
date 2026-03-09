@@ -373,6 +373,36 @@ function renderTransactionalShell({
   `;
 }
 
+async function resolveTeamName(db, { athlete = {}, campaign = {} }) {
+  const explicitTeamName =
+    athlete.teamName ||
+    campaign.teamName ||
+    (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "");
+  if (explicitTeamName && String(explicitTeamName).trim()) {
+    return String(explicitTeamName).trim();
+  }
+
+  const teamId = String(athlete.teamId || campaign.teamId || "").trim();
+  if (!teamId) {
+    return "our team";
+  }
+
+  try {
+    const teamSnap = await db.collection("teams").doc(teamId).get();
+    if (teamSnap.exists) {
+      const teamData = teamSnap.data() || {};
+      const resolvedName = String(teamData.name || teamData.teamName || "").trim();
+      if (resolvedName) {
+        return resolvedName;
+      }
+    }
+  } catch (_) {
+    // Defensive fallback for legacy/missing team records.
+  }
+
+  return "our team";
+}
+
 async function buildDripRenderPayload({ profile, athleteId, phase }) {
   const db = admin.firestore();
   const athleteSnap = await db.collection("athletes").doc(athleteId).get();
@@ -408,11 +438,7 @@ async function buildDripRenderPayload({ profile, athleteId, phase }) {
 
   const donateUrl = `${baseUrl}/donate/${athlete.campaignId}/athlete/${athleteId}`;
   const athleteName = athlete.name || athlete.displayName || "our athlete";
-  const teamName =
-    athlete.teamName ||
-    campaign.teamName ||
-    (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
-    "our team";
+  const teamName = await resolveTeamName(db, { athlete, campaign });
   const campaignName = campaign.name || campaign.title || "our fundraiser";
   const orgTemplates = orgData.donorInviteTemplates || {};
   const athleteTemplates = athlete.donorInviteTemplates || {};
@@ -1050,11 +1076,7 @@ exports.sendDonorInvite = onCall(
     }
 
     const donateUrl = `${baseUrl}/donate/${campaignId}/athlete/${athleteId}`;
-    const teamName =
-      athlete.teamName ||
-      campaign.teamName ||
-      (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
-      "our team";
+    const teamName = await resolveTeamName(db, { athlete, campaign });
     const campaignName = campaign.name || campaign.title || "our fundraiser";
     const athleteName = athlete.name || "our athlete";
 
@@ -1217,11 +1239,7 @@ exports.sendAthleteDripMessage = onCall(
     }
 
     const donateUrl = `${baseUrl}/donate/${campaignId}/athlete/${athleteId}`;
-    const teamName =
-      athlete.teamName ||
-      campaign.teamName ||
-      (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
-      "our team";
+    const teamName = await resolveTeamName(db, { athlete, campaign });
     const campaignName = campaign.name || campaign.title || "our fundraiser";
     const athleteName = athlete.name || "our athlete";
 
@@ -1533,6 +1551,7 @@ exports.runAthleteDrip = onSchedule(
       }
 
       const donateUrl = `${orgData.frontendUrl || process.env.FRONTEND_URL || ""}/donate/${athlete.campaignId}/athlete/${athleteId}`;
+      const resolvedTeamName = await resolveTeamName(db, { athlete, campaign });
       const orgTemplates = orgData.donorInviteTemplates || {};
       const athleteTemplates = athlete.donorInviteTemplates || {};
       const orgSubjects = orgData.donorInviteSubjects || {};
@@ -1554,11 +1573,7 @@ exports.runAthleteDrip = onSchedule(
         const lateIntroText = renderInviteTemplate(lateIntroTemplate, {
           athleteName: athlete.name || athlete.displayName || "our athlete",
           senderName: athlete.name || athlete.displayName || "our athlete",
-          teamName:
-            athlete.teamName ||
-            campaign.teamName ||
-            (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
-            "our team",
+          teamName: resolvedTeamName,
           campaignName: campaign.name || campaign.title || "our fundraiser",
           donateUrl,
           personalMessage: athlete.inviteMessage || "",
@@ -1623,11 +1638,7 @@ exports.runAthleteDrip = onSchedule(
       const templateText = renderInviteTemplate(phaseTemplate, {
         athleteName: athlete.name || athlete.displayName || "our athlete",
         senderName: athlete.name || athlete.displayName || "our athlete",
-        teamName:
-          athlete.teamName ||
-          campaign.teamName ||
-          (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") ||
-          "our team",
+        teamName: resolvedTeamName,
         campaignName: campaign.name || campaign.title || "our fundraiser",
         donateUrl,
         personalMessage: athlete.inviteMessage || "",
@@ -2444,12 +2455,25 @@ exports.stripeWebhook = onRequest(
 
         if (donorEmail && mailRef) {
           try {
+            let athleteDisplayName = "";
+            if (athleteRef) {
+              const athleteForReceiptSnap = await athleteRef.get();
+              if (athleteForReceiptSnap.exists) {
+                const athleteForReceipt = athleteForReceiptSnap.data() || {};
+                athleteDisplayName = String(
+                  athleteForReceipt.name || athleteForReceipt.displayName || ""
+                ).trim();
+              }
+            }
+
             const receiptSubject = "Thank you for your donation!";
-            const receiptBodyText = [
+            const receiptBodyLines = [
               "Thank you for supporting this fundraiser.",
+              athleteDisplayName ? `Supporting athlete: ${athleteDisplayName}` : "",
               `Amount: $${(amountCents / 100).toFixed(2)}`,
               `Campaign: ${session.metadata?.campaignId || "N/A"}`,
-            ].join("\n");
+            ].filter(Boolean);
+            const receiptBodyText = receiptBodyLines.join("\n");
             await mailRef.create({
               to: donorEmail,
               message: {
