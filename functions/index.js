@@ -334,15 +334,40 @@ function renderEmailHtml(text) {
     .join("");
 }
 
-function renderTransactionalShell({ subject, bodyText }) {
+function renderTransactionalShell({
+  subject,
+  bodyText,
+  ctaLabel = "",
+  ctaUrl = "",
+  footerText = "",
+}) {
   const bodyHtml = renderEmailHtml(bodyText || "");
+  const ctaHtml =
+    ctaLabel && ctaUrl
+      ? `<p style="margin:16px 0 0 0;">
+          <a href="${escapeHtml(ctaUrl)}"
+             style="display:inline-block;padding:11px 16px;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">
+            ${escapeHtml(ctaLabel)}
+          </a>
+        </p>`
+      : "";
+  const footerNote = footerText
+    ? `<p style="margin:0 0 8px 0;font-size:12px;color:#64748b;line-height:1.45;">${escapeHtml(footerText)}</p>`
+    : "";
   return `
     <div style="background:#f8fafc;padding:24px;font-family:Arial,sans-serif;color:#0f172a;">
-      <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;">
-        <h2 style="margin:0 0 14px 0;font-size:20px;line-height:1.3;">${escapeHtml(subject || "Fundraising MVP Update")}</h2>
+      <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <div style="background:#0f172a;padding:12px 20px;">
+          <p style="margin:0;color:#ffffff;font-size:13px;font-weight:600;letter-spacing:.02em;">Fundraising MVP</p>
+        </div>
+        <div style="padding:20px;">
+          <h2 style="margin:0 0 14px 0;font-size:20px;line-height:1.3;">${escapeHtml(subject || "Fundraising MVP Update")}</h2>
         ${bodyHtml || `<p style="margin:0;line-height:1.5;">Thank you for supporting Fundraising MVP.</p>`}
+        ${ctaHtml}
         <hr style="border:none;border-top:1px solid #e2e8f0;margin:18px 0;" />
+        ${footerNote}
         <p style="margin:0;font-size:12px;color:#64748b;">Fundraising MVP</p>
+      </div>
       </div>
     </div>
   `;
@@ -565,7 +590,10 @@ async function sendDripToContacts({
   const sends = validContacts.map((contact) =>
     {
       const personalizedText = applyRecipientPlaceholders(templateText, contact);
-      const personalizedHtml = renderEmailHtml(personalizedText);
+      const personalizedHtml = renderTransactionalShell({
+        subject,
+        bodyText: personalizedText,
+      });
       return client.messages.create(domain, {
         from,
         to: [contact.email],
@@ -813,14 +841,11 @@ exports.notifyCoachesOnNewDonor = onDocumentCreated(
             to: coach.email,
             message: {
               subject: "New donation received",
-              html: `
-                <div style="font-family: Arial, sans-serif;">
-                  <h3>New Donation</h3>
-                  <p><b>Amount:</b> ${amountStr}</p>
-                  <p><b>Campaign:</b> ${donation.campaignName || campaignId}</p>
-                  <p><b>Donor:</b> ${donation.donorName || "Anonymous"}</p>
-                </div>
-              `,
+              text: `New Donation\n\nAmount: ${amountStr}\nCampaign: ${donation.campaignName || campaignId}\nDonor: ${donation.donorName || "Anonymous"}`,
+              html: renderTransactionalShell({
+                subject: "New donation received",
+                bodyText: `Amount: ${amountStr}\nCampaign: ${donation.campaignName || campaignId}\nDonor: ${donation.donorName || "Anonymous"}`,
+              }),
             },
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           })
@@ -869,6 +894,31 @@ exports.sendInviteEmail = onCall(
     const inviteUrl = `${appUrl.replace(/\/$/, "")}/accept-invite?invite=${inviteId}`;
 
     try {
+      const brandedSubject = "You've been invited to join Fundraising MVP";
+      const brandedBodyText =
+        "You've been invited to join Fundraising MVP.\n\n" +
+        "Use the button below to accept your invite and finish setup.";
+      await client.messages.create(domain, {
+        from: "Fundraising MVP <no-reply@mail.inetsphere.com>",
+        to: [toEmail],
+        subject: brandedSubject,
+        text: `${brandedBodyText}\n\nAccept your invite:\n${inviteUrl}`,
+        html: renderTransactionalShell({
+          subject: brandedSubject,
+          bodyText: brandedBodyText,
+          ctaLabel: "Accept Invite",
+          ctaUrl: inviteUrl,
+          footerText: "If you did not expect this invite, you can ignore this email.",
+        }),
+      });
+      logger.info("sendInviteEmail: sent", {
+        toEmail,
+        inviteId,
+        uid: request.auth.uid,
+        format: "branded-shell",
+      });
+      return { ok: true };
+
       await client.messages.create(domain, {
         from: "Fundraising MVP <no-reply@mail.inetsphere.com>",
         to: [toEmail],
@@ -1026,17 +1076,13 @@ exports.sendDonorInvite = onCall(
       personalMessage,
     });
 
-    const bodyHtml = `
-      <div style="font-family: Arial, sans-serif; color: #0f172a;">
-        ${renderEmailHtml(bodyText)}
-        <p>
-          <a href="${donateUrl}"
-             style="display:inline-block;padding:12px 18px;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">
-            Support ${athleteName}
-          </a>
-        </p>
-      </div>
-    `;
+    const bodyHtml = renderTransactionalShell({
+      subject: `Can you support ${athleteName} and ${teamName}?`,
+      bodyText,
+      ctaLabel: `Support ${athleteName}`,
+      ctaUrl: donateUrl,
+      footerText: "Thank you for supporting youth fundraising.",
+    });
 
     const subject = `Can you support ${athleteName} and ${teamName}?`;
 
@@ -1747,7 +1793,13 @@ exports.sendTestDripEmail = onCall(
       name: recipientName || "",
     });
     const testBodyText = `TEST SEND ONLY - this does not advance campaign state.\n\n${renderedBody}`;
-    const testHtml = renderEmailHtml(testBodyText);
+    const testHtml = renderTransactionalShell({
+      subject: `[TEST] ${payload.subject}`,
+      bodyText: testBodyText,
+      ctaLabel: "Open Donation Page",
+      ctaUrl: payload.donateUrl,
+      footerText: "This is a test email and was not sent to campaign contacts.",
+    });
 
     try {
       await client.messages.create(domain, {
@@ -1822,6 +1874,26 @@ exports.sendCoachInvite = onCall(async (request) => {
   }
 
   try {
+    const brandedSubject = "You've been invited as a coach";
+    const brandedBodyText =
+      `You've been invited to join${teamName ? ` ${teamName}` : " a team"} in Fundraising MVP.\n\n` +
+      "Use the button below to accept your invite.";
+    await admin.firestore().collection("mail").add({
+      to: toEmail,
+      message: {
+        subject: brandedSubject,
+        text: `${brandedBodyText}\n\nAccept invite: ${inviteUrl}`,
+        html: renderTransactionalShell({
+          subject: brandedSubject,
+          bodyText: brandedBodyText,
+          ctaLabel: "Accept Invite",
+          ctaUrl: inviteUrl,
+        }),
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return { ok: true };
+
     await admin.firestore().collection("mail").add({
       to: toEmail,
       message: {
@@ -2372,19 +2444,21 @@ exports.stripeWebhook = onRequest(
 
         if (donorEmail && mailRef) {
           try {
+            const receiptSubject = "Thank you for your donation!";
+            const receiptBodyText = [
+              "Thank you for supporting this fundraiser.",
+              `Amount: $${(amountCents / 100).toFixed(2)}`,
+              `Campaign: ${session.metadata?.campaignId || "N/A"}`,
+            ].join("\n");
             await mailRef.create({
               to: donorEmail,
               message: {
-                subject: "Thank you for your donation!",
-                html: `
-                  <div style="font-family: Arial, sans-serif;">
-                    <h2>Thank you!</h2>
-                    <p>We received your donation.</p>
-                    <p><b>Amount:</b> $${(amountCents / 100).toFixed(2)}</p>
-                    <p><b>Campaign:</b> ${session.metadata?.campaignId || ""}</p>
-                    <p>Fundraising MVP</p>
-                  </div>
-                `,
+                subject: receiptSubject,
+                text: receiptBodyText,
+                html: renderTransactionalShell({
+                  subject: receiptSubject,
+                  bodyText: receiptBodyText,
+                }),
               },
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
@@ -3281,22 +3355,6 @@ exports.runEmailSummaries = onSchedule(
         const subjectRole = recipient.role === "coach" ? "Coach" : "Org";
         const subject = `${subjectPrefix} ${subjectRole} Fundraising Summary`;
 
-        const topCampaignHtml = topCampaignRows.length
-          ? `<ul>${topCampaignRows
-              .map(
-                (row) =>
-                  `<li>${escapeHtml(row.campaignName)} - ${escapeHtml(
-                    formatCurrencyFromCents(row.cents)
-                  )}</li>`
-              )
-              .join("")}</ul>`
-          : "<p>No campaign donations during this period.</p>";
-
-        const teamHtml =
-          recipient.role === "coach"
-            ? `<p><b>Teams:</b> ${escapeHtml(scopeLabel)}</p>`
-            : "";
-
         const textLines = [
           `${subject}`,
           `Period: ${formatDateRange(periodStart, periodEnd)}`,
@@ -3324,24 +3382,11 @@ exports.runEmailSummaries = onSchedule(
           message: {
             subject,
             text: textLines.join("\n"),
-            html: `
-              <div style="font-family: Arial, sans-serif;">
-                <h2>${escapeHtml(subject)}</h2>
-                <p><b>Period:</b> ${escapeHtml(
-                  formatDateRange(periodStart, periodEnd)
-                )}</p>
-                ${teamHtml}
-                <p><b>Donations:</b> ${donationCount}</p>
-                <p><b>Amount Raised:</b> ${escapeHtml(
-                  formatCurrencyFromCents(amountCents)
-                )}</p>
-                <p><b>Campaigns in Scope:</b> ${scopedCampaigns.length}</p>
-                <p><b>Athletes in Scope:</b> ${scopedAthletes.length}</p>
-                <p><b>Contacts in Scope:</b> ${scopedContacts.length}</p>
-                <h3>Top Campaigns</h3>
-                ${topCampaignHtml}
-              </div>
-            `,
+            html: renderTransactionalShell({
+              subject,
+              bodyText: textLines.join("\n"),
+              footerText: `Summary time zone: ${recipient.summaryTimeZone}`,
+            }),
           },
           kind: "summary",
           summaryFrequency: recipient.summaryFrequency,
@@ -3558,17 +3603,6 @@ exports.sendTestSummaryNow = onCall(
         : `Organization: ${orgData.name || orgId}`;
 
     const subject = "Test Daily Fundraising Summary";
-    const topCampaignHtml = topCampaignRows.length
-      ? `<ul>${topCampaignRows
-          .map(
-            (row) =>
-              `<li>${escapeHtml(row.campaignName)} - ${escapeHtml(
-                formatCurrencyFromCents(row.cents)
-              )}</li>`
-          )
-          .join("")}</ul>`
-      : "<p>No campaign donations during this period.</p>";
-
     const textLines = [
       `${subject}`,
       `Period: ${formatDateRange(periodStart, periodEnd)}`,
@@ -3592,20 +3626,11 @@ exports.sendTestSummaryNow = onCall(
       message: {
         subject,
         text: textLines.join("\n"),
-        html: `
-          <div style="font-family: Arial, sans-serif;">
-            <h2>${escapeHtml(subject)}</h2>
-            <p><b>Period:</b> ${escapeHtml(formatDateRange(periodStart, periodEnd))}</p>
-            <p><b>Scope:</b> ${escapeHtml(scopeLabel)}</p>
-            <p><b>Donations:</b> ${donationCount}</p>
-            <p><b>Amount Raised:</b> ${escapeHtml(formatCurrencyFromCents(amountCents))}</p>
-            <p><b>Campaigns in Scope:</b> ${scopedCampaigns.length}</p>
-            <p><b>Athletes in Scope:</b> ${scopedAthletes.length}</p>
-            <p><b>Contacts in Scope:</b> ${scopedContacts.length}</p>
-            <h3>Top Campaigns</h3>
-            ${topCampaignHtml}
-          </div>
-        `,
+        html: renderTransactionalShell({
+          subject,
+          bodyText: textLines.join("\n"),
+          footerText: "Manual test summary send",
+        }),
       },
       kind: "summary",
       isTestSummary: true,
