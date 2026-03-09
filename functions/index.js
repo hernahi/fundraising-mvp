@@ -2852,15 +2852,35 @@ function getSummaryPreference(userData = {}) {
     prefs.summaryEmailEnabled :
     summaryEnabled;
   const summaryDeliveryHourRaw = Number(prefs.summaryDeliveryHour);
-  const summaryDeliveryHour = Number.isInteger(summaryDeliveryHourRaw) &&
+  const summaryDeliveryHourLegacy = Number.isInteger(summaryDeliveryHourRaw) &&
     summaryDeliveryHourRaw >= 0 &&
     summaryDeliveryHourRaw <= 23 ?
     summaryDeliveryHourRaw :
     7;
   const summaryDeliveryMinuteRaw = Number(prefs.summaryDeliveryMinute);
-  const summaryDeliveryMinute = [0, 15, 30, 45].includes(summaryDeliveryMinuteRaw) ?
+  const summaryDeliveryMinuteLegacy = [0, 15, 30, 45].includes(summaryDeliveryMinuteRaw) ?
     summaryDeliveryMinuteRaw :
     0;
+  const summaryDailyDeliveryHourRaw = Number(prefs.summaryDailyDeliveryHour);
+  const summaryDailyDeliveryHour = Number.isInteger(summaryDailyDeliveryHourRaw) &&
+    summaryDailyDeliveryHourRaw >= 0 &&
+    summaryDailyDeliveryHourRaw <= 23 ?
+    summaryDailyDeliveryHourRaw :
+    summaryDeliveryHourLegacy;
+  const summaryDailyDeliveryMinuteRaw = Number(prefs.summaryDailyDeliveryMinute);
+  const summaryDailyDeliveryMinute = [0, 15, 30, 45].includes(summaryDailyDeliveryMinuteRaw) ?
+    summaryDailyDeliveryMinuteRaw :
+    summaryDeliveryMinuteLegacy;
+  const summaryWeeklyDeliveryHourRaw = Number(prefs.summaryWeeklyDeliveryHour);
+  const summaryWeeklyDeliveryHour = Number.isInteger(summaryWeeklyDeliveryHourRaw) &&
+    summaryWeeklyDeliveryHourRaw >= 0 &&
+    summaryWeeklyDeliveryHourRaw <= 23 ?
+    summaryWeeklyDeliveryHourRaw :
+    summaryDeliveryHourLegacy;
+  const summaryWeeklyDeliveryMinuteRaw = Number(prefs.summaryWeeklyDeliveryMinute);
+  const summaryWeeklyDeliveryMinute = [0, 15, 30, 45].includes(summaryWeeklyDeliveryMinuteRaw) ?
+    summaryWeeklyDeliveryMinuteRaw :
+    summaryDeliveryMinuteLegacy;
   const summaryTimeZone = String(
     prefs.summaryTimeZone ||
     userData.orgTimeZone ||
@@ -2874,8 +2894,10 @@ function getSummaryPreference(userData = {}) {
     summaryEnabled,
     summaryFrequency,
     summaryEmailEnabled,
-    summaryDeliveryHour,
-    summaryDeliveryMinute,
+    summaryDailyDeliveryHour,
+    summaryDailyDeliveryMinute,
+    summaryWeeklyDeliveryHour,
+    summaryWeeklyDeliveryMinute,
     summaryTimeZone,
   };
 }
@@ -2925,11 +2947,16 @@ function getTimeZoneParts(date, timeZone) {
   };
 }
 
-function isSummaryDeliveryWindow(now, pref) {
+function isSummaryDeliveryWindow(now, pref, summaryFrequency) {
   const timeZone = pref.summaryTimeZone || "America/Los_Angeles";
   const nowLocal = getTimeZoneParts(now, timeZone);
-  const deliveryHour = Number(pref.summaryDeliveryHour ?? 7);
-  const deliveryMinute = Number(pref.summaryDeliveryMinute ?? 0);
+  const isWeekly = summaryFrequency === "weekly";
+  const deliveryHour = Number(
+    isWeekly ? pref.summaryWeeklyDeliveryHour : pref.summaryDailyDeliveryHour
+  );
+  const deliveryMinute = Number(
+    isWeekly ? pref.summaryWeeklyDeliveryMinute : pref.summaryDailyDeliveryMinute
+  );
 
   // Scheduler runs every 15 min; honor user-selected quarter-hour window.
   return nowLocal.hour === deliveryHour && nowLocal.minute === deliveryMinute;
@@ -3049,10 +3076,18 @@ exports.runEmailSummaries = onSchedule(
       if (userData.preferences?.emailNotifications === false) return;
       if (!pref.summaryEnabled || !pref.summaryEmailEnabled) return;
       if (pref.summaryFrequency === "off") return;
-      if (!isSummaryDeliveryWindow(now, pref)) return;
+      if (!isSummaryDeliveryWindow(now, pref, pref.summaryFrequency)) return;
 
       const localNow = getTimeZoneParts(now, pref.summaryTimeZone);
       if (pref.summaryFrequency === "weekly" && localNow.weekday !== 1) return;
+      const selectedDeliveryHour =
+        pref.summaryFrequency === "weekly" ?
+          pref.summaryWeeklyDeliveryHour :
+          pref.summaryDailyDeliveryHour;
+      const selectedDeliveryMinute =
+        pref.summaryFrequency === "weekly" ?
+          pref.summaryWeeklyDeliveryMinute :
+          pref.summaryDailyDeliveryMinute;
 
       recipients.push({
         uid: docSnap.id,
@@ -3061,8 +3096,8 @@ exports.runEmailSummaries = onSchedule(
         role: pref.role,
         summaryFrequency: pref.summaryFrequency,
         summaryTimeZone: pref.summaryTimeZone,
-        summaryDeliveryHour: pref.summaryDeliveryHour,
-        summaryDeliveryMinute: pref.summaryDeliveryMinute,
+        summaryDeliveryHour: selectedDeliveryHour,
+        summaryDeliveryMinute: selectedDeliveryMinute,
         localDateKey: localNow.dateKey,
       });
     });

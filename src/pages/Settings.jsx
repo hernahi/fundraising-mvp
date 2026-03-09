@@ -41,8 +41,10 @@ export default function Settings() {
     summaryFrequency: "off",
     summaryEmailEnabled: false,
     summarySmsEnabled: false,
-    summaryDeliveryHour: 7,
-    summaryDeliveryMinute: 0,
+    summaryDailyDeliveryHour: 7,
+    summaryDailyDeliveryMinute: 0,
+    summaryWeeklyDeliveryHour: 7,
+    summaryWeeklyDeliveryMinute: 0,
     summaryTimeZone: "UTC",
   });
 
@@ -129,6 +131,30 @@ export default function Settings() {
         if (!userSnap.exists()) return;
         const data = userSnap.data() || {};
         const prefs = data.preferences || {};
+        const legacyHour = Number(prefs.summaryDeliveryHour);
+        const legacyMinute = Number(prefs.summaryDeliveryMinute);
+        const resolvedDailyHour =
+          Number.isInteger(Number(prefs.summaryDailyDeliveryHour))
+            ? Number(prefs.summaryDailyDeliveryHour)
+            : Number.isInteger(legacyHour)
+              ? legacyHour
+              : 7;
+        const resolvedDailyMinute = [0, 15, 30, 45].includes(Number(prefs.summaryDailyDeliveryMinute))
+          ? Number(prefs.summaryDailyDeliveryMinute)
+          : [0, 15, 30, 45].includes(legacyMinute)
+            ? legacyMinute
+            : 0;
+        const resolvedWeeklyHour =
+          Number.isInteger(Number(prefs.summaryWeeklyDeliveryHour))
+            ? Number(prefs.summaryWeeklyDeliveryHour)
+            : Number.isInteger(legacyHour)
+              ? legacyHour
+              : 7;
+        const resolvedWeeklyMinute = [0, 15, 30, 45].includes(Number(prefs.summaryWeeklyDeliveryMinute))
+          ? Number(prefs.summaryWeeklyDeliveryMinute)
+          : [0, 15, 30, 45].includes(legacyMinute)
+            ? legacyMinute
+            : 0;
         const role = String(data.role || profile?.role || "").toLowerCase();
         const summaryDefaults = ["admin", "super-admin", "coach"].includes(role)
           ? {
@@ -136,8 +162,10 @@ export default function Settings() {
               summaryFrequency: "daily",
               summaryEmailEnabled: true,
               summarySmsEnabled: false,
-              summaryDeliveryHour: 7,
-              summaryDeliveryMinute: 0,
+              summaryDailyDeliveryHour: 7,
+              summaryDailyDeliveryMinute: 0,
+              summaryWeeklyDeliveryHour: 7,
+              summaryWeeklyDeliveryMinute: 0,
               summaryTimeZone: browserTimeZone,
             }
           : {
@@ -145,14 +173,20 @@ export default function Settings() {
               summaryFrequency: "off",
               summaryEmailEnabled: false,
               summarySmsEnabled: false,
-              summaryDeliveryHour: 7,
-              summaryDeliveryMinute: 0,
+              summaryDailyDeliveryHour: 7,
+              summaryDailyDeliveryMinute: 0,
+              summaryWeeklyDeliveryHour: 7,
+              summaryWeeklyDeliveryMinute: 0,
               summaryTimeZone: browserTimeZone,
             };
         setNotificationPrefs((prev) => ({
           ...prev,
           ...summaryDefaults,
           ...prefs,
+          summaryDailyDeliveryHour: resolvedDailyHour,
+          summaryDailyDeliveryMinute: resolvedDailyMinute,
+          summaryWeeklyDeliveryHour: resolvedWeeklyHour,
+          summaryWeeklyDeliveryMinute: resolvedWeeklyMinute,
         }));
       } catch (err) {
         console.error("Failed to load user preferences:", err);
@@ -319,15 +353,15 @@ export default function Settings() {
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div>
                     <label className="text-xs uppercase tracking-wide text-slate-400">
-                      Delivery Time
+                      Daily Delivery Time
                     </label>
                     <div className="mt-2 flex items-center gap-2">
                       <select
-                        value={String(notificationPrefs.summaryDeliveryHour ?? 7)}
+                        value={String(notificationPrefs.summaryDailyDeliveryHour ?? 7)}
                         onChange={(e) =>
                           setNotificationPrefs((prev) => ({
                             ...prev,
-                            summaryDeliveryHour: Number(e.target.value),
+                            summaryDailyDeliveryHour: Number(e.target.value),
                           }))
                         }
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
@@ -340,11 +374,11 @@ export default function Settings() {
                       </select>
                       <span className="text-sm text-slate-500">:</span>
                       <select
-                        value={String(notificationPrefs.summaryDeliveryMinute ?? 0)}
+                        value={String(notificationPrefs.summaryDailyDeliveryMinute ?? 0)}
                         onChange={(e) =>
                           setNotificationPrefs((prev) => ({
                             ...prev,
-                            summaryDeliveryMinute: Number(e.target.value),
+                            summaryDailyDeliveryMinute: Number(e.target.value),
                           }))
                         }
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
@@ -358,6 +392,46 @@ export default function Settings() {
                     </div>
                   </div>
                   <div>
+                    <label className="text-xs uppercase tracking-wide text-slate-400">
+                      Weekly Delivery Time
+                    </label>
+                    <div className="mt-2 flex items-center gap-2">
+                      <select
+                        value={String(notificationPrefs.summaryWeeklyDeliveryHour ?? 7)}
+                        onChange={(e) =>
+                          setNotificationPrefs((prev) => ({
+                            ...prev,
+                            summaryWeeklyDeliveryHour: Number(e.target.value),
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      >
+                        {Array.from({ length: 24 }).map((_, hour) => (
+                          <option key={`weekly-hour-${hour}`} value={hour}>
+                            {String(hour).padStart(2, "0")}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-sm text-slate-500">:</span>
+                      <select
+                        value={String(notificationPrefs.summaryWeeklyDeliveryMinute ?? 0)}
+                        onChange={(e) =>
+                          setNotificationPrefs((prev) => ({
+                            ...prev,
+                            summaryWeeklyDeliveryMinute: Number(e.target.value),
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      >
+                        {[0, 15, 30, 45].map((minute) => (
+                          <option key={`weekly-minute-${minute}`} value={minute}>
+                            {String(minute).padStart(2, "0")}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
                     <label className="text-xs uppercase tracking-wide text-slate-400">
                       Delivery Time Zone
                     </label>
