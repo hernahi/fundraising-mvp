@@ -945,41 +945,6 @@ exports.sendInviteEmail = onCall(
       });
       return { ok: true };
 
-      await client.messages.create(domain, {
-        from: "Fundraising MVP <no-reply@mail.inetsphere.com>",
-        to: [toEmail],
-        subject: "You’ve been invited to join Fundraising MVP",
-        text: `You’ve been invited to join Fundraising MVP.\n\nAccept your invite:\n${inviteUrl}`,
-        html: `
-          <div style="font-family: system-ui, -apple-system, sans-serif;">
-            <h2>You’ve been invited</h2>
-            <p>You’ve been invited to join <strong>Fundraising MVP</strong>.</p>
-            <p>
-              <a href="${inviteUrl}"
-                 style="display:inline-block;
-                        padding:12px 18px;
-                        background:#0f172a;
-                        color:#ffffff;
-                        text-decoration:none;
-                        border-radius:6px;
-                        font-weight:600;">
-                Accept Invite
-              </a>
-            </p>
-            <p style="font-size:12px;color:#64748b;">
-              If you didn’t expect this invite, you can ignore this email.
-            </p>
-          </div>
-        `,
-      });
-
-      logger.info("sendInviteEmail: sent", {
-        toEmail,
-        inviteId,
-        uid: request.auth.uid,
-      });
-
-      return { ok: true };
     } catch (err) {
       logger.error("sendInviteEmail failed", {
         message: err?.message,
@@ -1905,22 +1870,6 @@ exports.sendCoachInvite = onCall(async (request) => {
     });
     return { ok: true };
 
-    await admin.firestore().collection("mail").add({
-      to: toEmail,
-      message: {
-        subject: "You’ve been invited as a coach",
-        html: `
-          <div style="font-family: Arial, sans-serif;">
-            <h2>Coach Invite</h2>
-            <p>You’ve been invited to join${teamName ? ` <b>${teamName}</b>` : ""}.</p>
-            <p><a href="${inviteUrl}">Accept Invite</a></p>
-          </div>
-        `,
-      },
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    return { ok: true };
   } catch (err) {
     logger.error("sendCoachInvite failed", { message: err?.message, stack: err?.stack });
     throw new HttpsError("internal", err?.message || "Failed to send invite");
