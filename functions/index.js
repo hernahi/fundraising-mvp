@@ -1359,6 +1359,7 @@ exports.createManagedUserAccount = onCall(async (request) => {
       orgId,
       status: "active",
       teamId: teamId || null,
+      teamIds: role === "coach" ? (teamId ? [teamId] : []) : [],
       createdByUid: uid,
       createdAt: now,
       updatedAt: now,
