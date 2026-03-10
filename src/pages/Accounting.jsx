@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { collection, doc, documentId, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { FaArrowLeft } from "react-icons/fa";
 import { Link } from "react-router-dom";
 import { httpsCallable } from "firebase/functions";
@@ -36,11 +36,33 @@ const DEFAULT_PAYOUT_PREFS = {
   notes: "",
 };
 
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function Accounting() {
   const { profile, user, activeOrgId, isSuperAdmin } = useAuth();
   const role = String(profile?.role || "").toLowerCase();
   const canAccessAccounting = ["admin", "super-admin", "coach"].includes(role);
   const resolvedOrgId = (isSuperAdmin ? activeOrgId : profile?.orgId) || profile?.orgId || "";
+  const coachTeamIds = useMemo(() => getCoachScopedTeamIds(profile), [
+    profile?.role,
+    profile?.teamId,
+    JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || []),
+  ]);
 
   const [loading, setLoading] = useState(true);
   const [savingPrefs, setSavingPrefs] = useState(false);
@@ -67,22 +89,66 @@ export default function Accounting() {
     try {
       setLoading(true);
 
-      const [orgSnap, campaignsSnap, donationsSnap, teamsSnap, userSnap] = await Promise.all([
+      const chunkValues = (values, size = 10) => {
+        const chunks = [];
+        for (let i = 0; i < values.length; i += size) {
+          chunks.push(values.slice(i, i + size));
+        }
+        return chunks;
+      };
+
+      const getScopedDocs = async (collectionName, teamField) => {
+        if (role !== "coach") {
+          const snap = await getDocs(
+            query(collection(db, collectionName), where("orgId", "==", resolvedOrgId))
+          );
+          return snap.docs;
+        }
+        if (coachTeamIds.length === 0) {
+          return [];
+        }
+
+        const snaps = await Promise.all(
+          chunkValues(coachTeamIds).map((chunk) => {
+            const teamConstraint =
+              teamField === "__name__"
+                ? where(documentId(), "in", chunk)
+                : chunk.length === 1
+                  ? where(teamField, "==", chunk[0])
+                  : where(teamField, "in", chunk);
+            return getDocs(
+              query(
+                collection(db, collectionName),
+                where("orgId", "==", resolvedOrgId),
+                teamConstraint
+              )
+            );
+          })
+        );
+
+        const dedupe = new Map();
+        snaps.forEach((snap) => {
+          snap.docs.forEach((entry) => dedupe.set(entry.id, entry));
+        });
+        return Array.from(dedupe.values());
+      };
+
+      const [orgSnap, campaignsDocs, donationsDocs, teamsDocs, userSnap] = await Promise.all([
         getDoc(doc(db, "organizations", resolvedOrgId)),
-        getDocs(query(collection(db, "campaigns"), where("orgId", "==", resolvedOrgId))),
-        getDocs(query(collection(db, "donations"), where("orgId", "==", resolvedOrgId))),
-        getDocs(query(collection(db, "teams"), where("orgId", "==", resolvedOrgId))),
+        getScopedDocs("campaigns", "teamId"),
+        getScopedDocs("donations", "teamId"),
+        getScopedDocs("teams", "__name__"),
         user?.uid ? getDoc(doc(db, "users", user.uid)) : Promise.resolve(null),
       ]);
 
-      const nextCampaigns = campaignsSnap.docs.map((entry) => ({
+      const nextCampaigns = campaignsDocs.map((entry) => ({
         id: entry.id,
         ...(entry.data() || {}),
       }));
-      const nextDonations = donationsSnap.docs
+      const nextDonations = donationsDocs
         .map((entry) => ({ id: entry.id, ...(entry.data() || {}) }))
         .filter((entry) => String(entry.status || "").toLowerCase() === "paid");
-      const nextTeams = teamsSnap.docs.map((entry) => ({
+      const nextTeams = teamsDocs.map((entry) => ({
         id: entry.id,
         ...(entry.data() || {}),
       }));
@@ -118,10 +184,12 @@ export default function Accounting() {
   }, [
     activeOrgId,
     canAccessAccounting,
+    coachTeamIds,
     isSuperAdmin,
     profile?.displayName,
     profile?.email,
     profile?.name,
+    role,
     resolvedOrgId,
     user?.uid,
   ]);

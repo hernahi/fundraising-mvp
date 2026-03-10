@@ -62,6 +62,23 @@ const SUBJECTS_BY_TEMPLATE = {
   custom: "Fundraiser update",
 };
 
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function Messages() {
   const { profile, loading: authLoading } = useAuth();
   const role = (profile?.role || "").toLowerCase();
@@ -70,6 +87,11 @@ export default function Messages() {
   const isAdmin = role === "admin" || role === "super-admin";
   const orgId = profile?.orgId || "";
   const athleteId = profile?.uid || "";
+  const coachTeamIds = useMemo(() => getCoachScopedTeamIds(profile), [
+    profile?.role,
+    profile?.teamId,
+    JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || []),
+  ]);
 
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(true);
@@ -128,19 +150,104 @@ export default function Messages() {
     if (authLoading || !profile?.orgId) return;
 
     const ref = collection(db, "messages");
-    const qRef = isAthlete
-      ? query(
+    if (isAthlete) {
+      const qRef = query(
+        ref,
+        where("orgId", "==", profile.orgId),
+        where("athleteId", "==", athleteId),
+        orderBy("createdAt", "desc")
+      );
+      const unsub = onSnapshot(
+        qRef,
+        (snap) => {
+          const rows = snap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }));
+          setMessages(rows);
+          setLoadingMessages(false);
+          setLastUpdated(new Date().toLocaleTimeString());
+        },
+        (err) => {
+          console.error("Messages listener error:", err);
+          setLoadingMessages(false);
+        }
+      );
+      return () => unsub();
+    }
+
+    if (isCoach) {
+      if (coachTeamIds.length === 0) {
+        setMessages([]);
+        setLoadingMessages(false);
+        return;
+      }
+
+      const chunkSize = 10;
+      const chunks = [];
+      for (let i = 0; i < coachTeamIds.length; i += chunkSize) {
+        chunks.push(coachTeamIds.slice(i, i + chunkSize));
+      }
+
+      const rowsByChunk = new Map();
+
+      const applyMerged = () => {
+        const dedupe = new Map();
+        rowsByChunk.forEach((rows) => {
+          rows.forEach((row) => dedupe.set(row.id, row));
+        });
+        const merged = Array.from(dedupe.values()).sort((a, b) => {
+          const aTime =
+            a.createdAt?.toDate?.()?.getTime?.() ||
+            (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
+          const bTime =
+            b.createdAt?.toDate?.()?.getTime?.() ||
+            (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
+          return bTime - aTime;
+        });
+        setMessages(merged);
+        setLoadingMessages(false);
+        setLastUpdated(new Date().toLocaleTimeString());
+      };
+
+      const unsubs = chunks.map((chunk, index) => {
+        const teamConstraint =
+          chunk.length === 1
+            ? where("teamId", "==", chunk[0])
+            : where("teamId", "in", chunk);
+        const qRef = query(
           ref,
           where("orgId", "==", profile.orgId),
-          where("athleteId", "==", athleteId),
-          orderBy("createdAt", "desc")
-        )
-      : query(
-          ref,
-          where("orgId", "==", profile.orgId),
+          teamConstraint,
           orderBy("createdAt", "desc")
         );
+        return onSnapshot(
+          qRef,
+          (snap) => {
+            rowsByChunk.set(
+              index,
+              snap.docs.map((d) => ({
+                id: d.id,
+                ...d.data(),
+              }))
+            );
+            applyMerged();
+          },
+          (err) => {
+            console.error("Messages listener error:", err);
+            setLoadingMessages(false);
+          }
+        );
+      });
 
+      return () => unsubs.forEach((unsub) => unsub());
+    }
+
+    const qRef = query(
+      ref,
+      where("orgId", "==", profile.orgId),
+      orderBy("createdAt", "desc")
+    );
     const unsub = onSnapshot(
       qRef,
       (snap) => {
@@ -159,7 +266,7 @@ export default function Messages() {
     );
 
     return () => unsub();
-  }, [authLoading, athleteId, isAthlete, profile]);
+  }, [authLoading, athleteId, isAthlete, isCoach, profile, coachTeamIds]);
 
   useEffect(() => {
     if (!isAthlete || !orgId || !athleteId) return;

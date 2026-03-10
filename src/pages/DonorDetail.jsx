@@ -15,11 +15,31 @@ import {
 import safeImageURL from "../utils/safeImage";
 import { useAuth } from "../context/AuthContext";
 
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function DonorDetail() {
   const { donorId: donorIdParam } = useParams();
   const donorId = decodeURIComponent(donorIdParam || "");
   const { profile, activeOrgId, loading: authLoading } = useAuth();
   const orgId = activeOrgId || profile?.orgId;
+  const role = String(profile?.role || "").toLowerCase();
+  const isCoach = role === "coach";
+  const coachTeamIds = getCoachScopedTeamIds(profile);
   const canEditNotes = ["admin", "super-admin", "coach"].includes(
     profile?.role
   );
@@ -33,16 +53,66 @@ export default function DonorDetail() {
   const [savingNotes, setSavingNotes] = useState(false);
   const [hasDonorDoc, setHasDonorDoc] = useState(false);
 
+  const chunkValues = (values, size = 10) => {
+    const chunks = [];
+    for (let i = 0; i < values.length; i += size) {
+      chunks.push(values.slice(i, i + size));
+    }
+    return chunks;
+  };
+
   const loadLookupMaps = async (nextOrgId) => {
-    const [teamsSnap, athletesSnap] = await Promise.all([
-      getDocs(query(collection(db, "teams"), where("orgId", "==", nextOrgId))),
-      getDocs(
+    let teamsDocs = [];
+    if (isCoach) {
+      if (coachTeamIds.length > 0) {
+        const teamSnaps = await Promise.all(
+          chunkValues(coachTeamIds).map((chunk) =>
+            getDocs(
+              query(
+                collection(db, "teams"),
+                where("__name__", "in", chunk)
+              )
+            )
+          )
+        );
+        teamsDocs = teamSnaps.flatMap((snap) => snap.docs);
+      }
+    } else {
+      const teamsSnap = await getDocs(
+        query(collection(db, "teams"), where("orgId", "==", nextOrgId))
+      );
+      teamsDocs = teamsSnap.docs;
+    }
+
+    let athletesDocs = [];
+    if (isCoach) {
+      if (coachTeamIds.length > 0) {
+        const athleteSnaps = await Promise.all(
+          chunkValues(coachTeamIds).map((chunk) => {
+            const teamConstraint =
+              chunk.length === 1
+                ? where("teamId", "==", chunk[0])
+                : where("teamId", "in", chunk);
+            return getDocs(
+              query(
+                collection(db, "athletes"),
+                where("orgId", "==", nextOrgId),
+                teamConstraint
+              )
+            );
+          })
+        );
+        athletesDocs = athleteSnaps.flatMap((snap) => snap.docs);
+      }
+    } else {
+      const athletesSnap = await getDocs(
         query(collection(db, "athletes"), where("orgId", "==", nextOrgId))
-      ),
-    ]);
+      );
+      athletesDocs = athletesSnap.docs;
+    }
 
     const nextTeamMap = new Map();
-    teamsSnap.forEach((teamDoc) => {
+    teamsDocs.forEach((teamDoc) => {
       nextTeamMap.set(teamDoc.id, {
         id: teamDoc.id,
         ...teamDoc.data(),
@@ -50,7 +120,7 @@ export default function DonorDetail() {
     });
 
     const nextAthleteMap = new Map();
-    athletesSnap.forEach((athleteDoc) => {
+    athletesDocs.forEach((athleteDoc) => {
       nextAthleteMap.set(athleteDoc.id, {
         id: athleteDoc.id,
         ...athleteDoc.data(),
@@ -61,30 +131,47 @@ export default function DonorDetail() {
     setAthleteMap(nextAthleteMap);
   };
 
-  const loadDonationHistoryFallback = async (nextOrgId, lookupKey) => {
-    let fallbackQuery = null;
-    if (lookupKey.startsWith("email:")) {
-      fallbackQuery = query(
-        collection(db, "donations"),
-        where("orgId", "==", nextOrgId),
-        where("donorEmail", "==", lookupKey.slice(6))
-      );
-    } else if (lookupKey.startsWith("name:")) {
-      fallbackQuery = query(
-        collection(db, "donations"),
-        where("orgId", "==", nextOrgId),
-        where("donorName", "==", lookupKey.slice(5))
-      );
-    } else {
-      fallbackQuery = query(
-        collection(db, "donations"),
-        where("orgId", "==", nextOrgId),
-        where("donorEmail", "==", lookupKey)
-      );
+  const getScopedDonationDocs = async (buildQuery) => {
+    if (!isCoach) {
+      const snap = await getDocs(buildQuery(null));
+      return snap.docs;
+    }
+    if (coachTeamIds.length === 0) {
+      return [];
     }
 
-    const donationSnap = await getDocs(fallbackQuery);
-    const donationList = donationSnap.docs
+    const snaps = await Promise.all(
+      chunkValues(coachTeamIds).map((chunk) => getDocs(buildQuery(chunk)))
+    );
+    const dedupe = new Map();
+    snaps.forEach((snap) => {
+      snap.docs.forEach((entry) => dedupe.set(entry.id, entry));
+    });
+    return Array.from(dedupe.values());
+  };
+
+  const loadDonationHistoryFallback = async (nextOrgId, lookupKey) => {
+    const buildFallbackQuery = (teamChunk) => {
+      const constraints = [where("orgId", "==", nextOrgId)];
+      if (lookupKey.startsWith("email:")) {
+        constraints.push(where("donorEmail", "==", lookupKey.slice(6)));
+      } else if (lookupKey.startsWith("name:")) {
+        constraints.push(where("donorName", "==", lookupKey.slice(5)));
+      } else {
+        constraints.push(where("donorEmail", "==", lookupKey));
+      }
+      if (isCoach && teamChunk) {
+        constraints.push(
+          teamChunk.length === 1
+            ? where("teamId", "==", teamChunk[0])
+            : where("teamId", "in", teamChunk)
+        );
+      }
+      return query(collection(db, "donations"), ...constraints);
+    };
+
+    const donationDocs = await getScopedDonationDocs(buildFallbackQuery);
+    const donationList = donationDocs
       .map((d) => ({ id: d.id, ...d.data() }))
       .sort((a, b) => {
         const aTs = a.createdAt?.toDate?.()?.getTime?.() || 0;
@@ -127,10 +214,14 @@ export default function DonorDetail() {
 
     async function fetchData() {
       try {
-        const donorRef = doc(db, "donors", donorId);
-        const donorSnap = await getDoc(donorRef);
+        let donorSnap = null;
+        try {
+          donorSnap = await getDoc(doc(db, "donors", donorId));
+        } catch (_) {
+          donorSnap = null;
+        }
 
-        if (!donorSnap.exists()) {
+        if (!donorSnap || !donorSnap.exists()) {
           const fallback = await loadDonationHistoryFallback(orgId, donorId);
           if (!fallback) {
             setDonor(null);
@@ -156,16 +247,35 @@ export default function DonorDetail() {
           setNotesDraft("");
           return;
         }
+        if (
+          isCoach &&
+          donorData?.teamId &&
+          !coachTeamIds.includes(String(donorData.teamId))
+        ) {
+          setDonor(null);
+          setDonations([]);
+          setHasDonorDoc(false);
+          setNotesDraft("");
+          return;
+        }
 
-        const donationsRef = collection(db, "donations");
-        const q = query(
-          donationsRef,
-          where("orgId", "==", orgId),
-          where("donorId", "==", donorId)
-        );
+        const buildDonorDonationsQuery = (teamChunk) => {
+          const constraints = [
+            where("orgId", "==", orgId),
+            where("donorId", "==", donorId),
+          ];
+          if (isCoach && teamChunk) {
+            constraints.push(
+              teamChunk.length === 1
+                ? where("teamId", "==", teamChunk[0])
+                : where("teamId", "in", teamChunk)
+            );
+          }
+          return query(collection(db, "donations"), ...constraints);
+        };
 
-        const donationSnap = await getDocs(q);
-        const donationList = donationSnap.docs
+        const donationDocs = await getScopedDonationDocs(buildDonorDonationsQuery);
+        const donationList = donationDocs
           .map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => {
             const aTs = a.createdAt?.toDate?.()?.getTime?.() || 0;
@@ -187,7 +297,7 @@ export default function DonorDetail() {
     }
 
     fetchData();
-  }, [authLoading, donorId, orgId]);
+  }, [authLoading, donorId, orgId, isCoach, JSON.stringify(coachTeamIds)]);
 
   const summary = useMemo(() => {
     const totalDonated = donations.reduce(

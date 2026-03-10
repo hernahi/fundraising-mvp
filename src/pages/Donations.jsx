@@ -20,6 +20,23 @@ import {
   orderBy,
 } from "../firebase/firestore";
 
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function Donors() {
   const { profile, activeOrgId, loading: authLoading } = useAuth();
   const { push } = useToast();
@@ -33,6 +50,13 @@ export default function Donors() {
   const [sortBy, setSortBy] = useState("created");
   const [activityFilter, setActivityFilter] = useState("all");
   const orgId = activeOrgId || profile?.orgId;
+  const role = String(profile?.role || "").toLowerCase();
+  const isCoach = role === "coach";
+  const coachTeamIds = useMemo(() => getCoachScopedTeamIds(profile), [
+    profile?.role,
+    profile?.teamId,
+    JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || []),
+  ]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -41,31 +65,99 @@ export default function Donors() {
       setLoading(false);
       return;
     }
+    if (isCoach && coachTeamIds.length === 0) {
+      setDonors([]);
+      setLoading(false);
+      return;
+    }
 
     const ref = collection(db, "donors");
-    const q = query(
-      ref,
-      where("orgId", "==", orgId),
-      orderBy("createdAt", "desc")
-    );
+    if (!isCoach) {
+      const q = query(
+        ref,
+        where("orgId", "==", orgId),
+        orderBy("createdAt", "desc")
+      );
+      const unsub = onSnapshot(
+        q,
+        (snap) => {
+          const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setDonors(items);
+          setLoading(false);
+          setLastUpdated(new Date().toLocaleTimeString());
+        },
+        (err) => {
+          console.error("Donors listener error:", err);
+          push("Failed to load donors.", "error");
+          setLoading(false);
+        }
+      );
+      return () => unsub();
+    }
 
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setDonors(items);
-        setLoading(false);
-        setLastUpdated(new Date().toLocaleTimeString());
-      },
-      (err) => {
-        console.error("Donors listener error:", err);
-        push("Failed to load donors.", "error");
-        setLoading(false);
-      }
-    );
+    const chunkSize = 10;
+    const chunks = [];
+    for (let i = 0; i < coachTeamIds.length; i += chunkSize) {
+      chunks.push(coachTeamIds.slice(i, i + chunkSize));
+    }
 
-    return () => unsub();
-  }, [authLoading, orgId, push]);
+    const itemsByChunk = new Map();
+    let hasError = false;
+
+    const applyMerged = () => {
+      const merged = [];
+      const dedupe = new Map();
+      itemsByChunk.forEach((rows) => {
+        rows.forEach((row) => dedupe.set(row.id, row));
+      });
+      dedupe.forEach((row) => merged.push(row));
+      merged.sort((a, b) => {
+        const aTime =
+          a.createdAt?.toDate?.()?.getTime?.() ||
+          (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
+        const bTime =
+          b.createdAt?.toDate?.()?.getTime?.() ||
+          (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
+        return bTime - aTime;
+      });
+      setDonors(merged);
+      setLoading(false);
+      setLastUpdated(new Date().toLocaleTimeString());
+    };
+
+    const unsubs = chunks.map((chunk, index) => {
+      const teamConstraint =
+        chunk.length === 1
+          ? where("teamId", "==", chunk[0])
+          : where("teamId", "in", chunk);
+      const q = query(
+        ref,
+        where("orgId", "==", orgId),
+        teamConstraint,
+        orderBy("createdAt", "desc")
+      );
+      return onSnapshot(
+        q,
+        (snap) => {
+          itemsByChunk.set(
+            index,
+            snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          );
+          applyMerged();
+        },
+        (err) => {
+          console.error("Donors listener error:", err);
+          if (!hasError) {
+            push("Failed to load donors.", "error");
+            hasError = true;
+          }
+          setLoading(false);
+        }
+      );
+    });
+
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [authLoading, coachTeamIds, isCoach, orgId, push]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -73,25 +165,72 @@ export default function Donors() {
       setDonationRows([]);
       return;
     }
+    if (isCoach && coachTeamIds.length === 0) {
+      setDonationRows([]);
+      return;
+    }
 
     const ref = collection(db, "donations");
-    const q = query(ref, where("orgId", "==", orgId));
+    if (!isCoach) {
+      const q = query(ref, where("orgId", "==", orgId));
+      const unsub = onSnapshot(
+        q,
+        (snap) => {
+          setDonationRows(
+            snap.docs.map((docSnap) => ({
+              id: docSnap.id,
+              ...docSnap.data(),
+            }))
+          );
+        },
+        (err) => {
+          console.error("Donations stats listener error:", err);
+        }
+      );
+      return () => unsub();
+    }
 
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setDonationRows(snap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        })));
-      },
-      (err) => {
-        console.error("Donations stats listener error:", err);
-      }
-    );
+    const chunkSize = 10;
+    const chunks = [];
+    for (let i = 0; i < coachTeamIds.length; i += chunkSize) {
+      chunks.push(coachTeamIds.slice(i, i + chunkSize));
+    }
+    const rowsByChunk = new Map();
 
-    return () => unsub();
-  }, [authLoading, orgId]);
+    const applyMerged = () => {
+      const dedupe = new Map();
+      rowsByChunk.forEach((rows) => {
+        rows.forEach((row) => dedupe.set(row.id, row));
+      });
+      setDonationRows(Array.from(dedupe.values()));
+    };
+
+    const unsubs = chunks.map((chunk, index) => {
+      const teamConstraint =
+        chunk.length === 1
+          ? where("teamId", "==", chunk[0])
+          : where("teamId", "in", chunk);
+      const q = query(ref, where("orgId", "==", orgId), teamConstraint);
+      return onSnapshot(
+        q,
+        (snap) => {
+          rowsByChunk.set(
+            index,
+            snap.docs.map((docSnap) => ({
+              id: docSnap.id,
+              ...docSnap.data(),
+            }))
+          );
+          applyMerged();
+        },
+        (err) => {
+          console.error("Donations stats listener error:", err);
+        }
+      );
+    });
+
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [authLoading, coachTeamIds, isCoach, orgId]);
 
   const donationStats = useMemo(() => {
     const next = {};

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   collection,
+  documentId,
   query,
   where,
   getDocs,
@@ -25,6 +26,23 @@ function resolveCoachRole(userData, coachData) {
   return String(userData?.role || coachData?.role || "").toLowerCase();
 }
 
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function Coaches() {
   const { profile, activeOrgId } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -41,6 +59,8 @@ export default function Coaches() {
 
   const orgId = activeOrgId || profile?.orgId;
   const isAdmin = ["admin", "super-admin"].includes(profile?.role);
+  const isCoach = String(profile?.role || "").toLowerCase() === "coach";
+  const coachTeamIds = getCoachScopedTeamIds(profile);
 
   useEffect(() => {
     if (!orgId) return;
@@ -73,9 +93,69 @@ export default function Coaches() {
         );
 
         const [rollupsSnap, campaignsSnap, teamsSnap] = await Promise.all([
-          getDocs(query(collection(db, "donation_rollups"), where("orgId", "==", orgId))),
-          getDocs(query(collection(db, "campaigns"), where("orgId", "==", orgId))),
-          getDocs(query(collection(db, "teams"), where("orgId", "==", orgId))),
+          isAdmin
+            ? getDocs(
+                query(collection(db, "donation_rollups"), where("orgId", "==", orgId))
+              )
+            : Promise.resolve({ docs: [] }),
+          (async () => {
+            if (!isCoach) {
+              return getDocs(
+                query(collection(db, "campaigns"), where("orgId", "==", orgId))
+              );
+            }
+            if (coachTeamIds.length === 0) return { docs: [] };
+            const chunks = [];
+            for (let i = 0; i < coachTeamIds.length; i += 10) {
+              chunks.push(coachTeamIds.slice(i, i + 10));
+            }
+            const snaps = await Promise.all(
+              chunks.map((chunk) => {
+                const teamConstraint =
+                  chunk.length === 1
+                    ? where("teamId", "==", chunk[0])
+                    : where("teamId", "in", chunk);
+                return getDocs(
+                  query(
+                    collection(db, "campaigns"),
+                    where("orgId", "==", orgId),
+                    teamConstraint
+                  )
+                );
+              })
+            );
+            const dedupe = new Map();
+            snaps.forEach((snap) =>
+              snap.docs.forEach((entry) => dedupe.set(entry.id, entry))
+            );
+            return { docs: Array.from(dedupe.values()) };
+          })(),
+          (async () => {
+            if (!isCoach) {
+              return getDocs(query(collection(db, "teams"), where("orgId", "==", orgId)));
+            }
+            if (coachTeamIds.length === 0) return { docs: [] };
+            const chunks = [];
+            for (let i = 0; i < coachTeamIds.length; i += 10) {
+              chunks.push(coachTeamIds.slice(i, i + 10));
+            }
+            const snaps = await Promise.all(
+              chunks.map((chunk) =>
+                getDocs(
+                  query(
+                    collection(db, "teams"),
+                    where("orgId", "==", orgId),
+                    where(documentId(), "in", chunk)
+                  )
+                )
+              )
+            );
+            const dedupe = new Map();
+            snaps.forEach((snap) =>
+              snap.docs.forEach((entry) => dedupe.set(entry.id, entry))
+            );
+            return { docs: Array.from(dedupe.values()) };
+          })(),
         ]);
 
         setUsersByUid(usersMap);
@@ -101,7 +181,7 @@ export default function Coaches() {
     }
 
     load();
-  }, [orgId]);
+  }, [orgId, isAdmin, isCoach, JSON.stringify(coachTeamIds)]);
 
   const coachTotals = buildCoachTotals({
     rollups,

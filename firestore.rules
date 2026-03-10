@@ -61,6 +61,68 @@ service cloud.firestore {
       );
     }
 
+    function isPrivilegedOrgReader() {
+      return isOrgAdmin() || isSuperAdmin();
+    }
+
+    function coachHasTeam(teamId) {
+      return isSignedIn()
+        && isCoach()
+        && hasUserDoc()
+        && teamId is string
+        && teamId != ""
+        && (
+          (("teamId" in userDoc().data) && userDoc().data.teamId == teamId) ||
+          (("teamIds" in userDoc().data)
+            && userDoc().data.teamIds is list
+            && userDoc().data.teamIds.hasAny([teamId])) ||
+          (("assignedTeamIds" in userDoc().data)
+            && userDoc().data.assignedTeamIds is list
+            && userDoc().data.assignedTeamIds.hasAny([teamId]))
+        );
+    }
+
+    function canCoachReadByTeam(orgId, teamId) {
+      return isSignedIn()
+        && isCoach()
+        && userOrgId() == orgId
+        && coachHasTeam(teamId);
+    }
+
+    function canCoachReadByCampaign(orgId, campaignId) {
+      return isSignedIn()
+        && isCoach()
+        && userOrgId() == orgId
+        && campaignId is string
+        && campaignId != ""
+        && exists(/databases/$(database)/documents/campaigns/$(campaignId))
+        && coachHasTeam(
+          get(/databases/$(database)/documents/campaigns/$(campaignId)).data.teamId
+        );
+    }
+
+    function canCoachReadByAthlete(orgId, athleteId) {
+      return isSignedIn()
+        && isCoach()
+        && userOrgId() == orgId
+        && athleteId is string
+        && athleteId != ""
+        && exists(/databases/$(database)/documents/athletes/$(athleteId))
+        && coachHasTeam(
+          get(/databases/$(database)/documents/athletes/$(athleteId)).data.teamId
+        );
+    }
+
+    function canCoachReadScopedResource(resourceData) {
+      return isSignedIn()
+        && isCoach()
+        && (
+          (("teamId" in resourceData) && canCoachReadByTeam(resourceData.orgId, resourceData.teamId)) ||
+          (("campaignId" in resourceData) && canCoachReadByCampaign(resourceData.orgId, resourceData.campaignId)) ||
+          (("athleteId" in resourceData) && canCoachReadByAthlete(resourceData.orgId, resourceData.athleteId))
+        );
+    }
+
     function orgIdUnchanged() {
       return !("orgId" in resource.data) || request.resource.data.orgId == resource.data.orgId;
     }
@@ -172,8 +234,12 @@ service cloud.firestore {
        ========================= */
     match /teams/{teamId} {
 
-      // Org admins & super-admins
-      allow read: if canAccessOrg(resource.data.orgId);
+      // Org admins/super-admins see all; coaches only assigned teams
+      allow read: if isSignedIn()
+        && (
+          (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+          || canCoachReadByTeam(resource.data.orgId, teamId)
+        );
 
       // Athlete can read their own team (ALL fields, including invite code)
       allow read: if isSignedIn()
@@ -208,7 +274,13 @@ service cloud.firestore {
 
       // ✅ Any signed-in user may read athlete docs
       // ✅ Public read when athlete is tied to a public campaign
-      allow read: if (isSignedIn() && canAccessOrg(resource.data.orgId))
+      allow read: if (isSignedIn()
+          && (
+            (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+            || canCoachReadByTeam(resource.data.orgId, resource.data.teamId)
+            || canCoachReadByCampaign(resource.data.orgId, resource.data.campaignId)
+            || request.auth.uid == athleteId
+          ))
         || (resource.data.campaignId is string
             && get(/databases/$(database)/documents/campaigns/$(resource.data.campaignId)).data.isPublic == true);
 
@@ -241,8 +313,12 @@ service cloud.firestore {
        ========================= */
     match /teamAthletes/{docId} {
 
-      // Org admins & super-admins
-      allow read: if canAccessOrg(resource.data.orgId);
+      // Org admins/super-admins see all; coaches only assigned teams
+      allow read: if isSignedIn()
+        && (
+          (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+          || canCoachReadByTeam(resource.data.orgId, resource.data.teamId)
+        );
 
       // Athlete can read records for their own team
       allow read: if isSignedIn()
@@ -272,7 +348,11 @@ service cloud.firestore {
       // ✅ Public campaigns readable by anyone
       // 🔐 Org / team isolation enforced by queries, not rules
       allow read: if resource.data.isPublic == true
-        || (isSignedIn() && canAccessOrg(resource.data.orgId));
+        || (isSignedIn()
+          && (
+            (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+            || canCoachReadByTeam(resource.data.orgId, resource.data.teamId)
+          ));
 
       // ✅ Only admins & super-admins may write
       allow create: if isSignedIn()
@@ -304,7 +384,11 @@ service cloud.firestore {
        ========================= */
     match /campaignAthletes/{docId} {
 
-      allow read: if canAccessOrg(resource.data.orgId);
+      allow read: if isSignedIn()
+        && (
+          (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+          || canCoachReadByTeam(resource.data.orgId, resource.data.teamId)
+        );
 
       allow read: if isSignedIn()
         && exists(/databases/$(database)/documents/athletes/$(request.auth.uid))
@@ -329,10 +413,16 @@ service cloud.firestore {
        ========================= */
     match /donations/{donationId} {
 
-      // ✅ Org members & super-admins
+      // ✅ Admin/super-admin org scope
+      // ✅ Coach team/campaign/athlete scope
+      // ✅ Athlete can read own donations
       allow read: if isSignedIn()
         && resource.data != null
-        && canAccessOrg(resource.data.orgId);
+        && (
+          (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+          || canCoachReadScopedResource(resource.data)
+          || request.auth.uid == resource.data.athleteId
+        );
 
       // ✅ Public receipt access by document ID (paid only)
       allow get: if resource.data != null && resource.data.status == "paid";
@@ -348,19 +438,31 @@ service cloud.firestore {
        💖 DONORS (Org-scoped)
        ========================= */
     match /donors/{donorId} {
-      allow read: if resource.data != null
-        && canAccessOrg(resource.data.orgId);
+      allow read: if isSignedIn()
+        && resource.data != null
+        && (
+          (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+          || canCoachReadScopedResource(resource.data)
+        );
 
       allow create: if isSignedIn()
         && request.resource.data.orgId is string
         && canAccessOrg(request.resource.data.orgId);
 
-      allow update: if resource.data != null
-        && canAccessOrg(resource.data.orgId)
+      allow update: if isSignedIn()
+        && resource.data != null
+        && (
+          (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+          || canCoachReadScopedResource(resource.data)
+        )
         && orgIdUnchanged();
 
-      allow delete: if resource.data != null
-        && canAccessOrg(resource.data.orgId);
+      allow delete: if isSignedIn()
+        && resource.data != null
+        && (
+          (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+          || canCoachReadScopedResource(resource.data)
+        );
     }
 
     /* =========================
@@ -392,7 +494,12 @@ service cloud.firestore {
        ========================= */
     match /messages/{messageId} {
       allow read: if isSignedIn()
-        && canAccessOrg(resource.data.orgId);
+        && resource.data != null
+        && (
+          (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+          || canCoachReadScopedResource(resource.data)
+          || request.auth.uid == resource.data.athleteId
+        );
 
       allow create: if isSignedIn()
         && request.resource.data.orgId is string
@@ -406,13 +513,11 @@ service cloud.firestore {
        ========================= */
     match /donation_rollups/{rollupId} {
 
-      // Org admins, coaches, and super-admins can read rollups
+      // Org admins and super-admins can read rollups
       allow read: if isSignedIn()
-        && (
-          isSuperAdmin() ||
-          (userOrgId() == resource.data.orgId &&
-           (isOrgAdmin() || isCoach()))
-        );
+        && resource.data != null
+        && isPrivilegedOrgReader()
+        && canAccessOrg(resource.data.orgId);
 
       // ❌ No client-side writes (scheduled function only)
       allow write: if false;
