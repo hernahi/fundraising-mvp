@@ -20,6 +20,16 @@ import { useAuth } from "../context/AuthContext";
 const INVITE_ROLES = ["coach", "athlete", "admin"];
 const INVITE_RESEND_COOLDOWN_MS = 60 * 1000;
 const INVITE_EXPIRY_DAYS = 14;
+const MANAGED_ACCOUNT_ROLES = ["coach", "athlete", "admin"];
+
+function generateTemporaryPassword(length = 14) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  let result = "";
+  for (let i = 0; i < length; i += 1) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+}
 
 function getInitials(name, email) {
   if (name) {
@@ -99,6 +109,7 @@ function canResendInvite(invite) {
 export default function AdminUsers() {
   const { user: currentUser, profile, isSuperAdmin, activeOrgId } = useAuth();
   const role = String(profile?.role || "").toLowerCase();
+  const isManager = role === "admin" || role === "super-admin" || role === "coach";
   const isAdmin = role === "admin" || role === "super-admin";
   const scopedOrgId = String(activeOrgId || profile?.orgId || "").trim();
 
@@ -118,9 +129,18 @@ export default function AdminUsers() {
   const [inviteStatus, setInviteStatus] = useState("");
   const [resendingInviteId, setResendingInviteId] = useState("");
   const [cleaningInviteId, setCleaningInviteId] = useState("");
+  const [createForm, setCreateForm] = useState({
+    email: "",
+    displayName: "",
+    role: role === "coach" ? "athlete" : "coach",
+    teamId: "",
+    password: generateTemporaryPassword(),
+  });
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createStatus, setCreateStatus] = useState("");
 
   useEffect(() => {
-    if (!isAdmin) return undefined;
+    if (!isManager) return undefined;
 
     const baseRef = collection(db, "users");
     let qRef;
@@ -140,7 +160,7 @@ export default function AdminUsers() {
       (err) => console.error("Users listener error:", err)
     );
     return () => unsub();
-  }, [isAdmin, isSuperAdmin, scopedOrgId]);
+  }, [isManager, isSuperAdmin, scopedOrgId]);
 
   useEffect(() => {
     if (!isAdmin) return undefined;
@@ -169,7 +189,7 @@ export default function AdminUsers() {
 
   useEffect(() => {
     async function loadTeams() {
-      if (!isAdmin || !scopedOrgId) return;
+      if (!isManager || !scopedOrgId) return;
       try {
         const snap = await getDocs(
           query(collection(db, "teams"), where("orgId", "==", scopedOrgId))
@@ -187,7 +207,7 @@ export default function AdminUsers() {
       }
     }
     loadTeams();
-  }, [isAdmin, scopedOrgId]);
+  }, [isManager, scopedOrgId]);
 
   const filteredUsers = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -238,9 +258,13 @@ export default function AdminUsers() {
     return labels.join(", ");
   };
 
-  if (!isAdmin) {
+  if (!isManager) {
     return <div className="p-6 text-red-600">Access restricted.</div>;
   }
+
+  const availableManagedRoles = role === "coach"
+    ? MANAGED_ACCOUNT_ROLES.filter((r) => r !== "admin")
+    : MANAGED_ACCOUNT_ROLES;
 
   async function handleInviteSubmit(e) {
     e.preventDefault();
@@ -287,6 +311,55 @@ export default function AdminUsers() {
       setInviteStatus("Failed to send invite.");
     } finally {
       setInviteLoading(false);
+    }
+  }
+
+  async function handleCreateManagedAccount(e) {
+    e.preventDefault();
+    setCreateStatus("");
+    setCreateLoading(true);
+    try {
+      if (!scopedOrgId) {
+        throw new Error("Select an active organization before creating accounts.");
+      }
+      const email = String(createForm.email || "").trim().toLowerCase();
+      const managedRole = String(createForm.role || "").trim().toLowerCase();
+      const password = String(createForm.password || "");
+      if (!email) throw new Error("Email is required.");
+      if (!availableManagedRoles.includes(managedRole)) {
+        throw new Error("Role is not allowed for your account.");
+      }
+      if (password.length < 10) {
+        throw new Error("Temporary password must be at least 10 characters.");
+      }
+
+      const createManagedUserAccount = httpsCallable(functions, "createManagedUserAccount");
+      const res = await createManagedUserAccount({
+        email,
+        displayName: String(createForm.displayName || "").trim(),
+        role: managedRole,
+        orgId: scopedOrgId,
+        teamId: String(createForm.teamId || "").trim() || null,
+        password,
+      });
+      const createdUid = String(res?.data?.uid || "").trim();
+      setCreateStatus(
+        createdUid
+          ? `Account created (${createdUid}). Share temporary password securely.`
+          : "Account created. Share temporary password securely."
+      );
+      setCreateForm({
+        email: "",
+        displayName: "",
+        role: role === "coach" ? "athlete" : "coach",
+        teamId: "",
+        password: generateTemporaryPassword(),
+      });
+    } catch (err) {
+      console.error("Create managed account failed:", err);
+      setCreateStatus("Failed to create account.");
+    } finally {
+      setCreateLoading(false);
     }
   }
 
@@ -447,6 +520,85 @@ export default function AdminUsers() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">Create Account</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Creates a login account immediately without invite flow. Invite functionality remains unchanged.
+          </p>
+        </div>
+        <form
+          onSubmit={handleCreateManagedAccount}
+          className="grid grid-cols-1 gap-3 md:grid-cols-5"
+        >
+          <input
+            type="email"
+            required
+            value={createForm.email}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))}
+            placeholder="newuser@email.com"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 md:col-span-2"
+          />
+          <input
+            type="text"
+            value={createForm.displayName}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, displayName: e.target.value }))}
+            placeholder="Display name (optional)"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          />
+          <select
+            value={createForm.role}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, role: e.target.value }))}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          >
+            {availableManagedRoles.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+          <select
+            value={createForm.teamId}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, teamId: e.target.value }))}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          >
+            <option value="">No team assignment</option>
+            {teams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name || team.teamName || team.id}
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            required
+            value={createForm.password}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, password: e.target.value }))}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 md:col-span-3"
+          />
+          <button
+            type="button"
+            onClick={() =>
+              setCreateForm((prev) => ({ ...prev, password: generateTemporaryPassword() }))
+            }
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+          >
+            Regenerate Password
+          </button>
+          <div className="md:col-span-5 flex items-center justify-between">
+            <p className="text-xs text-slate-500">{createStatus}</p>
+            <button
+              type="submit"
+              disabled={createLoading || !scopedOrgId}
+              className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+            >
+              {createLoading ? "Creating..." : "Create Account"}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {isAdmin ? (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <input
             type="text"
@@ -576,8 +728,9 @@ export default function AdminUsers() {
           </div>
         )}
       </div>
+      ) : null}
 
-      {invites.length > 0 ? (
+      {isAdmin && invites.length > 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold text-slate-800">Invites</h2>
           {inviteStatus ? (

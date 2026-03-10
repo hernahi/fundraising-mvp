@@ -1284,6 +1284,152 @@ exports.cleanupInvite = onCall(async (request) => {
 });
 
 /* ============================================================
+   CREATE MANAGED USER ACCOUNT (ADMIN/COACH/SUPER-ADMIN)
+   - Creates Firebase Auth user + users/{uid}
+   - Optionally seeds coaches/{uid} or athletes/{uid}
+   ============================================================ */
+exports.createManagedUserAccount = onCall(async (request) => {
+  const uid = request?.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "Login required");
+  }
+
+  const actor = await getUserProfile(uid);
+  if (!actor) {
+    throw new HttpsError("permission-denied", "User profile not found");
+  }
+  if (actor.status && actor.status !== "active") {
+    throw new HttpsError("permission-denied", "User is not active");
+  }
+  if (!["admin", "super-admin", "coach"].includes(String(actor.role || ""))) {
+    throw new HttpsError("permission-denied", "Not allowed to create managed accounts");
+  }
+
+  const email = String(request.data?.email || "").trim().toLowerCase();
+  const role = String(request.data?.role || "").trim().toLowerCase();
+  const orgId = String(request.data?.orgId || "").trim();
+  const displayName = String(request.data?.displayName || "").trim();
+  const teamId = String(request.data?.teamId || "").trim();
+  const password = String(request.data?.password || "");
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError("invalid-argument", "A valid email is required");
+  }
+  if (!["coach", "athlete", "admin"].includes(role)) {
+    throw new HttpsError("invalid-argument", "Role must be coach, athlete, or admin");
+  }
+  if (!orgId) {
+    throw new HttpsError("invalid-argument", "orgId is required");
+  }
+  if (!password || password.length < 10) {
+    throw new HttpsError("invalid-argument", "Password must be at least 10 characters");
+  }
+
+  if (actor.role !== "super-admin" && String(actor.orgId || "") !== orgId) {
+    throw new HttpsError("permission-denied", "Org mismatch");
+  }
+  if (actor.role === "coach" && role === "admin") {
+    throw new HttpsError("permission-denied", "Coaches cannot create admin accounts");
+  }
+
+  try {
+    const existing = await admin.auth().getUserByEmail(email).catch(() => null);
+    if (existing) {
+      throw new HttpsError("already-exists", "A user with this email already exists");
+    }
+
+    const createdAuthUser = await admin.auth().createUser({
+      email,
+      password,
+      displayName: displayName || undefined,
+      disabled: false,
+      emailVerified: false,
+    });
+
+    const createdUid = createdAuthUser.uid;
+    const db = admin.firestore();
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    const userPayload = {
+      uid: createdUid,
+      email,
+      displayName: displayName || email,
+      photoURL: null,
+      role,
+      orgId,
+      status: "active",
+      teamId: teamId || null,
+      createdByUid: uid,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.collection("users").doc(createdUid).set(userPayload, { merge: true });
+
+    if (role === "coach") {
+      await db.collection("coaches").doc(createdUid).set(
+        {
+          uid: createdUid,
+          userId: createdUid,
+          orgId,
+          role: "coach",
+          teamIds: teamId ? [teamId] : [],
+          createdByUid: uid,
+          createdAt: now,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    }
+
+    if (role === "athlete") {
+      await db.collection("athletes").doc(createdUid).set(
+        {
+          userId: createdUid,
+          email,
+          displayName: displayName || email,
+          orgId,
+          teamId: teamId || null,
+          campaignId: null,
+          status: "active",
+          createdByUid: uid,
+          createdAt: now,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    }
+
+    logger.info("createManagedUserAccount: created", {
+      createdUid,
+      email,
+      role,
+      orgId,
+      createdByUid: uid,
+      actorRole: actor.role,
+    });
+
+    return {
+      ok: true,
+      uid: createdUid,
+      email,
+      role,
+      orgId,
+    };
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    logger.error("createManagedUserAccount failed", {
+      message: err?.message,
+      stack: err?.stack,
+      createdByUid: uid,
+      email,
+      role,
+      orgId,
+    });
+    throw new HttpsError("internal", err?.message || "Failed to create managed user account");
+  }
+});
+
+/* ============================================================
    DONOR INVITE (ATHLETE)
    ============================================================ */
 exports.sendDonorInvite = onCall(
