@@ -9,6 +9,7 @@ import {
   Cog6ToothIcon,
   ClipboardDocumentListIcon,
   BanknotesIcon,
+  UserPlusIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../context/AuthContext";
 import { useCampaign } from "../context/CampaignContext";
