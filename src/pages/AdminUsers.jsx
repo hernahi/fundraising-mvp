@@ -216,6 +216,7 @@ export default function AdminUsers() {
         toEmail: email,
         inviteId: inviteRef.id,
         appUrl,
+        mode: "initial",
       });
 
       setInviteForm({ email: "", role: "coach", teamId: "" });
@@ -249,11 +250,7 @@ export default function AdminUsers() {
         toEmail: email,
         inviteId,
         appUrl: window.location.origin,
-      });
-      await updateDoc(doc(db, "invites", inviteId), {
-        lastResentAt: serverTimestamp(),
-        resendCount: Number(invite?.resendCount || 0) + 1,
-        updatedAt: serverTimestamp(),
+        mode: "resend",
       });
       setInviteStatus(`Invite resent to ${email}.`);
     } catch (err) {
@@ -503,6 +500,8 @@ export default function AdminUsers() {
                   <th className="py-2 pr-3">Team</th>
                   <th className="py-2 pr-3">Resends</th>
                   <th className="py-2 pr-3">Last Resent</th>
+                  <th className="py-2 pr-3">Last Delivery</th>
+                  <th className="py-2 pr-3">Error</th>
                   <th className="py-2 pr-3">Actions</th>
                 </tr>
               </thead>
@@ -514,6 +513,25 @@ export default function AdminUsers() {
                     <td className="py-2 pr-3">{invite.teamId || "-"}</td>
                     <td className="py-2 pr-3">{Number(invite.resendCount || 0)}</td>
                     <td className="py-2 pr-3">{formatInviteTimestamp(invite.lastResentAt)}</td>
+                    <td className="py-2 pr-3">
+                      <div className="flex flex-col">
+                        <span className="capitalize text-slate-700">
+                          {String(invite.lastDeliveryStatus || "unknown").replace(/_/g, " ")}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {formatInviteTimestamp(invite.lastDeliveryAt)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3 max-w-[260px]">
+                      {invite.lastDeliveryError ? (
+                        <span className="line-clamp-2 text-xs text-rose-700" title={String(invite.lastDeliveryError)}>
+                          {String(invite.lastDeliveryError)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
+                    </td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap items-center gap-2">
                         {(() => {

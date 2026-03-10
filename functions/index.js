@@ -1010,19 +1010,52 @@ exports.sendInviteEmail = onCall(
       );
     }
 
-    const { toEmail, inviteId, appUrl } = request.data || {};
+    const { toEmail, inviteId, appUrl, mode } = request.data || {};
     const senderProfile = await getUserProfile(request.auth.uid).catch(() => null);
+    const normalizedEmail = String(toEmail || "").trim().toLowerCase();
+    const normalizedInviteId = String(inviteId || "").trim();
+    const sendMode = mode === "resend" ? "resend" : "initial";
 
-    if (!toEmail || !inviteId || !appUrl) {
+    if (!normalizedEmail || !normalizedInviteId || !appUrl) {
       throw new HttpsError(
         "invalid-argument",
         "toEmail, inviteId, and appUrl are required"
       );
     }
 
+    if (!senderProfile) {
+      throw new HttpsError("permission-denied", "User profile not found");
+    }
+
+    if (!["admin", "super-admin", "coach"].includes(String(senderProfile.role || ""))) {
+      throw new HttpsError("permission-denied", "Not allowed to send invites");
+    }
+
+    const db = admin.firestore();
+    const inviteRef = db.collection("invites").doc(normalizedInviteId);
+    const inviteSnap = await inviteRef.get();
+    if (!inviteSnap.exists) {
+      throw new HttpsError("not-found", "Invite not found");
+    }
+
+    const invite = inviteSnap.data() || {};
+    const inviteEmail = String(invite.email || "").trim().toLowerCase();
+    if (inviteEmail && inviteEmail !== normalizedEmail) {
+      throw new HttpsError("invalid-argument", "Invite email mismatch");
+    }
+    if (String(invite.status || "").toLowerCase() !== "pending") {
+      throw new HttpsError("failed-precondition", "Invite is no longer pending");
+    }
+    if (
+      senderProfile.role !== "super-admin" &&
+      String(senderProfile.orgId || "") !== String(invite.orgId || "")
+    ) {
+      throw new HttpsError("permission-denied", "Org mismatch for invite send");
+    }
+
     const { client, domain } = getMailgunClient();
 
-    const inviteUrl = `${appUrl.replace(/\/$/, "")}/accept-invite?invite=${inviteId}`;
+    const inviteUrl = `${appUrl.replace(/\/$/, "")}/accept-invite?invite=${normalizedInviteId}`;
 
     try {
       const brandedSubject = "You've been invited to join Fundraising MVP";
@@ -1031,7 +1064,7 @@ exports.sendInviteEmail = onCall(
         "Use the button below to accept your invite and finish setup.";
       await client.messages.create(domain, {
         from: "Fundraising MVP <no-reply@mail.inetsphere.com>",
-        to: [toEmail],
+        to: [normalizedEmail],
         subject: brandedSubject,
         text: `${brandedBodyText}\n\nAccept your invite:\n${inviteUrl}`,
         html: renderTransactionalShell({
@@ -1042,16 +1075,38 @@ exports.sendInviteEmail = onCall(
           footerText: "If you did not expect this invite, you can ignore this email.",
         }),
       });
+
+      const successEntry = {
+        at: admin.firestore.Timestamp.now(),
+        status: "sent",
+        mode: sendMode,
+        byUid: request.auth.uid,
+      };
+      const successUpdate = {
+        lastDeliveryStatus: "sent",
+        lastDeliveryError: admin.firestore.FieldValue.delete(),
+        lastDeliveryAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastDeliveryBy: request.auth.uid,
+        deliveryHistory: admin.firestore.FieldValue.arrayUnion(successEntry),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      if (sendMode === "resend") {
+        successUpdate.lastResentAt = admin.firestore.FieldValue.serverTimestamp();
+        successUpdate.resendCount = admin.firestore.FieldValue.increment(1);
+      }
+      await inviteRef.set(successUpdate, { merge: true });
+
       logger.info("sendInviteEmail: sent", {
-        toEmail,
-        inviteId,
+        toEmail: normalizedEmail,
+        inviteId: normalizedInviteId,
         uid: request.auth.uid,
         format: "branded-shell",
+        mode: sendMode,
       });
       logOutboundEmailAudit({
         source: "direct_mailgun",
         kind: "user_invite",
-        to: toEmail,
+        to: normalizedEmail,
         recipientCount: 1,
         orgId: senderProfile?.orgId || null,
         campaignId: null,
@@ -1062,13 +1117,43 @@ exports.sendInviteEmail = onCall(
       return { ok: true };
 
     } catch (err) {
+      const errorSnippet = String(err?.message || "Failed to send invite email")
+        .replace(/\s+/g, " ")
+        .slice(0, 180);
+      const failedEntry = {
+        at: admin.firestore.Timestamp.now(),
+        status: "failed",
+        mode: sendMode,
+        byUid: request.auth.uid,
+        error: errorSnippet,
+      };
+      try {
+        await inviteRef.set(
+          {
+            lastDeliveryStatus: "failed",
+            lastDeliveryError: errorSnippet,
+            lastDeliveryAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastDeliveryBy: request.auth.uid,
+            deliveryHistory: admin.firestore.FieldValue.arrayUnion(failedEntry),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (updateErr) {
+        logger.error("sendInviteEmail: failed to persist invite delivery status", {
+          message: updateErr?.message,
+        });
+      }
       logger.error("sendInviteEmail failed", {
         message: err?.message,
         stack: err?.stack,
+        inviteId: normalizedInviteId,
+        toEmail: normalizedEmail,
+        mode: sendMode,
       });
       throw new HttpsError(
         "internal",
-        err?.message || "Failed to send invite email"
+        errorSnippet || "Failed to send invite email"
       );
     }
   }
