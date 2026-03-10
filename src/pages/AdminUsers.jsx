@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   addDoc,
   collection,
-  deleteDoc,
   doc,
   getDocs,
   onSnapshot,
   orderBy,
   query,
+  Timestamp,
   serverTimestamp,
   updateDoc,
   where,
@@ -19,6 +19,7 @@ import { useAuth } from "../context/AuthContext";
 
 const INVITE_ROLES = ["coach", "athlete", "admin"];
 const INVITE_RESEND_COOLDOWN_MS = 60 * 1000;
+const INVITE_EXPIRY_DAYS = 14;
 
 function getInitials(name, email) {
   if (name) {
@@ -59,7 +60,37 @@ function formatInviteTimestamp(value) {
   }
 }
 
+function isInviteExpired(invite) {
+  const expiresAt = invite?.expiresAt;
+  if (!expiresAt || typeof expiresAt?.toMillis !== "function") return false;
+  return expiresAt.toMillis() <= Date.now();
+}
+
+function getInviteLifecycle(invite) {
+  const raw = String(invite?.status || "").toLowerCase();
+  if (raw === "accepted") return "accepted";
+  if (raw === "revoked") return "revoked";
+  if (raw === "expired") return "expired";
+  if (raw === "pending" && isInviteExpired(invite)) return "expired";
+  return "pending";
+}
+
+function getInviteLifecycleBadge(invite) {
+  const lifecycle = getInviteLifecycle(invite);
+  if (lifecycle === "accepted") {
+    return { label: "Accepted", classes: "bg-emerald-100 text-emerald-800" };
+  }
+  if (lifecycle === "revoked") {
+    return { label: "Revoked", classes: "bg-rose-100 text-rose-800" };
+  }
+  if (lifecycle === "expired") {
+    return { label: "Expired", classes: "bg-amber-100 text-amber-800" };
+  }
+  return { label: "Pending", classes: "bg-blue-100 text-blue-800" };
+}
+
 function canResendInvite(invite) {
+  if (getInviteLifecycle(invite) !== "pending") return false;
   const lastResentAt = invite?.lastResentAt;
   if (!lastResentAt || typeof lastResentAt?.toMillis !== "function") return true;
   return Date.now() - lastResentAt.toMillis() >= INVITE_RESEND_COOLDOWN_MS;
@@ -86,6 +117,7 @@ export default function AdminUsers() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteStatus, setInviteStatus] = useState("");
   const [resendingInviteId, setResendingInviteId] = useState("");
+  const [cleaningInviteId, setCleaningInviteId] = useState("");
 
   useEffect(() => {
     if (!isAdmin) return undefined;
@@ -127,9 +159,7 @@ export default function AdminUsers() {
       qRef,
       (snap) => {
         setInvites(
-          snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((i) => String(i.status || "").toLowerCase() === "pending")
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }))
         );
       },
       (err) => console.error("Invites listener error:", err)
@@ -180,6 +210,16 @@ export default function AdminUsers() {
     });
   }, [users, showDeactivated, statusFilter, search]);
 
+  const teamNameById = useMemo(() => {
+    const map = new Map();
+    for (const team of teams) {
+      const id = String(team?.id || "").trim();
+      if (!id) continue;
+      map.set(id, String(team.name || team.teamName || team.id || id));
+    }
+    return map;
+  }, [teams]);
+
   if (!isAdmin) {
     return <div className="p-6 text-red-600">Access restricted.</div>;
   }
@@ -206,6 +246,9 @@ export default function AdminUsers() {
         orgId: scopedOrgId,
         teamId: inviteForm.teamId || null,
         status: "pending",
+        expiresAt: Timestamp.fromDate(
+          new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+        ),
         invitedBy: currentUser?.uid || "",
         createdAt: serverTimestamp(),
       });
@@ -231,7 +274,32 @@ export default function AdminUsers() {
 
   async function handleRevokeInvite(inviteId) {
     if (!window.confirm("Revoke this invite?")) return;
-    await deleteDoc(doc(db, "invites", inviteId));
+    try {
+      const revokeInvite = httpsCallable(functions, "revokeInvite");
+      await revokeInvite({ inviteId });
+      setInviteStatus("Invite revoked.");
+    } catch (err) {
+      console.error("Revoke invite failed:", err);
+      setInviteStatus("Failed to revoke invite.");
+    }
+  }
+
+  async function handleCleanupInvite(invite) {
+    const inviteId = String(invite?.id || "").trim();
+    if (!inviteId) return;
+    if (!window.confirm("Delete this revoked invite record permanently?")) return;
+    try {
+      setCleaningInviteId(inviteId);
+      setInviteStatus("");
+      const cleanupInvite = httpsCallable(functions, "cleanupInvite");
+      await cleanupInvite({ inviteId });
+      setInviteStatus("Revoked invite cleaned up.");
+    } catch (err) {
+      console.error("Cleanup invite failed:", err);
+      setInviteStatus("Failed to clean up invite.");
+    } finally {
+      setCleaningInviteId("");
+    }
   }
 
   async function handleResendInvite(invite) {
@@ -487,7 +555,7 @@ export default function AdminUsers() {
 
       {invites.length > 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-slate-800">Pending Invites</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-800">Invites</h2>
           {inviteStatus ? (
             <p className="mb-3 text-xs text-slate-500">{inviteStatus}</p>
           ) : null}
@@ -498,6 +566,8 @@ export default function AdminUsers() {
                   <th className="py-2 pr-3">Email</th>
                   <th className="py-2 pr-3">Role</th>
                   <th className="py-2 pr-3">Team</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2 pr-3">Expires</th>
                   <th className="py-2 pr-3">Resends</th>
                   <th className="py-2 pr-3">Last Resent</th>
                   <th className="py-2 pr-3">Last Delivery</th>
@@ -510,7 +580,24 @@ export default function AdminUsers() {
                   <tr key={invite.id} className="border-b border-slate-100">
                     <td className="py-2 pr-3">{invite.email}</td>
                     <td className="py-2 pr-3 capitalize">{invite.role || "n/a"}</td>
-                    <td className="py-2 pr-3">{invite.teamId || "-"}</td>
+                    <td className="py-2 pr-3">
+                      {(() => {
+                        const teamId = String(invite.teamId || "").trim();
+                        if (!teamId) return "unassigned-team";
+                        return teamNameById.get(teamId) || teamId;
+                      })()}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {(() => {
+                        const badge = getInviteLifecycleBadge(invite);
+                        return (
+                          <span className={`rounded-full px-2 py-1 text-xs ${badge.classes}`}>
+                            {badge.label}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="py-2 pr-3">{formatInviteTimestamp(invite.expiresAt)}</td>
                     <td className="py-2 pr-3">{Number(invite.resendCount || 0)}</td>
                     <td className="py-2 pr-3">{formatInviteTimestamp(invite.lastResentAt)}</td>
                     <td className="py-2 pr-3">
@@ -535,6 +622,7 @@ export default function AdminUsers() {
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap items-center gap-2">
                         {(() => {
+                          const lifecycle = getInviteLifecycle(invite);
                           const resendAllowed = canResendInvite(invite);
                           return (
                         <button
@@ -542,19 +630,37 @@ export default function AdminUsers() {
                           disabled={resendingInviteId === invite.id || !resendAllowed}
                           onClick={() => handleResendInvite(invite)}
                           className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          title={resendAllowed ? "Resend invite email" : "Wait one minute between resend attempts"}
+                          title={
+                            resendAllowed
+                              ? "Resend invite email"
+                              : lifecycle !== "pending"
+                                ? "Only pending, unexpired invites can be resent"
+                                : "Wait one minute between resend attempts"
+                          }
                         >
                           {resendingInviteId === invite.id ? "Sending..." : "Resend"}
                         </button>
                           );
                         })()}
-                        <button
-                          type="button"
-                          onClick={() => handleRevokeInvite(invite.id)}
-                          className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700"
-                        >
-                          Revoke
-                        </button>
+                        {getInviteLifecycle(invite) === "pending" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRevokeInvite(invite.id)}
+                            className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700"
+                          >
+                            Revoke
+                          </button>
+                        ) : null}
+                        {getInviteLifecycle(invite) === "revoked" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCleanupInvite(invite)}
+                            disabled={cleaningInviteId === invite.id}
+                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                          >
+                            {cleaningInviteId === invite.id ? "Cleaning..." : "Cleanup"}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

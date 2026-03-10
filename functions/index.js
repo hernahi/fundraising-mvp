@@ -1043,8 +1043,25 @@ exports.sendInviteEmail = onCall(
     if (inviteEmail && inviteEmail !== normalizedEmail) {
       throw new HttpsError("invalid-argument", "Invite email mismatch");
     }
-    if (String(invite.status || "").toLowerCase() !== "pending") {
+    const inviteStatus = String(invite.status || "").toLowerCase();
+    if (inviteStatus !== "pending") {
       throw new HttpsError("failed-precondition", "Invite is no longer pending");
+    }
+    const inviteExpiresAt = invite?.expiresAt;
+    const inviteExpired =
+      inviteExpiresAt && typeof inviteExpiresAt?.toMillis === "function"
+        ? inviteExpiresAt.toMillis() <= Date.now()
+        : false;
+    if (inviteExpired) {
+      await inviteRef.set(
+        {
+          status: "expired",
+          expiredAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      throw new HttpsError("failed-precondition", "Invite has expired");
     }
     if (
       senderProfile.role !== "super-admin" &&
@@ -1158,6 +1175,113 @@ exports.sendInviteEmail = onCall(
     }
   }
 );
+
+/* ============================================================
+   REVOKE INVITE (ADMIN/COACH/SUPER-ADMIN, ORG-SCOPED)
+   ============================================================ */
+exports.revokeInvite = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Login required");
+  }
+  const profile = await getUserProfile(request.auth.uid);
+  if (!profile) {
+    throw new HttpsError("permission-denied", "User profile not found");
+  }
+  if (!["admin", "super-admin", "coach"].includes(String(profile.role || ""))) {
+    throw new HttpsError("permission-denied", "Not allowed to revoke invites");
+  }
+
+  const inviteId = String(request.data?.inviteId || "").trim();
+  if (!inviteId) {
+    throw new HttpsError("invalid-argument", "inviteId is required");
+  }
+
+  const db = admin.firestore();
+  const inviteRef = db.collection("invites").doc(inviteId);
+  const inviteSnap = await inviteRef.get();
+  if (!inviteSnap.exists) {
+    throw new HttpsError("not-found", "Invite not found");
+  }
+  const invite = inviteSnap.data() || {};
+  if (
+    profile.role !== "super-admin" &&
+    String(profile.orgId || "") !== String(invite.orgId || "")
+  ) {
+    throw new HttpsError("permission-denied", "Org mismatch");
+  }
+  if (String(invite.status || "").toLowerCase() !== "pending") {
+    throw new HttpsError("failed-precondition", "Only pending invites can be revoked");
+  }
+
+  await inviteRef.set(
+    {
+      status: "revoked",
+      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+      revokedByUid: request.auth.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  logger.info("revokeInvite: success", {
+    inviteId,
+    orgId: invite.orgId || null,
+    byUid: request.auth.uid,
+    previousStatus: invite.status || null,
+  });
+  return { ok: true, inviteId, status: "revoked" };
+});
+
+/* ============================================================
+   CLEANUP INVITE (ADMIN/SUPER-ADMIN, REVOKED ONLY)
+   ============================================================ */
+exports.cleanupInvite = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Login required");
+  }
+  const profile = await getUserProfile(request.auth.uid);
+  if (!profile) {
+    throw new HttpsError("permission-denied", "User profile not found");
+  }
+  if (!["admin", "super-admin"].includes(String(profile.role || ""))) {
+    throw new HttpsError("permission-denied", "Not allowed to clean up invites");
+  }
+
+  const inviteId = String(request.data?.inviteId || "").trim();
+  if (!inviteId) {
+    throw new HttpsError("invalid-argument", "inviteId is required");
+  }
+
+  const db = admin.firestore();
+  const inviteRef = db.collection("invites").doc(inviteId);
+  const inviteSnap = await inviteRef.get();
+  if (!inviteSnap.exists) {
+    throw new HttpsError("not-found", "Invite not found");
+  }
+
+  const invite = inviteSnap.data() || {};
+  if (
+    profile.role !== "super-admin" &&
+    String(profile.orgId || "") !== String(invite.orgId || "")
+  ) {
+    throw new HttpsError("permission-denied", "Org mismatch");
+  }
+
+  const status = String(invite.status || "").toLowerCase();
+  if (status !== "revoked") {
+    throw new HttpsError("failed-precondition", "Only revoked invites can be cleaned up");
+  }
+
+  await inviteRef.delete();
+
+  logger.info("cleanupInvite: success", {
+    inviteId,
+    orgId: invite.orgId || null,
+    byUid: request.auth.uid,
+    previousStatus: invite.status || null,
+  });
+  return { ok: true, inviteId, deleted: true };
+});
 
 /* ============================================================
    DONOR INVITE (ATHLETE)
