@@ -220,6 +220,24 @@ export default function AdminUsers() {
     return map;
   }, [teams]);
 
+  const getUserTeamLabel = (userRow) => {
+    const singleTeamId = String(userRow?.teamId || "").trim();
+    if (singleTeamId) {
+      return teamNameById.get(singleTeamId) || singleTeamId;
+    }
+    const multiTeamIds = Array.isArray(userRow?.teamIds)
+      ? userRow.teamIds
+      : Array.isArray(userRow?.assignedTeamIds)
+        ? userRow.assignedTeamIds
+        : [];
+    const labels = multiTeamIds
+      .map((id) => String(id || "").trim())
+      .filter(Boolean)
+      .map((id) => teamNameById.get(id) || id);
+    if (!labels.length) return "-";
+    return labels.join(", ");
+  };
+
   if (!isAdmin) {
     return <div className="p-6 text-red-600">Access restricted.</div>;
   }
@@ -467,6 +485,7 @@ export default function AdminUsers() {
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="py-2 pr-3">User</th>
                   <th className="py-2 pr-3">Role</th>
+                  <th className="py-2 pr-3">Team</th>
                   <th className="py-2 pr-3">Status</th>
                   <th className="py-2 pr-3">Actions</th>
                 </tr>
@@ -516,6 +535,11 @@ export default function AdminUsers() {
                         ) : (
                           <span className="capitalize text-slate-700">{String(u.role || "n/a")}</span>
                         )}
+                      </td>
+                      <td className="py-2 pr-3 max-w-[220px]">
+                        <span className="line-clamp-2 text-slate-700" title={getUserTeamLabel(u)}>
+                          {getUserTeamLabel(u)}
+                        </span>
                       </td>
                       <td className="py-2 pr-3">
                         <span className={`rounded-full px-2 py-1 text-xs ${badge.classes}`}>
