@@ -78,7 +78,12 @@ service cloud.firestore {
             && userDoc().data.teamIds.hasAny([teamId])) ||
           (("assignedTeamIds" in userDoc().data)
             && userDoc().data.assignedTeamIds is list
-            && userDoc().data.assignedTeamIds.hasAny([teamId]))
+            && userDoc().data.assignedTeamIds.hasAny([teamId])) ||
+          (
+            exists(/databases/$(database)/documents/teams/$(teamId)) &&
+            get(/databases/$(database)/documents/teams/$(teamId)).data.orgId == userOrgId() &&
+            get(/databases/$(database)/documents/teams/$(teamId)).data.coachId == request.auth.uid
+          )
         );
     }
 

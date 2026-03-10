@@ -9,7 +9,7 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail,
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
@@ -52,11 +52,46 @@ export function AuthProvider({ children }) {
 
       if (snap.exists()) {
   const data = snap.data();
-  setProfile(data);
+  let nextProfile = data;
+
+  if (String(data?.role || "").toLowerCase() === "coach" && data?.orgId) {
+    const explicitTeamIds = Array.isArray(data.teamIds)
+      ? data.teamIds
+      : Array.isArray(data.assignedTeamIds)
+        ? data.assignedTeamIds
+        : [];
+    const singleTeamId = String(data.teamId || "").trim();
+
+    const teamsSnap = await getDocs(
+      query(
+        collection(db, "teams"),
+        where("orgId", "==", data.orgId),
+        where("coachId", "==", uid)
+      )
+    );
+
+    const derivedTeamIds = teamsSnap.docs.map((entry) => entry.id);
+    const mergedTeamIds = Array.from(
+      new Set(
+        [...explicitTeamIds, ...derivedTeamIds, singleTeamId]
+          .map((id) => String(id || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    nextProfile = {
+      ...data,
+      teamIds: mergedTeamIds,
+      assignedTeamIds: mergedTeamIds,
+      teamId: data.teamId || mergedTeamIds[0] || "",
+    };
+  }
+
+  setProfile(nextProfile);
 
   // 🔑 Initialize activeOrgId once profile is loaded
-  if (!activeOrgId && data?.orgId) {
-    setActiveOrgId(data.orgId);
+  if (!activeOrgId && nextProfile?.orgId) {
+    setActiveOrgId(nextProfile.orgId);
   }
 
   return true;
