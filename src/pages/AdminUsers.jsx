@@ -56,6 +56,7 @@ export default function AdminUsers() {
   });
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteStatus, setInviteStatus] = useState("");
+  const [resendingInviteId, setResendingInviteId] = useState("");
 
   useEffect(() => {
     if (!isAdmin) return undefined;
@@ -201,6 +202,33 @@ export default function AdminUsers() {
   async function handleRevokeInvite(inviteId) {
     if (!window.confirm("Revoke this invite?")) return;
     await deleteDoc(doc(db, "invites", inviteId));
+  }
+
+  async function handleResendInvite(invite) {
+    const email = String(invite?.email || "").trim().toLowerCase();
+    const inviteId = String(invite?.id || "").trim();
+    if (!email || !inviteId) return;
+    try {
+      setResendingInviteId(inviteId);
+      setInviteStatus("");
+      const sendInviteEmail = httpsCallable(functions, "sendInviteEmail");
+      await sendInviteEmail({
+        toEmail: email,
+        inviteId,
+        appUrl: window.location.origin,
+      });
+      await updateDoc(doc(db, "invites", inviteId), {
+        lastResentAt: serverTimestamp(),
+        resendCount: Number(invite?.resendCount || 0) + 1,
+        updatedAt: serverTimestamp(),
+      });
+      setInviteStatus(`Invite resent to ${email}.`);
+    } catch (err) {
+      console.error("Resend invite failed:", err);
+      setInviteStatus("Failed to resend invite.");
+    } finally {
+      setResendingInviteId("");
+    }
   }
 
   async function handleDeactivateUser(userId) {
@@ -430,6 +458,9 @@ export default function AdminUsers() {
       {invites.length > 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold text-slate-800">Pending Invites</h2>
+          {inviteStatus ? (
+            <p className="mb-3 text-xs text-slate-500">{inviteStatus}</p>
+          ) : null}
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -437,6 +468,7 @@ export default function AdminUsers() {
                   <th className="py-2 pr-3">Email</th>
                   <th className="py-2 pr-3">Role</th>
                   <th className="py-2 pr-3">Team</th>
+                  <th className="py-2 pr-3">Resends</th>
                   <th className="py-2 pr-3">Actions</th>
                 </tr>
               </thead>
@@ -446,14 +478,25 @@ export default function AdminUsers() {
                     <td className="py-2 pr-3">{invite.email}</td>
                     <td className="py-2 pr-3 capitalize">{invite.role || "n/a"}</td>
                     <td className="py-2 pr-3">{invite.teamId || "-"}</td>
+                    <td className="py-2 pr-3">{Number(invite.resendCount || 0)}</td>
                     <td className="py-2 pr-3">
-                      <button
-                        type="button"
-                        onClick={() => handleRevokeInvite(invite.id)}
-                        className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700"
-                      >
-                        Revoke
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={resendingInviteId === invite.id}
+                          onClick={() => handleResendInvite(invite)}
+                          className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                        >
+                          {resendingInviteId === invite.id ? "Sending..." : "Resend"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRevokeInvite(invite.id)}
+                          className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700"
+                        >
+                          Revoke
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
