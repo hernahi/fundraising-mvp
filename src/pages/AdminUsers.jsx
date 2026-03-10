@@ -18,6 +18,7 @@ import safeImageURL from "../utils/safeImage.js";
 import { useAuth } from "../context/AuthContext";
 
 const INVITE_ROLES = ["coach", "athlete", "admin"];
+const INVITE_RESEND_COOLDOWN_MS = 60 * 1000;
 
 function getInitials(name, email) {
   if (name) {
@@ -34,6 +35,34 @@ function getStatusBadge(user) {
     return { label: "Pending", classes: "bg-amber-100 text-amber-800" };
   }
   return { label: "Active", classes: "bg-emerald-100 text-emerald-800" };
+}
+
+function formatInviteTimestamp(value) {
+  if (!value) return "-";
+  try {
+    const date =
+      typeof value?.toDate === "function"
+        ? value.toDate()
+        : value instanceof Date
+          ? value
+          : null;
+    if (!date) return "-";
+    return date.toLocaleString([], {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return "-";
+  }
+}
+
+function canResendInvite(invite) {
+  const lastResentAt = invite?.lastResentAt;
+  if (!lastResentAt || typeof lastResentAt?.toMillis !== "function") return true;
+  return Date.now() - lastResentAt.toMillis() >= INVITE_RESEND_COOLDOWN_MS;
 }
 
 export default function AdminUsers() {
@@ -208,6 +237,10 @@ export default function AdminUsers() {
     const email = String(invite?.email || "").trim().toLowerCase();
     const inviteId = String(invite?.id || "").trim();
     if (!email || !inviteId) return;
+    if (!canResendInvite(invite)) {
+      setInviteStatus("Please wait one minute before resending this invite again.");
+      return;
+    }
     try {
       setResendingInviteId(inviteId);
       setInviteStatus("");
@@ -463,12 +496,13 @@ export default function AdminUsers() {
           ) : null}
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead>
+	              <thead>
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="py-2 pr-3">Email</th>
                   <th className="py-2 pr-3">Role</th>
                   <th className="py-2 pr-3">Team</th>
                   <th className="py-2 pr-3">Resends</th>
+                  <th className="py-2 pr-3">Last Resent</th>
                   <th className="py-2 pr-3">Actions</th>
                 </tr>
               </thead>
@@ -479,16 +513,23 @@ export default function AdminUsers() {
                     <td className="py-2 pr-3 capitalize">{invite.role || "n/a"}</td>
                     <td className="py-2 pr-3">{invite.teamId || "-"}</td>
                     <td className="py-2 pr-3">{Number(invite.resendCount || 0)}</td>
+                    <td className="py-2 pr-3">{formatInviteTimestamp(invite.lastResentAt)}</td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap items-center gap-2">
+                        {(() => {
+                          const resendAllowed = canResendInvite(invite);
+                          return (
                         <button
                           type="button"
-                          disabled={resendingInviteId === invite.id}
+                          disabled={resendingInviteId === invite.id || !resendAllowed}
                           onClick={() => handleResendInvite(invite)}
-                          className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                          className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          title={resendAllowed ? "Resend invite email" : "Wait one minute between resend attempts"}
                         >
                           {resendingInviteId === invite.id ? "Sending..." : "Resend"}
                         </button>
+                          );
+                        })()}
                         <button
                           type="button"
                           onClick={() => handleRevokeInvite(invite.id)}
