@@ -1431,6 +1431,184 @@ exports.createManagedUserAccount = onCall(async (request) => {
 });
 
 /* ============================================================
+   GRANT EXISTING USER ACCESS (ADMIN/SUPER-ADMIN)
+   - Bypasses invite flow intentionally
+   - Links existing Firebase Auth account to users/{uid}
+   ============================================================ */
+exports.grantExistingUserAccess = onCall(async (request) => {
+  const uid = request?.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "Login required");
+  }
+
+  const actor = await getUserProfile(uid);
+  if (!actor) {
+    throw new HttpsError("permission-denied", "User profile not found");
+  }
+  if (!["admin", "super-admin"].includes(String(actor.role || ""))) {
+    throw new HttpsError("permission-denied", "Admins only");
+  }
+
+  const email = String(request.data?.email || "").trim().toLowerCase();
+  const role = String(request.data?.role || "").trim().toLowerCase();
+  const orgId = String(request.data?.orgId || "").trim();
+  const teamId = String(request.data?.teamId || "").trim();
+  const setTeamCoach = Boolean(request.data?.setTeamCoach);
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError("invalid-argument", "A valid email is required");
+  }
+  if (!["coach", "athlete", "admin"].includes(role)) {
+    throw new HttpsError("invalid-argument", "Role must be coach, athlete, or admin");
+  }
+  if (!orgId) {
+    throw new HttpsError("invalid-argument", "orgId is required");
+  }
+  if (actor.role !== "super-admin" && String(actor.orgId || "") !== orgId) {
+    throw new HttpsError("permission-denied", "Org mismatch");
+  }
+
+  let authUser = null;
+  try {
+    authUser = await admin.auth().getUserByEmail(email);
+  } catch (_) {
+    throw new HttpsError(
+      "not-found",
+      "No authentication account exists for this email yet"
+    );
+  }
+
+  const db = admin.firestore();
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const userRef = db.collection("users").doc(authUser.uid);
+  const existingUserSnap = await userRef.get();
+  const existingUser = existingUserSnap.exists ? existingUserSnap.data() || {} : {};
+  const existingOrgId = String(existingUser.orgId || "").trim();
+
+  if (
+    existingOrgId &&
+    existingOrgId !== orgId &&
+    actor.role !== "super-admin"
+  ) {
+    throw new HttpsError(
+      "permission-denied",
+      "Existing user belongs to a different organization"
+    );
+  }
+
+  const existingTeamIds = Array.isArray(existingUser.teamIds)
+    ? existingUser.teamIds
+    : Array.isArray(existingUser.assignedTeamIds)
+      ? existingUser.assignedTeamIds
+      : [];
+  const mergedTeamIds = Array.from(
+    new Set(
+      [...existingTeamIds, teamId]
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  const userPayload = {
+    uid: authUser.uid,
+    email,
+    displayName: authUser.displayName || existingUser.displayName || email,
+    photoURL: authUser.photoURL || existingUser.photoURL || null,
+    role,
+    orgId,
+    status: "active",
+    teamId: teamId || existingUser.teamId || null,
+    teamIds: role === "coach" ? mergedTeamIds : [],
+    assignedTeamIds: role === "coach" ? mergedTeamIds : [],
+    updatedAt: now,
+  };
+  if (!existingUserSnap.exists) {
+    userPayload.createdAt = now;
+    userPayload.createdByUid = uid;
+  }
+
+  const batch = db.batch();
+  batch.set(userRef, userPayload, { merge: true });
+
+  if (role === "coach") {
+    const coachRef = db.collection("coaches").doc(authUser.uid);
+    batch.set(
+      coachRef,
+      {
+        uid: authUser.uid,
+        userId: authUser.uid,
+        orgId,
+        role: "coach",
+        teamIds: mergedTeamIds,
+        updatedAt: now,
+        ...(existingUserSnap.exists ? {} : { createdAt: now, createdByUid: uid }),
+      },
+      { merge: true }
+    );
+  }
+
+  if (role === "athlete") {
+    const athleteRef = db.collection("athletes").doc(authUser.uid);
+    batch.set(
+      athleteRef,
+      {
+        userId: authUser.uid,
+        email,
+        displayName: authUser.displayName || existingUser.displayName || email,
+        orgId,
+        teamId: teamId || null,
+        status: "active",
+        updatedAt: now,
+        ...(existingUserSnap.exists ? {} : { createdAt: now, createdByUid: uid }),
+      },
+      { merge: true }
+    );
+  }
+
+  if (setTeamCoach && role === "coach" && teamId) {
+    const teamRef = db.collection("teams").doc(teamId);
+    const teamSnap = await teamRef.get();
+    if (!teamSnap.exists) {
+      throw new HttpsError("not-found", "Team not found");
+    }
+    const teamData = teamSnap.data() || {};
+    if (String(teamData.orgId || "") !== orgId) {
+      throw new HttpsError("permission-denied", "Team org mismatch");
+    }
+    batch.set(
+      teamRef,
+      {
+        coachId: authUser.uid,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  }
+
+  await batch.commit();
+
+  logger.info("grantExistingUserAccess: success", {
+    targetUid: authUser.uid,
+    email,
+    role,
+    orgId,
+    teamId: teamId || null,
+    setTeamCoach,
+    byUid: uid,
+  });
+
+  return {
+    ok: true,
+    uid: authUser.uid,
+    email,
+    role,
+    orgId,
+    teamId: teamId || null,
+    setTeamCoach,
+  };
+});
+
+/* ============================================================
    DONOR INVITE (ATHLETE)
    ============================================================ */
 exports.sendDonorInvite = onCall(

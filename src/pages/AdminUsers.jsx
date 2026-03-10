@@ -124,6 +124,8 @@ export default function AdminUsers() {
     email: "",
     role: "coach",
     teamId: "",
+    directAccess: false,
+    setTeamCoach: true,
   });
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteStatus, setInviteStatus] = useState("");
@@ -282,6 +284,37 @@ export default function AdminUsers() {
         throw new Error("Invalid role selected.");
       }
 
+      if (inviteForm.directAccess) {
+        const grantExistingUserAccess = httpsCallable(
+          functions,
+          "grantExistingUserAccess"
+        );
+        const result = await grantExistingUserAccess({
+          email,
+          role: inviteForm.role,
+          orgId: scopedOrgId,
+          teamId: inviteForm.teamId || null,
+          setTeamCoach:
+            inviteForm.role === "coach" &&
+            Boolean(inviteForm.teamId) &&
+            Boolean(inviteForm.setTeamCoach),
+        });
+        const grantedUid = String(result?.data?.uid || "").trim();
+        setInviteForm({
+          email: "",
+          role: "coach",
+          teamId: "",
+          directAccess: false,
+          setTeamCoach: true,
+        });
+        setInviteStatus(
+          grantedUid
+            ? `Direct access granted (${grantedUid}).`
+            : "Direct access granted."
+        );
+        return;
+      }
+
       const inviteRef = await addDoc(collection(db, "invites"), {
         email,
         role: inviteForm.role,
@@ -304,7 +337,13 @@ export default function AdminUsers() {
         mode: "initial",
       });
 
-      setInviteForm({ email: "", role: "coach", teamId: "" });
+      setInviteForm({
+        email: "",
+        role: "coach",
+        teamId: "",
+        directAccess: false,
+        setTeamCoach: true,
+      });
       setInviteStatus("Invite sent.");
     } catch (err) {
       console.error("Invite failed:", err);
@@ -506,6 +545,36 @@ export default function AdminUsers() {
               </option>
             ))}
           </select>
+          <label className="md:col-span-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            <input
+              type="checkbox"
+              checked={Boolean(inviteForm.directAccess)}
+              onChange={(e) =>
+                setInviteForm((prev) => ({
+                  ...prev,
+                  directAccess: e.target.checked,
+                }))
+              }
+            />
+            Grant direct access now (skip invite onboarding) for existing auth account.
+          </label>
+          {inviteForm.directAccess &&
+          inviteForm.role === "coach" &&
+          inviteForm.teamId ? (
+            <label className="md:col-span-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                checked={Boolean(inviteForm.setTeamCoach)}
+                onChange={(e) =>
+                  setInviteForm((prev) => ({
+                    ...prev,
+                    setTeamCoach: e.target.checked,
+                  }))
+                }
+              />
+              Set this coach as primary coach for selected team.
+            </label>
+          ) : null}
           <div className="md:col-span-4 flex items-center justify-between">
             <p className="text-xs text-slate-500">{inviteStatus}</p>
             <button
@@ -513,7 +582,13 @@ export default function AdminUsers() {
               disabled={inviteLoading || !scopedOrgId}
               className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
             >
-              {inviteLoading ? "Sending..." : "Send Invite"}
+              {inviteLoading
+                ? inviteForm.directAccess
+                  ? "Granting..."
+                  : "Sending..."
+                : inviteForm.directAccess
+                  ? "Grant Access"
+                  : "Send Invite"}
             </button>
           </div>
         </form>
