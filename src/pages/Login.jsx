@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../firebase/config";
 
 export default function Login() {
   const {
@@ -9,6 +11,7 @@ export default function Login() {
     signupWithEmail,
     resetPassword,
     logout,
+    reloadProfile,
     user,
     loading,
     profile,
@@ -25,8 +28,16 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [bootstrapSubmitting, setBootstrapSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showBootstrap, setShowBootstrap] = useState(false);
+  const [bootstrapForm, setBootstrapForm] = useState({
+    orgName: "",
+    teamName: "",
+    campaignName: "",
+    campaignGoal: "",
+  });
 
   useEffect(() => {
     if (!loading && user && !profile && redirectTo?.startsWith("/accept-invite")) {
@@ -125,6 +136,43 @@ export default function Login() {
     } catch (err) {
       console.error("Password reset failed:", err);
       setError(err?.message || "Failed to send password reset email.");
+    }
+  };
+
+  const handleBootstrapWorkspace = async (e) => {
+    e.preventDefault();
+    clearStatus();
+    const orgName = String(bootstrapForm.orgName || "").trim();
+    const teamName = String(bootstrapForm.teamName || "").trim();
+    const campaignName = String(bootstrapForm.campaignName || "").trim();
+    const campaignGoal = Number(bootstrapForm.campaignGoal || 0);
+
+    if (!orgName || !teamName) {
+      setError("Organization name and team name are required.");
+      return;
+    }
+
+    setBootstrapSubmitting(true);
+    try {
+      const bootstrapSoloWorkspace = httpsCallable(functions, "bootstrapSoloWorkspace");
+      await bootstrapSoloWorkspace({
+        orgName,
+        teamName,
+        campaignName,
+        campaignGoal: Number.isFinite(campaignGoal) ? campaignGoal : 0,
+      });
+
+      // Pull fresh users/{uid} profile created by bootstrap callable.
+      await reloadProfile?.();
+      setMessage("Workspace created. Redirecting...");
+      navigate("/", { replace: true });
+    } catch (err) {
+      console.error("Bootstrap workspace failed:", err);
+      setError(
+        err?.message || "Failed to start your workspace. Please try again."
+      );
+    } finally {
+      setBootstrapSubmitting(false);
     }
   };
 
@@ -239,8 +287,78 @@ export default function Login() {
                 <br />
                 Auth Email: <span className="font-mono">{user?.email || "unknown"}</span>
               </div>
+              {!redirectTo?.startsWith("/accept-invite") ? (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowBootstrap((prev) => !prev)}
+                    className="rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50"
+                  >
+                    {showBootstrap ? "Hide Setup" : "Start My Own Team"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
+
+          {hasAccountWithoutProfile && showBootstrap && !redirectTo?.startsWith("/accept-invite") ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+              <p className="mb-2 text-xs text-slate-600">
+                Solo workspace setup: this creates your organization, first team, and optional starter campaign.
+              </p>
+              <form onSubmit={handleBootstrapWorkspace} className="space-y-2">
+                <input
+                  type="text"
+                  value={bootstrapForm.orgName}
+                  onChange={(e) =>
+                    setBootstrapForm((prev) => ({ ...prev, orgName: e.target.value }))
+                  }
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  placeholder="Organization name"
+                  disabled={bootstrapSubmitting}
+                />
+                <input
+                  type="text"
+                  value={bootstrapForm.teamName}
+                  onChange={(e) =>
+                    setBootstrapForm((prev) => ({ ...prev, teamName: e.target.value }))
+                  }
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  placeholder="Team name"
+                  disabled={bootstrapSubmitting}
+                />
+                <input
+                  type="text"
+                  value={bootstrapForm.campaignName}
+                  onChange={(e) =>
+                    setBootstrapForm((prev) => ({ ...prev, campaignName: e.target.value }))
+                  }
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  placeholder="Starter campaign name (optional)"
+                  disabled={bootstrapSubmitting}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={bootstrapForm.campaignGoal}
+                  onChange={(e) =>
+                    setBootstrapForm((prev) => ({ ...prev, campaignGoal: e.target.value }))
+                  }
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  placeholder="Campaign goal (optional)"
+                  disabled={bootstrapSubmitting}
+                />
+                <button
+                  type="submit"
+                  disabled={bootstrapSubmitting}
+                  className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {bootstrapSubmitting ? "Creating..." : "Create Workspace"}
+                </button>
+              </form>
+            </div>
+          ) : null}
 
           <button
             type="submit"

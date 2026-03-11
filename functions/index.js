@@ -1667,6 +1667,181 @@ exports.grantExistingUserAccess = onCall(async (request) => {
 });
 
 /* ============================================================
+   SOLO WORKSPACE BOOTSTRAP (AUTH USER, NO PROFILE YET)
+   - Creates org + owner user + team (+ optional campaign)
+   - Keeps existing invite/admin flows untouched
+   ============================================================ */
+exports.bootstrapSoloWorkspace = onCall(async (request) => {
+  const uid = request?.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "Login required");
+  }
+
+  const orgName = String(request.data?.orgName || "").trim();
+  const teamName = String(request.data?.teamName || "").trim();
+  const campaignName = String(request.data?.campaignName || "").trim();
+  const campaignGoalInput = Number(request.data?.campaignGoal || 0);
+  const campaignGoal =
+    Number.isFinite(campaignGoalInput) && campaignGoalInput > 0
+      ? Math.round(campaignGoalInput)
+      : 0;
+
+  if (!orgName || orgName.length < 2) {
+    throw new HttpsError("invalid-argument", "Organization name is required");
+  }
+  if (!teamName || teamName.length < 2) {
+    throw new HttpsError("invalid-argument", "Team name is required");
+  }
+  if (orgName.length > 120 || teamName.length > 120 || campaignName.length > 120) {
+    throw new HttpsError("invalid-argument", "Names must be 120 characters or less");
+  }
+  if (campaignGoal < 0 || campaignGoal > 10000000) {
+    throw new HttpsError("invalid-argument", "Campaign goal is out of range");
+  }
+
+  const db = admin.firestore();
+  const userRef = db.collection("users").doc(uid);
+  const userSnap = await userRef.get();
+  if (userSnap.exists) {
+    const existing = userSnap.data() || {};
+    if (String(existing.orgId || "").trim()) {
+      throw new HttpsError(
+        "failed-precondition",
+        "App access already exists for this account"
+      );
+    }
+  }
+
+  let authUser;
+  try {
+    authUser = await admin.auth().getUser(uid);
+  } catch (_) {
+    throw new HttpsError("not-found", "Authentication user not found");
+  }
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const orgRef = db.collection("organizations").doc();
+  const teamRef = db.collection("teams").doc();
+  const createCampaign = Boolean(campaignName);
+  const campaignRef = createCampaign ? db.collection("campaigns").doc() : null;
+
+  const batch = db.batch();
+
+  batch.set(
+    orgRef,
+    {
+      name: orgName,
+      ownerUid: uid,
+      createdByUid: uid,
+      createdAt: now,
+      updatedAt: now,
+      status: "active",
+      donorInviteTemplate: DEFAULT_DONOR_INVITE_TEMPLATE,
+      dripGlobalEnabled: true,
+      reporting: {
+        excludeEndedCampaigns: true,
+        sendWhenNoActiveCampaigns: false,
+      },
+    },
+    { merge: true }
+  );
+
+  batch.set(
+    userRef,
+    {
+      uid,
+      email: String(authUser.email || "").trim().toLowerCase(),
+      displayName:
+        String(authUser.displayName || "").trim() ||
+        String(authUser.email || "").trim().toLowerCase(),
+      photoURL: authUser.photoURL || null,
+      role: "admin",
+      orgId: orgRef.id,
+      status: "active",
+      teamId: teamRef.id,
+      teamIds: [teamRef.id],
+      assignedTeamIds: [teamRef.id],
+      createdByUid: uid,
+      createdAt: now,
+      updatedAt: now,
+    },
+    { merge: true }
+  );
+
+  batch.set(
+    teamRef,
+    {
+      orgId: orgRef.id,
+      name: teamName,
+      coachId: uid,
+      createdByUid: uid,
+      createdAt: now,
+      updatedAt: now,
+      payoutStatus: "accruing",
+    },
+    { merge: true }
+  );
+
+  batch.set(
+    db.collection("coaches").doc(uid),
+    {
+      uid,
+      userId: uid,
+      orgId: orgRef.id,
+      role: "coach",
+      teamId: teamRef.id,
+      teamIds: [teamRef.id],
+      createdByUid: uid,
+      createdAt: now,
+      updatedAt: now,
+    },
+    { merge: true }
+  );
+
+  if (campaignRef) {
+    const startDate = new Date();
+    const endDate = new Date(startDate.getTime() + 45 * 24 * 60 * 60 * 1000);
+    batch.set(
+      campaignRef,
+      {
+        orgId: orgRef.id,
+        name: campaignName,
+        description: "",
+        teamId: teamRef.id,
+        teamIds: [teamRef.id],
+        teamName,
+        goal: campaignGoal || 0,
+        isPublic: true,
+        status: "active",
+        createdByUid: uid,
+        createdAt: now,
+        updatedAt: now,
+        startDate: admin.firestore.Timestamp.fromDate(startDate),
+        endDate: admin.firestore.Timestamp.fromDate(endDate),
+      },
+      { merge: true }
+    );
+  }
+
+  await batch.commit();
+
+  logger.info("bootstrapSoloWorkspace: success", {
+    uid,
+    orgId: orgRef.id,
+    teamId: teamRef.id,
+    campaignId: campaignRef ? campaignRef.id : null,
+  });
+
+  return {
+    ok: true,
+    uid,
+    orgId: orgRef.id,
+    teamId: teamRef.id,
+    campaignId: campaignRef ? campaignRef.id : null,
+  };
+});
+
+/* ============================================================
    DONOR INVITE (ATHLETE)
    ============================================================ */
 exports.sendDonorInvite = onCall(
