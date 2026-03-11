@@ -62,6 +62,24 @@ const SUBJECTS_BY_TEMPLATE = {
   custom: "Fundraiser update",
 };
 
+const DRIP_TEMPLATE_KEYS = TEMPLATE_OPTIONS.filter(
+  (option) => option.key !== "custom"
+).map((option) => option.key);
+
+function buildDefaultWeekTemplates(baseTemplate) {
+  const seed = String(baseTemplate || DEFAULT_DONOR_INVITE_TEMPLATE).trim();
+  const templates = {};
+  DRIP_TEMPLATE_KEYS.forEach((key) => {
+    templates[key] = seed;
+  });
+  return templates;
+}
+
+const DEFAULT_WEEK_SUBJECTS = DRIP_TEMPLATE_KEYS.reduce((acc, key) => {
+  acc[key] = SUBJECTS_BY_TEMPLATE[key] || "Fundraiser update";
+  return acc;
+}, {});
+
 function getCoachScopedTeamIds(profile) {
   if (!profile) return [];
   const role = String(profile.role || "").toLowerCase();
@@ -317,13 +335,19 @@ export default function Messages() {
           setOrgTemplateDraft(nextTemplate);
         }
 
-        const nextWeekTemplates = orgData.donorInviteTemplates || {};
+        const nextWeekTemplates = {
+          ...buildDefaultWeekTemplates(nextTemplate),
+          ...(orgData.donorInviteTemplates || {}),
+        };
         setOrgWeekTemplates(nextWeekTemplates);
         if (Object.keys(orgWeekDirty).length === 0) {
           setOrgWeekDrafts(nextWeekTemplates);
         }
 
-        const nextWeekSubjects = orgData.donorInviteSubjects || {};
+        const nextWeekSubjects = {
+          ...DEFAULT_WEEK_SUBJECTS,
+          ...(orgData.donorInviteSubjects || {}),
+        };
         setOrgWeekSubjects(nextWeekSubjects);
         if (Object.keys(orgWeekSubjectDirty).length === 0) {
           setOrgWeekSubjectDrafts(nextWeekSubjects);

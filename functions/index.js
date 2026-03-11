@@ -1737,6 +1737,18 @@ exports.bootstrapSoloWorkspace = onCall(async (request) => {
       updatedAt: now,
       status: "active",
       donorInviteTemplate: DEFAULT_DONOR_INVITE_TEMPLATE,
+      donorInviteTemplates: {
+        week1a: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week1b: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week2: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week3: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week4: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week5: DEFAULT_DONOR_INVITE_TEMPLATE,
+        lateIntro: DEFAULT_LATE_CONTACT_TEMPLATE,
+      },
+      donorInviteSubjects: {
+        ...DRIP_SUBJECTS,
+      },
       dripGlobalEnabled: true,
       reporting: {
         excludeEndedCampaigns: true,
