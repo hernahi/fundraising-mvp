@@ -113,6 +113,24 @@ export default function Settings() {
         setPasswordResetHint("");
         return;
       }
+      const providerIds = Array.isArray(user?.providerData)
+        ? user.providerData
+            .map((entry) => String(entry?.providerId || "").trim().toLowerCase())
+            .filter(Boolean)
+        : [];
+
+      // Prefer authenticated provider metadata; this is most reliable for the current signed-in user.
+      if (providerIds.length > 0) {
+        const hasPasswordProvider = providerIds.includes("password");
+        setPasswordResetAllowed(hasPasswordProvider);
+        setPasswordResetHint(
+          hasPasswordProvider
+            ? ""
+            : "This account uses Google Sign-In. Use Google to log in."
+        );
+        return;
+      }
+
       try {
         const methods = await fetchSignInMethodsForEmail(auth, currentEmail);
         const hasPasswordProvider = methods.includes("password");
@@ -124,13 +142,13 @@ export default function Settings() {
         );
       } catch (err) {
         console.error("Failed to detect sign-in methods:", err);
-        // Fail open so legitimate password users are not blocked on provider lookup issues.
+        // Fail open so legitimate password users are not blocked on lookup issues.
         setPasswordResetAllowed(true);
         setPasswordResetHint("");
       }
     }
     detectPasswordProvider();
-  }, [canManageAccount, profile?.email, user?.email]);
+  }, [canManageAccount, profile?.email, user?.email, user?.providerData]);
 
   useEffect(() => {
     async function loadOrgSettings() {
