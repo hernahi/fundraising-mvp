@@ -62,15 +62,20 @@ export function AuthProvider({ children }) {
         : [];
     const singleTeamId = String(data.teamId || "").trim();
 
-    const teamsSnap = await getDocs(
-      query(
-        collection(db, "teams"),
-        where("orgId", "==", data.orgId),
-        where("coachId", "==", uid)
-      )
-    );
-
-    const derivedTeamIds = teamsSnap.docs.map((entry) => entry.id);
+    let derivedTeamIds = [];
+    try {
+      const teamsSnap = await getDocs(
+        query(
+          collection(db, "teams"),
+          where("orgId", "==", data.orgId),
+          where("coachId", "==", uid)
+        )
+      );
+      derivedTeamIds = teamsSnap.docs.map((entry) => entry.id);
+    } catch (deriveErr) {
+      // Do not block login if coach team enrichment fails.
+      console.warn("Coach team enrichment skipped:", deriveErr?.message || deriveErr);
+    }
     const mergedTeamIds = Array.from(
       new Set(
         [...explicitTeamIds, ...derivedTeamIds, singleTeamId]
