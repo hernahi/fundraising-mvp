@@ -278,6 +278,10 @@ export default function AdminUsers() {
         throw new Error("Select an active organization before inviting users.");
       }
       const email = String(inviteForm.email || "").trim().toLowerCase();
+      const normalizedTeamId =
+        String(inviteForm.teamId || "").trim() === "unassigned-team"
+          ? ""
+          : String(inviteForm.teamId || "").trim();
       if (!email) {
         throw new Error("Email is required.");
       }
@@ -295,10 +299,10 @@ export default function AdminUsers() {
           targetUid: String(inviteForm.targetUid || "").trim() || null,
           role: inviteForm.role,
           orgId: scopedOrgId,
-          teamId: inviteForm.teamId || null,
+          teamId: normalizedTeamId || null,
           setTeamCoach:
             inviteForm.role === "coach" &&
-            Boolean(inviteForm.teamId) &&
+            Boolean(normalizedTeamId) &&
             Boolean(inviteForm.setTeamCoach),
         });
         const grantedUid = String(result?.data?.uid || "").trim();
@@ -322,7 +326,7 @@ export default function AdminUsers() {
         email,
         role: inviteForm.role,
         orgId: scopedOrgId,
-        teamId: inviteForm.teamId || null,
+        teamId: normalizedTeamId || null,
         status: "pending",
         expiresAt: Timestamp.fromDate(
           new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
@@ -351,7 +355,9 @@ export default function AdminUsers() {
       setInviteStatus("Invite sent.");
     } catch (err) {
       console.error("Invite failed:", err);
-      setInviteStatus("Failed to send invite.");
+      setInviteStatus(
+        String(err?.message || "").trim() || "Failed to send invite."
+      );
     } finally {
       setInviteLoading(false);
     }
@@ -366,6 +372,10 @@ export default function AdminUsers() {
         throw new Error("Select an active organization before creating accounts.");
       }
       const email = String(createForm.email || "").trim().toLowerCase();
+      const normalizedTeamId =
+        String(createForm.teamId || "").trim() === "unassigned-team"
+          ? ""
+          : String(createForm.teamId || "").trim();
       const managedRole = String(createForm.role || "").trim().toLowerCase();
       const password = String(createForm.password || "");
       if (!email) throw new Error("Email is required.");
@@ -382,7 +392,7 @@ export default function AdminUsers() {
         displayName: String(createForm.displayName || "").trim(),
         role: managedRole,
         orgId: scopedOrgId,
-        teamId: String(createForm.teamId || "").trim() || null,
+        teamId: normalizedTeamId || null,
         password,
       });
       const createdUid = String(res?.data?.uid || "").trim();
@@ -400,7 +410,9 @@ export default function AdminUsers() {
       });
     } catch (err) {
       console.error("Create managed account failed:", err);
-      setCreateStatus("Failed to create account.");
+      setCreateStatus(
+        String(err?.message || "").trim() || "Failed to create account."
+      );
     } finally {
       setCreateLoading(false);
     }

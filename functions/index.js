@@ -1309,7 +1309,11 @@ exports.createManagedUserAccount = onCall(async (request) => {
   const role = String(request.data?.role || "").trim().toLowerCase();
   const orgId = String(request.data?.orgId || "").trim();
   const displayName = String(request.data?.displayName || "").trim();
-  const teamId = String(request.data?.teamId || "").trim();
+  const requestedTeamId = String(request.data?.teamId || "").trim();
+  const teamId =
+    requestedTeamId && requestedTeamId !== "unassigned-team"
+      ? requestedTeamId
+      : "";
   const password = String(request.data?.password || "");
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1332,10 +1336,29 @@ exports.createManagedUserAccount = onCall(async (request) => {
     throw new HttpsError("permission-denied", "Coaches cannot create admin accounts");
   }
 
+  if (requestedTeamId === "unassigned-team") {
+    throw new HttpsError(
+      "invalid-argument",
+      "Invalid teamId: unassigned-team is a placeholder, not a real team"
+    );
+  }
+
   try {
     const existing = await admin.auth().getUserByEmail(email).catch(() => null);
     if (existing) {
       throw new HttpsError("already-exists", "A user with this email already exists");
+    }
+
+    const db = admin.firestore();
+    if (teamId) {
+      const teamSnap = await db.collection("teams").doc(teamId).get();
+      if (!teamSnap.exists) {
+        throw new HttpsError("not-found", "Team not found");
+      }
+      const teamData = teamSnap.data() || {};
+      if (String(teamData.orgId || "") !== orgId) {
+        throw new HttpsError("permission-denied", "Team org mismatch");
+      }
     }
 
     const createdAuthUser = await admin.auth().createUser({
@@ -1347,7 +1370,6 @@ exports.createManagedUserAccount = onCall(async (request) => {
     });
 
     const createdUid = createdAuthUser.uid;
-    const db = admin.firestore();
     const now = admin.firestore.FieldValue.serverTimestamp();
 
     const userPayload = {
@@ -1453,7 +1475,11 @@ exports.grantExistingUserAccess = onCall(async (request) => {
   const requestedTargetUid = String(request.data?.targetUid || "").trim();
   const role = String(request.data?.role || "").trim().toLowerCase();
   const orgId = String(request.data?.orgId || "").trim();
-  const teamId = String(request.data?.teamId || "").trim();
+  const requestedTeamId = String(request.data?.teamId || "").trim();
+  const teamId =
+    requestedTeamId && requestedTeamId !== "unassigned-team"
+      ? requestedTeamId
+      : "";
   const setTeamCoach = Boolean(request.data?.setTeamCoach);
 
   if (!requestedTargetUid && (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
@@ -1467,6 +1493,12 @@ exports.grantExistingUserAccess = onCall(async (request) => {
   }
   if (actor.role !== "super-admin" && String(actor.orgId || "") !== orgId) {
     throw new HttpsError("permission-denied", "Org mismatch");
+  }
+  if (requestedTeamId === "unassigned-team") {
+    throw new HttpsError(
+      "invalid-argument",
+      "Invalid teamId: unassigned-team is a placeholder, not a real team"
+    );
   }
 
   let authUser = null;
@@ -1493,6 +1525,16 @@ exports.grantExistingUserAccess = onCall(async (request) => {
   }
 
   const db = admin.firestore();
+  if (teamId) {
+    const teamSnap = await db.collection("teams").doc(teamId).get();
+    if (!teamSnap.exists) {
+      throw new HttpsError("not-found", "Team not found");
+    }
+    const teamData = teamSnap.data() || {};
+    if (String(teamData.orgId || "") !== orgId) {
+      throw new HttpsError("permission-denied", "Team org mismatch");
+    }
+  }
   const now = admin.firestore.FieldValue.serverTimestamp();
   const userRef = db.collection("users").doc(authUser.uid);
   const existingUserSnap = await userRef.get();

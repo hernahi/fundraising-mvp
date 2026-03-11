@@ -234,6 +234,11 @@ export default function Login() {
               {redirectTo?.startsWith("/accept-invite")
                 ? " You will be returned to your invite automatically."
                 : " Use your invite link or contact your administrator."}
+              <div className="mt-2 text-xs text-amber-900">
+                Auth UID: <span className="font-mono">{user?.uid || "unknown"}</span>
+                <br />
+                Auth Email: <span className="font-mono">{user?.email || "unknown"}</span>
+              </div>
             </div>
           )}
 
