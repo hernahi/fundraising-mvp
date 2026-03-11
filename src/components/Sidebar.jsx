@@ -76,6 +76,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
       items.push(
         { to: "/donors", label: "Donors", icon: UserGroupIcon },
         { to: "/coaches", label: "Coaches", icon: UserGroupIcon },
+        { to: "/admin/users", label: "Users", icon: UsersIcon },
         { to: "/messages", label: "Messages", icon: ChatBubbleLeftRightIcon },
         { to: "/settings", label: "Settings", icon: Cog6ToothIcon }
       );

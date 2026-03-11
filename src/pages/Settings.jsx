@@ -1,5 +1,6 @@
 // src/pages/Settings.jsx
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   collection,
   doc,
@@ -12,8 +13,13 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
+import {
+  sendPasswordResetEmail,
+  updateProfile as updateAuthProfile,
+  verifyBeforeUpdateEmail,
+} from "firebase/auth";
 import { useAuth } from "../context/AuthContext";
-import { db, functions } from "../firebase/config";
+import { auth, db, functions } from "../firebase/config";
 import AvatarCircle from "../components/AvatarCircle";
 
 export default function Settings() {
@@ -55,6 +61,10 @@ export default function Settings() {
     summaryWeeklyDeliveryMinute: 0,
     summaryTimeZone: "UTC",
   });
+  const [screenNameDraft, setScreenNameDraft] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [accountStatus, setAccountStatus] = useState("");
 
   const name =
     profile?.displayName || profile?.name || profile?.email || "User";
@@ -67,6 +77,7 @@ export default function Settings() {
   const roleLower = (profile?.role || "").toLowerCase();
   const isOrgAdmin = roleLower === "admin" || roleLower === "super-admin";
   const canReceiveSummary = ["admin", "super-admin", "coach"].includes(roleLower);
+  const canManageAccount = ["admin", "super-admin", "coach"].includes(roleLower);
   const browserTimeZone =
     Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const timeZoneOptions = Array.from(
@@ -82,6 +93,14 @@ export default function Settings() {
       browserTimeZone,
     ])
   );
+
+  useEffect(() => {
+    setScreenNameDraft(String(profile?.displayName || profile?.name || "").trim());
+  }, [profile?.displayName, profile?.name]);
+
+  useEffect(() => {
+    setEmailDraft(String(user?.email || profile?.email || "").trim().toLowerCase());
+  }, [user?.email, profile?.email]);
 
   useEffect(() => {
     async function loadOrgSettings() {
@@ -281,6 +300,167 @@ export default function Settings() {
             </p>
           </div>
         </div>
+
+        {canManageAccount && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">Account Access</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Manage your own profile and open user tools to invite assistant coaches or campaign managers.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <label className="text-xs uppercase tracking-wide text-slate-400">
+                  Screen Name
+                </label>
+                <input
+                  type="text"
+                  value={screenNameDraft}
+                  onChange={(e) => setScreenNameDraft(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  placeholder="Your display name"
+                />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-slate-400">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={emailDraft}
+                  onChange={(e) => setEmailDraft(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  placeholder="name@example.com"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={savingAccount}
+                onClick={async () => {
+                  const nextName = String(screenNameDraft || "").trim();
+                  if (!nextName) {
+                    setAccountStatus("Screen name cannot be empty.");
+                    return;
+                  }
+                  const uid = user?.uid || profile?.uid;
+                  if (!uid) return;
+                  try {
+                    setSavingAccount(true);
+                    setAccountStatus("");
+                    await updateDoc(doc(db, "users", uid), {
+                      displayName: nextName,
+                      name: nextName,
+                      updatedAt: serverTimestamp(),
+                    });
+                    if (user) {
+                      await updateAuthProfile(user, { displayName: nextName });
+                    }
+                    setAccountStatus("Screen name updated.");
+                  } catch (err) {
+                    console.error("Failed to update screen name:", err);
+                    setAccountStatus("Failed to update screen name.");
+                  } finally {
+                    setSavingAccount(false);
+                  }
+                }}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+              >
+                {savingAccount ? "Saving..." : "Save Screen Name"}
+              </button>
+
+              <button
+                type="button"
+                disabled={savingAccount}
+                onClick={async () => {
+                  const nextEmail = String(emailDraft || "").trim().toLowerCase();
+                  const currentEmail = String(user?.email || profile?.email || "").trim().toLowerCase();
+                  if (!nextEmail) {
+                    setAccountStatus("Email cannot be empty.");
+                    return;
+                  }
+                  if (nextEmail === currentEmail) {
+                    setAccountStatus("Email is unchanged.");
+                    return;
+                  }
+                  if (!user) {
+                    setAccountStatus("You must be logged in to update email.");
+                    return;
+                  }
+                  try {
+                    setSavingAccount(true);
+                    setAccountStatus("");
+                    await verifyBeforeUpdateEmail(user, nextEmail);
+                    setAccountStatus(
+                      "Verification email sent. Confirm it to complete your email change."
+                    );
+                  } catch (err) {
+                    console.error("Failed to start email update:", err);
+                    setAccountStatus(
+                      err?.message || "Could not start email update. You may need to re-login first."
+                    );
+                  } finally {
+                    setSavingAccount(false);
+                  }
+                }}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+              >
+                Send Email Change Verification
+              </button>
+
+              <button
+                type="button"
+                disabled={savingAccount}
+                onClick={async () => {
+                  const currentEmail = String(user?.email || profile?.email || "").trim().toLowerCase();
+                  if (!currentEmail) {
+                    setAccountStatus("No account email found.");
+                    return;
+                  }
+                  try {
+                    setSavingAccount(true);
+                    setAccountStatus("");
+                    await sendPasswordResetEmail(auth, currentEmail);
+                    setAccountStatus("Password reset email sent.");
+                  } catch (err) {
+                    console.error("Failed to send password reset:", err);
+                    setAccountStatus(
+                      err?.message || "Failed to send password reset email."
+                    );
+                  } finally {
+                    setSavingAccount(false);
+                  }
+                }}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+              >
+                Reset Password
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to="/admin/users"
+                className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+              >
+                Invite Assistant Coach
+              </Link>
+              <Link
+                to="/admin/users"
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Invite Campaign Manager
+              </Link>
+            </div>
+
+            {accountStatus ? (
+              <p className="text-xs text-slate-600">{accountStatus}</p>
+            ) : null}
+          </div>
+        )}
 
         {/* ORG / TEAM INFO */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

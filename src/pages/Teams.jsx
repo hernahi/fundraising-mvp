@@ -60,6 +60,7 @@ export default function Teams() {
   const resolvedUid = useMemo(() => {
     return profile?.uid || profile?.id || profile?.userId || null;
   }, [profile]);
+  const orgDisplayName = profile?.orgName || resolvedOrgId || "-";
 
   useEffect(() => {
     let cancelled = false;
@@ -197,12 +198,12 @@ export default function Teams() {
             {isSuperAdmin ? (
               <>
                 Viewing teams for selected organization{" "}
-                <span className="font-medium">{resolvedOrgId || "—"}</span>
+                <span className="font-medium">{orgDisplayName}</span>
               </>
             ) : (
               <>
                 Viewing teams for your organization{" "}
-                <span className="font-medium">{resolvedOrgId || "—"}</span>
+                <span className="font-medium">{orgDisplayName}</span>
               </>
             )}
           </p>
