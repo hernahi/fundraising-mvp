@@ -140,8 +140,7 @@ export default function Login() {
     }
   };
 
-  const handleBootstrapWorkspace = async (e) => {
-    e.preventDefault();
+  const handleBootstrapWorkspace = async () => {
     clearStatus();
     const orgName = String(bootstrapForm.orgName || "").trim();
     const teamName = String(bootstrapForm.teamName || "").trim();
@@ -312,7 +311,7 @@ export default function Login() {
               <p className="mb-2 text-xs text-slate-600">
                 Solo workspace setup: this creates your organization, first team, and optional starter campaign.
               </p>
-              <form onSubmit={handleBootstrapWorkspace} className="space-y-2">
+              <div className="space-y-2">
                 <input
                   type="text"
                   value={bootstrapForm.orgName}
@@ -356,13 +355,14 @@ export default function Login() {
                   disabled={bootstrapSubmitting}
                 />
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleBootstrapWorkspace}
                   disabled={bootstrapSubmitting}
                   className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   {bootstrapSubmitting ? "Creating..." : "Create Workspace"}
                 </button>
-              </form>
+              </div>
               {bootstrapResult?.orgId ? (
                 <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-900">
                   <div className="mb-2 font-semibold">Setup Complete</div>
