@@ -103,7 +103,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="px-6 py-4 border-b">
           <div className="text-lg font-semibold">Fundraising MVP</div>
-          <div className="text-xs text-gray-500">{profile?.orgId}</div>
+          <div className="text-xs text-gray-500">{profile?.orgName || profile?.orgId}</div>
         </div>
 
         <nav className="mt-4 flex-1 space-y-3 overflow-y-auto px-2 pb-4">

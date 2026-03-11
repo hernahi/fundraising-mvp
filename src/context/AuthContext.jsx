@@ -39,81 +39,119 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-  await signOut(auth);
-  setUser(null);
-  setProfile(null);
-  setActiveOrgId(null);
-};
+    await signOut(auth);
+    setUser(null);
+    setProfile(null);
+    setActiveOrgId(null);
+  };
 
-  const loadProfile = useCallback(async (uid, attempt = 0) => {
-    try {
-      const ref = doc(db, "users", uid);
-      const snap = await getDoc(ref);
+  const loadProfile = useCallback(
+    async (uid, attempt = 0) => {
+      try {
+        const ref = doc(db, "users", uid);
+        const snap = await getDoc(ref);
 
-      if (snap.exists()) {
-  const data = snap.data();
-  let nextProfile = data;
+        if (snap.exists()) {
+          const data = snap.data() || {};
+          let nextProfile = data;
 
-  if (String(data?.role || "").toLowerCase() === "coach" && data?.orgId) {
-    const explicitTeamIds = Array.isArray(data.teamIds)
-      ? data.teamIds
-      : Array.isArray(data.assignedTeamIds)
-        ? data.assignedTeamIds
-        : [];
-    const singleTeamId = String(data.teamId || "").trim();
+          if (String(data?.role || "").toLowerCase() === "coach" && data?.orgId) {
+            const explicitTeamIds = Array.isArray(data.teamIds)
+              ? data.teamIds
+              : Array.isArray(data.assignedTeamIds)
+                ? data.assignedTeamIds
+                : [];
+            const singleTeamId = String(data.teamId || "").trim();
 
-    let derivedTeamIds = [];
-    try {
-      const teamsSnap = await getDocs(
-        query(
-          collection(db, "teams"),
-          where("orgId", "==", data.orgId),
-          where("coachId", "==", uid)
-        )
-      );
-      derivedTeamIds = teamsSnap.docs.map((entry) => entry.id);
-    } catch (deriveErr) {
-      // Do not block login if coach team enrichment fails.
-      console.warn("Coach team enrichment skipped:", deriveErr?.message || deriveErr);
-    }
-    const mergedTeamIds = Array.from(
-      new Set(
-        [...explicitTeamIds, ...derivedTeamIds, singleTeamId]
-          .map((id) => String(id || "").trim())
-          .filter(Boolean)
-      )
-    );
+            let derivedTeamIds = [];
+            try {
+              const teamsSnap = await getDocs(
+                query(
+                  collection(db, "teams"),
+                  where("orgId", "==", data.orgId),
+                  where("coachId", "==", uid)
+                )
+              );
+              derivedTeamIds = teamsSnap.docs.map((entry) => entry.id);
+            } catch (deriveErr) {
+              // Do not block login if coach team enrichment fails.
+              console.warn(
+                "Coach team enrichment skipped:",
+                deriveErr?.message || deriveErr
+              );
+            }
 
-    nextProfile = {
-      ...data,
-      teamIds: mergedTeamIds,
-      assignedTeamIds: mergedTeamIds,
-      teamId: data.teamId || mergedTeamIds[0] || "",
-    };
-  }
+            const mergedTeamIds = Array.from(
+              new Set(
+                [...explicitTeamIds, ...derivedTeamIds, singleTeamId]
+                  .map((id) => String(id || "").trim())
+                  .filter(Boolean)
+              )
+            );
 
-  setProfile(nextProfile);
+            nextProfile = {
+              ...data,
+              teamIds: mergedTeamIds,
+              assignedTeamIds: mergedTeamIds,
+              teamId: data.teamId || mergedTeamIds[0] || "",
+            };
+          }
 
-  // 🔑 Initialize activeOrgId once profile is loaded
-  if (!activeOrgId && nextProfile?.orgId) {
-    setActiveOrgId(nextProfile.orgId);
-  }
+          const resolvedOrgId = String(nextProfile?.orgId || "").trim();
+          const resolvedTeamId = String(nextProfile?.teamId || "").trim();
+          let orgName = String(nextProfile?.orgName || "").trim();
+          let teamName = String(nextProfile?.teamName || "").trim();
 
-  return true;
-}
+          try {
+            const [orgSnap, teamSnap] = await Promise.all([
+              resolvedOrgId
+                ? getDoc(doc(db, "organizations", resolvedOrgId))
+                : Promise.resolve(null),
+              resolvedTeamId ? getDoc(doc(db, "teams", resolvedTeamId)) : Promise.resolve(null),
+            ]);
 
-      // Retry up to ~3 seconds for invite flows
-      if (attempt < 6) {
-        setTimeout(() => loadProfile(uid, attempt + 1), 500);
+            if (orgSnap?.exists?.()) {
+              const orgData = orgSnap.data() || {};
+              orgName = String(orgData.name || orgData.orgName || orgName || "").trim();
+            }
+            if (teamSnap?.exists?.()) {
+              const teamData = teamSnap.data() || {};
+              teamName = String(teamData.name || teamData.teamName || teamName || "").trim();
+            }
+          } catch (nameErr) {
+            // Do not block auth on display-name enrichment errors.
+            console.warn("Profile name enrichment skipped:", nameErr?.message || nameErr);
+          }
+
+          nextProfile = {
+            ...nextProfile,
+            orgName: orgName || resolvedOrgId || "",
+            teamName: teamName || resolvedTeamId || "",
+          };
+
+          setProfile(nextProfile);
+
+          // Initialize activeOrgId once profile is loaded.
+          if (!activeOrgId && nextProfile?.orgId) {
+            setActiveOrgId(nextProfile.orgId);
+          }
+
+          return true;
+        }
+
+        // Retry up to ~3 seconds for invite flows.
+        if (attempt < 6) {
+          setTimeout(() => loadProfile(uid, attempt + 1), 500);
+        }
+
+        return false;
+      } catch (err) {
+        console.warn("Profile load delayed:", err.message);
+        return false;
       }
-
-      return false;
-    } catch (err) {
-      console.warn("Profile load delayed:", err.message);
-      return false;
-    }
-  }, 
-  []);
+    },
+    [activeOrgId]
+  );
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -136,24 +174,21 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-  value={{
-    user,
-    profile,
-    loading,
-    login,
-    loginWithEmail,
-    signupWithEmail,
-    resetPassword,
-    logout,
-    reloadProfile: () => user && loadProfile(user.uid),
-
-    // ===== C11 additions =====
-    activeOrgId,
-    setActiveOrgId,
-    isSuperAdmin,
-  }}
->
-
+      value={{
+        user,
+        profile,
+        loading,
+        login,
+        loginWithEmail,
+        signupWithEmail,
+        resetPassword,
+        logout,
+        reloadProfile: () => user && loadProfile(user.uid),
+        activeOrgId,
+        setActiveOrgId,
+        isSuperAdmin,
+      }}
+    >
       {!loading && children}
     </AuthContext.Provider>
   );

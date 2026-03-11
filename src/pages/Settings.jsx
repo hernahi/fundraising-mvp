@@ -62,6 +62,8 @@ export default function Settings() {
   const role = profile?.role || "N/A";
   const orgId = profile?.orgId || "N/A";
   const teamId = profile?.teamId || "N/A";
+  const orgName = profile?.orgName || orgId || "N/A";
+  const teamName = profile?.teamName || teamId || "N/A";
   const roleLower = (profile?.role || "").toLowerCase();
   const isOrgAdmin = roleLower === "admin" || roleLower === "super-admin";
   const canReceiveSummary = ["admin", "super-admin", "coach"].includes(roleLower);
@@ -249,8 +251,8 @@ export default function Settings() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <SettingStat label="Role" value={role || "N/A"} />
-          <SettingStat label="Org" value={orgId || "N/A"} mono />
-          <SettingStat label="Team" value={teamId || "N/A"} mono />
+          <SettingStat label="Org" value={orgName || "N/A"} />
+          <SettingStat label="Team" value={teamName || "N/A"} />
           <SettingStat
             label={roleLower === "coach" ? "Auto-Drip" : "Drip Status"}
             value={dripStatusLabel}
@@ -286,6 +288,8 @@ export default function Settings() {
             Workspace
           </h2>
           <dl className="space-y-2 text-sm">
+            <DetailRow label="Organization" value={orgName} />
+            <DetailRow label="Team" value={teamName} />
             <DetailRow label="Organization ID" value={orgId} />
             <DetailRow label="Team ID" value={teamId} />
             <DetailRow

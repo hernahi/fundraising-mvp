@@ -509,7 +509,7 @@ export default function AdminUsers() {
           </p>
         </div>
         <span className="text-xs rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
-          Org: {scopedOrgId || "none selected"}
+          Org: {profile?.orgName || scopedOrgId || "none selected"}
         </span>
       </div>
 
