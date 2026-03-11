@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import {
+  fetchSignInMethodsForEmail,
   sendPasswordResetEmail,
   updateProfile as updateAuthProfile,
   verifyBeforeUpdateEmail,
@@ -65,6 +66,8 @@ export default function Settings() {
   const [emailDraft, setEmailDraft] = useState("");
   const [savingAccount, setSavingAccount] = useState(false);
   const [accountStatus, setAccountStatus] = useState("");
+  const [passwordResetAllowed, setPasswordResetAllowed] = useState(true);
+  const [passwordResetHint, setPasswordResetHint] = useState("");
 
   const name =
     profile?.displayName || profile?.name || profile?.email || "User";
@@ -101,6 +104,33 @@ export default function Settings() {
   useEffect(() => {
     setEmailDraft(String(user?.email || profile?.email || "").trim().toLowerCase());
   }, [user?.email, profile?.email]);
+
+  useEffect(() => {
+    async function detectPasswordProvider() {
+      const currentEmail = String(user?.email || profile?.email || "").trim().toLowerCase();
+      if (!canManageAccount || !currentEmail) {
+        setPasswordResetAllowed(true);
+        setPasswordResetHint("");
+        return;
+      }
+      try {
+        const methods = await fetchSignInMethodsForEmail(auth, currentEmail);
+        const hasPasswordProvider = methods.includes("password");
+        setPasswordResetAllowed(hasPasswordProvider);
+        setPasswordResetHint(
+          hasPasswordProvider
+            ? ""
+            : "This account uses Google Sign-In. Use Google to log in."
+        );
+      } catch (err) {
+        console.error("Failed to detect sign-in methods:", err);
+        // Fail open so legitimate password users are not blocked on provider lookup issues.
+        setPasswordResetAllowed(true);
+        setPasswordResetHint("");
+      }
+    }
+    detectPasswordProvider();
+  }, [canManageAccount, profile?.email, user?.email]);
 
   useEffect(() => {
     async function loadOrgSettings() {
@@ -414,11 +444,15 @@ export default function Settings() {
 
               <button
                 type="button"
-                disabled={savingAccount}
+                disabled={savingAccount || !passwordResetAllowed}
                 onClick={async () => {
                   const currentEmail = String(user?.email || profile?.email || "").trim().toLowerCase();
                   if (!currentEmail) {
                     setAccountStatus("No account email found.");
+                    return;
+                  }
+                  if (!passwordResetAllowed) {
+                    setAccountStatus("This account uses Google Sign-In. Use Google to log in.");
                     return;
                   }
                   try {
@@ -440,6 +474,10 @@ export default function Settings() {
                 Reset Password
               </button>
             </div>
+
+            {passwordResetHint ? (
+              <p className="text-xs text-slate-500">{passwordResetHint}</p>
+            ) : null}
 
             <div className="flex flex-wrap gap-2">
               <Link
