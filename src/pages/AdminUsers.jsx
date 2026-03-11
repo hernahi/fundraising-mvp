@@ -126,6 +126,7 @@ export default function AdminUsers() {
     teamId: "",
     directAccess: false,
     setTeamCoach: true,
+    targetUid: "",
   });
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteStatus, setInviteStatus] = useState("");
@@ -291,6 +292,7 @@ export default function AdminUsers() {
         );
         const result = await grantExistingUserAccess({
           email,
+          targetUid: String(inviteForm.targetUid || "").trim() || null,
           role: inviteForm.role,
           orgId: scopedOrgId,
           teamId: inviteForm.teamId || null,
@@ -306,6 +308,7 @@ export default function AdminUsers() {
           teamId: "",
           directAccess: false,
           setTeamCoach: true,
+          targetUid: "",
         });
         setInviteStatus(
           grantedUid
@@ -343,6 +346,7 @@ export default function AdminUsers() {
         teamId: "",
         directAccess: false,
         setTeamCoach: true,
+        targetUid: "",
       });
       setInviteStatus("Invite sent.");
     } catch (err) {
@@ -574,6 +578,20 @@ export default function AdminUsers() {
               />
               Set this coach as primary coach for selected team.
             </label>
+          ) : null}
+          {inviteForm.directAccess ? (
+            <input
+              type="text"
+              value={inviteForm.targetUid}
+              onChange={(e) =>
+                setInviteForm((prev) => ({
+                  ...prev,
+                  targetUid: e.target.value,
+                }))
+              }
+              placeholder="Auth UID override (optional, for account mismatch debugging)"
+              className="md:col-span-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
+            />
           ) : null}
           <div className="md:col-span-4 flex items-center justify-between">
             <p className="text-xs text-slate-500">{inviteStatus}</p>

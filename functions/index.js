@@ -1450,12 +1450,13 @@ exports.grantExistingUserAccess = onCall(async (request) => {
   }
 
   const email = String(request.data?.email || "").trim().toLowerCase();
+  const requestedTargetUid = String(request.data?.targetUid || "").trim();
   const role = String(request.data?.role || "").trim().toLowerCase();
   const orgId = String(request.data?.orgId || "").trim();
   const teamId = String(request.data?.teamId || "").trim();
   const setTeamCoach = Boolean(request.data?.setTeamCoach);
 
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!requestedTargetUid && (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
     throw new HttpsError("invalid-argument", "A valid email is required");
   }
   if (!["coach", "athlete", "admin"].includes(role)) {
@@ -1470,11 +1471,24 @@ exports.grantExistingUserAccess = onCall(async (request) => {
 
   let authUser = null;
   try {
-    authUser = await admin.auth().getUserByEmail(email);
+    authUser = requestedTargetUid
+      ? await admin.auth().getUser(requestedTargetUid)
+      : await admin.auth().getUserByEmail(email);
   } catch (_) {
     throw new HttpsError(
       "not-found",
-      "No authentication account exists for this email yet"
+      requestedTargetUid
+        ? "No authentication account exists for this UID"
+        : "No authentication account exists for this email yet"
+    );
+  }
+  if (
+    email &&
+    String(authUser.email || "").trim().toLowerCase() !== email
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Provided UID/email do not refer to the same auth account"
     );
   }
 
@@ -1511,8 +1525,9 @@ exports.grantExistingUserAccess = onCall(async (request) => {
 
   const userPayload = {
     uid: authUser.uid,
-    email,
-    displayName: authUser.displayName || existingUser.displayName || email,
+    email: String(authUser.email || email || "").trim().toLowerCase(),
+    displayName:
+      authUser.displayName || existingUser.displayName || authUser.email || email,
     photoURL: authUser.photoURL || existingUser.photoURL || null,
     role,
     orgId,
@@ -1553,8 +1568,9 @@ exports.grantExistingUserAccess = onCall(async (request) => {
       athleteRef,
       {
         userId: authUser.uid,
-        email,
-        displayName: authUser.displayName || existingUser.displayName || email,
+        email: String(authUser.email || email || "").trim().toLowerCase(),
+        displayName:
+          authUser.displayName || existingUser.displayName || authUser.email || email,
         orgId,
         teamId: teamId || null,
         status: "active",
@@ -1589,7 +1605,7 @@ exports.grantExistingUserAccess = onCall(async (request) => {
 
   logger.info("grantExistingUserAccess: success", {
     targetUid: authUser.uid,
-    email,
+    email: String(authUser.email || email || "").trim().toLowerCase(),
     role,
     orgId,
     teamId: teamId || null,
