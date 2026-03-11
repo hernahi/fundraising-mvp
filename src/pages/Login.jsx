@@ -51,11 +51,6 @@ export default function Login() {
         navigate(redirectTo, { replace: true });
         return;
       }
-      const role = (profile?.role || "").toLowerCase();
-      if (role === "athlete" && profile?.uid) {
-        navigate(`/athletes/${profile.uid}`, { replace: true });
-        return;
-      }
       navigate("/", { replace: true });
     }
   }, [user, loading, profile, navigate, redirectTo]);
