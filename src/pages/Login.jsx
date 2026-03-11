@@ -38,6 +38,7 @@ export default function Login() {
     campaignName: "",
     campaignGoal: "",
   });
+  const [bootstrapResult, setBootstrapResult] = useState(null);
 
   useEffect(() => {
     if (!loading && user && !profile && redirectTo?.startsWith("/accept-invite")) {
@@ -155,17 +156,22 @@ export default function Login() {
     setBootstrapSubmitting(true);
     try {
       const bootstrapSoloWorkspace = httpsCallable(functions, "bootstrapSoloWorkspace");
-      await bootstrapSoloWorkspace({
+      const result = await bootstrapSoloWorkspace({
         orgName,
         teamName,
         campaignName,
         campaignGoal: Number.isFinite(campaignGoal) ? campaignGoal : 0,
       });
+      const data = result?.data || {};
+      setBootstrapResult({
+        orgId: String(data.orgId || ""),
+        teamId: String(data.teamId || ""),
+        campaignId: String(data.campaignId || ""),
+      });
 
       // Pull fresh users/{uid} profile created by bootstrap callable.
       await reloadProfile?.();
-      setMessage("Workspace created. Redirecting...");
-      navigate("/", { replace: true });
+      setMessage("Workspace created successfully.");
     } catch (err) {
       console.error("Bootstrap workspace failed:", err);
       setError(
@@ -357,6 +363,26 @@ export default function Login() {
                   {bootstrapSubmitting ? "Creating..." : "Create Workspace"}
                 </button>
               </form>
+              {bootstrapResult?.orgId ? (
+                <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-900">
+                  <div className="mb-2 font-semibold">Setup Complete</div>
+                  <div className="space-y-2">
+                    <IdRow label="Org ID" value={bootstrapResult.orgId} />
+                    <IdRow label="Team ID" value={bootstrapResult.teamId} />
+                    <IdRow
+                      label="Campaign ID"
+                      value={bootstrapResult.campaignId || "none (not created)"}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/", { replace: true })}
+                    className="mt-3 w-full rounded bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                  >
+                    Continue to Dashboard
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -415,6 +441,32 @@ export default function Login() {
             </Link>
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function IdRow({ label, value }) {
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(String(value || ""));
+    } catch (_) {
+      // Ignore clipboard errors in unsupported contexts.
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-2 rounded border border-emerald-200 bg-white px-2 py-1">
+      <span className="text-emerald-800">{label}</span>
+      <div className="flex items-center gap-2">
+        <code className="max-w-[180px] truncate text-emerald-900">{value}</code>
+        <button
+          type="button"
+          onClick={copy}
+          className="rounded border border-emerald-300 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 hover:bg-emerald-50"
+        >
+          Copy
+        </button>
       </div>
     </div>
   );
