@@ -389,7 +389,7 @@ export default function PublicCampaign() {
             </div>
 
             <div className="public-hero-grid">
-              <div className="public-card public-card-soft">
+              <div className="public-card public-card-soft public-donate-card">
                 <h2>Donate</h2>
                 {showAthlete && (
                   <div
@@ -625,7 +625,7 @@ export default function PublicCampaign() {
 
               <div className="public-card public-card-soft">
                 <div className="public-list-meta">Donors</div>
-                <div className="public-title">{donorCount}</div>
+                <div className="public-metric-value">{donorCount}</div>
                 <div className="public-list-meta">
                   {campaign.teamNames?.length ? "Teams involved" : "Supporters"}
                 </div>
