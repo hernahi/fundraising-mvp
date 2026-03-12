@@ -14,7 +14,11 @@ import {
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import {
+  EmailAuthProvider,
   fetchSignInMethodsForEmail,
+  GoogleAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   sendPasswordResetEmail,
   updateProfile as updateAuthProfile,
   verifyBeforeUpdateEmail,
@@ -68,6 +72,13 @@ export default function Settings() {
   const [accountStatus, setAccountStatus] = useState("");
   const [passwordResetAllowed, setPasswordResetAllowed] = useState(true);
   const [passwordResetHint, setPasswordResetHint] = useState("");
+  const [authProviderIds, setAuthProviderIds] = useState([]);
+  const [reauthRequired, setReauthRequired] = useState(false);
+  const [reauthMethod, setReauthMethod] = useState("password");
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [reauthBusy, setReauthBusy] = useState(false);
+  const [reauthStatus, setReauthStatus] = useState("");
+  const [pendingEmailVerification, setPendingEmailVerification] = useState("");
 
   const name =
     profile?.displayName || profile?.name || profile?.email || "User";
@@ -111,6 +122,7 @@ export default function Settings() {
       if (!canManageAccount || !currentEmail) {
         setPasswordResetAllowed(true);
         setPasswordResetHint("");
+        setAuthProviderIds([]);
         return;
       }
       const providerIds = Array.isArray(user?.providerData)
@@ -118,6 +130,7 @@ export default function Settings() {
             .map((entry) => String(entry?.providerId || "").trim().toLowerCase())
             .filter(Boolean)
         : [];
+      setAuthProviderIds(providerIds);
 
       // Prefer authenticated provider metadata; this is most reliable for the current signed-in user.
       if (providerIds.length > 0) {
@@ -133,6 +146,7 @@ export default function Settings() {
 
       try {
         const methods = await fetchSignInMethodsForEmail(auth, currentEmail);
+        setAuthProviderIds(methods.map((method) => String(method || "").toLowerCase()));
         const hasPasswordProvider = methods.includes("password");
         setPasswordResetAllowed(hasPasswordProvider);
         setPasswordResetHint(
@@ -298,6 +312,20 @@ export default function Settings() {
     loadAthleteOptions();
   }, [isOrgAdmin, profile?.orgId, previewTargetAthleteId]);
 
+  const startEmailVerification = async (nextEmail) => {
+    if (!user) {
+      throw new Error("You must be logged in to update email.");
+    }
+    await verifyBeforeUpdateEmail(user, nextEmail);
+    setPendingEmailVerification("");
+    setReauthRequired(false);
+    setReauthPassword("");
+    setReauthStatus("");
+    setAccountStatus(
+      "Verification email sent. Confirm it to complete your email change."
+    );
+  };
+
   return (
     <div className="p-4 md:p-6 lg:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -442,12 +470,22 @@ export default function Settings() {
                   try {
                     setSavingAccount(true);
                     setAccountStatus("");
-                    await verifyBeforeUpdateEmail(user, nextEmail);
-                    setAccountStatus(
-                      "Verification email sent. Confirm it to complete your email change."
-                    );
+                    await startEmailVerification(nextEmail);
                   } catch (err) {
                     console.error("Failed to start email update:", err);
+                    if (err?.code === "auth/requires-recent-login") {
+                      const hasPasswordProvider = authProviderIds.includes("password");
+                      const hasGoogleProvider = authProviderIds.includes("google.com");
+                      setPendingEmailVerification(nextEmail);
+                      setReauthRequired(true);
+                      setReauthPassword("");
+                      setReauthMethod(hasPasswordProvider || !hasGoogleProvider ? "password" : "google");
+                      setReauthStatus(
+                        "For security, please re-authenticate to continue this email change."
+                      );
+                      setAccountStatus("");
+                      return;
+                    }
                     setAccountStatus(
                       err?.message || "Could not start email update. You may need to re-login first."
                     );
@@ -492,6 +530,140 @@ export default function Settings() {
                 Reset Password
               </button>
             </div>
+
+            {reauthRequired ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-amber-900">Re-authenticate now</p>
+                  <p className="text-xs text-amber-800">
+                    Complete a quick re-authentication to finish your email change.
+                  </p>
+                </div>
+                {reauthMethod === "password" ? (
+                  <div className="space-y-2">
+                    <input
+                      type="password"
+                      value={reauthPassword}
+                      onChange={(e) => setReauthPassword(e.target.value)}
+                      placeholder="Enter your current password"
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-slate-700"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={reauthBusy || !reauthPassword.trim()}
+                        onClick={async () => {
+                          const currentEmail = String(user?.email || profile?.email || "")
+                            .trim()
+                            .toLowerCase();
+                          if (!user || !currentEmail) {
+                            setReauthStatus("Unable to re-authenticate this session.");
+                            return;
+                          }
+                          try {
+                            setReauthBusy(true);
+                            setReauthStatus("");
+                            const credential = EmailAuthProvider.credential(
+                              currentEmail,
+                              reauthPassword
+                            );
+                            await reauthenticateWithCredential(user, credential);
+                            if (pendingEmailVerification) {
+                              await startEmailVerification(pendingEmailVerification);
+                            }
+                          } catch (err) {
+                            console.error("Password re-auth failed:", err);
+                            setReauthStatus(
+                              err?.message || "Re-authentication failed. Please try again."
+                            );
+                          } finally {
+                            setReauthBusy(false);
+                          }
+                        }}
+                        className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        {reauthBusy ? "Verifying..." : "Verify Password"}
+                      </button>
+                      {authProviderIds.includes("google.com") ? (
+                        <button
+                          type="button"
+                          disabled={reauthBusy}
+                          onClick={() => {
+                            setReauthMethod("google");
+                            setReauthStatus("");
+                          }}
+                          className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                        >
+                          Use Google instead
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={reauthBusy}
+                      onClick={async () => {
+                        if (!user) {
+                          setReauthStatus("Unable to re-authenticate this session.");
+                          return;
+                        }
+                        try {
+                          setReauthBusy(true);
+                          setReauthStatus("");
+                          await reauthenticateWithPopup(user, new GoogleAuthProvider());
+                          if (pendingEmailVerification) {
+                            await startEmailVerification(pendingEmailVerification);
+                          }
+                        } catch (err) {
+                          console.error("Google re-auth failed:", err);
+                          setReauthStatus(
+                            err?.message || "Re-authentication failed. Please try again."
+                          );
+                        } finally {
+                          setReauthBusy(false);
+                        }
+                      }}
+                      className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                    >
+                      {reauthBusy ? "Opening..." : "Re-authenticate with Google"}
+                    </button>
+                    {authProviderIds.includes("password") ? (
+                      <button
+                        type="button"
+                        disabled={reauthBusy}
+                        onClick={() => {
+                          setReauthMethod("password");
+                          setReauthStatus("");
+                        }}
+                        className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        Use password instead
+                      </button>
+                    ) : null}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={reauthBusy}
+                    onClick={() => {
+                      setReauthRequired(false);
+                      setPendingEmailVerification("");
+                      setReauthPassword("");
+                      setReauthStatus("");
+                    }}
+                    className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {reauthStatus ? (
+                  <p className="text-xs text-amber-900">{reauthStatus}</p>
+                ) : null}
+              </div>
+            ) : null}
 
             {passwordResetHint ? (
               <p className="text-xs text-slate-500">{passwordResetHint}</p>
