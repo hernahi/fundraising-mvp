@@ -23,6 +23,8 @@ import {
   FaXTwitter,
 } from "react-icons/fa6";
 
+const DONATION_PRESETS = [25, 50, 100, 250];
+
 function formatCurrency(value) {
   return `$${Number(value || 0).toLocaleString()}`;
 }
@@ -151,7 +153,9 @@ export default function PublicCampaign() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [athlete, setAthlete] = useState(null);
 
-  const [amountDollars, setAmountDollars] = useState("25");
+  const [amountDollars, setAmountDollars] = useState("250");
+  const [selectedAmountOption, setSelectedAmountOption] = useState("250");
+  const [customAmount, setCustomAmount] = useState("");
   const [donorName, setDonorName] = useState("");
   const [donorEmail, setDonorEmail] = useState("");
   const [donorMessage, setDonorMessage] = useState("");
@@ -357,6 +361,9 @@ export default function PublicCampaign() {
   const athletePercent = athleteGoalAmount
     ? Math.min(100, Math.round((athleteRaisedDollars / athleteGoalAmount) * 100))
     : null;
+  const teamProgressWidth = `${Math.max(0, Math.min(100, percentRaised))}%`;
+  const athleteProgressWidth =
+    athletePercent === null ? "0%" : `${Math.max(0, Math.min(100, athletePercent))}%`;
   const shareLink = (() => {
     if (typeof window === "undefined") return "";
     if (showAthlete) {
@@ -400,15 +407,58 @@ export default function PublicCampaign() {
                   </div>
                 )}
                 <div className="public-form">
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={amountDollars}
-                    onChange={(e) => setAmountDollars(e.target.value)}
-                    className="public-input"
-                    placeholder="Donation amount (USD)"
-                  />
+                  <div>
+                    <div className="public-list-meta" style={{ marginBottom: "8px" }}>
+                      Choose amount
+                    </div>
+                    <div className="public-amount-grid">
+                      {DONATION_PRESETS.map((amount) => {
+                        const key = String(amount);
+                        const isActive = selectedAmountOption === key;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedAmountOption(key);
+                              setAmountDollars(key);
+                            }}
+                            className={`public-amount-chip ${isActive ? "is-active" : ""}`}
+                          >
+                            ${amount}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAmountOption("custom");
+                          if (customAmount.trim()) {
+                            setAmountDollars(customAmount.trim());
+                          }
+                        }}
+                        className={`public-amount-chip ${selectedAmountOption === "custom" ? "is-active" : ""}`}
+                      >
+                        Custom
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedAmountOption === "custom" && (
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={customAmount}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setCustomAmount(next);
+                        setAmountDollars(next);
+                      }}
+                      className="public-input"
+                      placeholder="Enter custom amount (USD)"
+                    />
+                  )}
 
                   <input
                     type="text"
@@ -568,26 +618,46 @@ export default function PublicCampaign() {
               </div>
 
               <div className="public-card">
-                <div
-                  className="public-progress-ring"
-                  style={{ "--progress": percentRaised }}
-                >
-                  <div className="public-progress-inner">
-                    <div>
-                      <div>{percentRaised}%</div>
-                      <div className="public-list-meta">Funded</div>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <div className="public-list-meta">Raised</div>
-                  <div>
-                    {formatCurrency(totalRaisedDollars)}{" "}
-                    <span className="public-list-meta">
-                      of {formatCurrency(goalAmount)}
+                <h2>Goal Progress</h2>
+
+                <div className="public-goal-block">
+                  <div className="public-goal-row">
+                    <span className="public-goal-label">Team Goal</span>
+                    <span className="public-goal-value">
+                      {formatCurrency(totalRaisedDollars)} / {formatCurrency(goalAmount)}
                     </span>
                   </div>
+                  <div className="public-progress-track">
+                    <div
+                      className="public-progress-fill"
+                      style={{ width: teamProgressWidth }}
+                    />
+                  </div>
+                  <div className="public-list-meta">{percentRaised}% funded</div>
                 </div>
+
+                {showAthlete && (
+                  <div className="public-goal-block">
+                    <div className="public-goal-row">
+                      <span className="public-goal-label">Personal Goal</span>
+                      <span className="public-goal-value">
+                        {formatCurrency(athleteRaisedDollars)} /{" "}
+                        {athleteGoalAmount
+                          ? formatCurrency(athleteGoalAmount)
+                          : "Not set"}
+                      </span>
+                    </div>
+                    <div className="public-progress-track">
+                      <div
+                        className="public-progress-fill"
+                        style={{ width: athleteProgressWidth }}
+                      />
+                    </div>
+                    <div className="public-list-meta">
+                      {athletePercent === null ? "No personal goal yet" : `${athletePercent}% funded`}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {showAthlete && (

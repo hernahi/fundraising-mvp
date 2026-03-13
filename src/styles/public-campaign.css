@@ -189,6 +189,33 @@
   gap: 14px;
 }
 
+.public-amount-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.public-amount-chip {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 10px 8px;
+  cursor: pointer;
+}
+
+.public-amount-chip:hover {
+  border-color: rgba(37, 99, 235, 0.45);
+}
+
+.public-amount-chip.is-active {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.65);
+  color: #1d4ed8;
+}
+
 .public-input,
 .public-textarea {
   background: #ffffff;
@@ -237,6 +264,44 @@
 .public-list-meta {
   color: var(--public-muted);
   font-size: 12px;
+}
+
+.public-goal-block {
+  display: grid;
+  gap: 8px;
+}
+
+.public-goal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.public-goal-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.public-goal-value {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.public-progress-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.public-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1d4ed8 0%, #f59e0b 100%);
 }
 
 .public-columns {
@@ -301,5 +366,9 @@
 
   .public-donate-card {
     grid-column: auto;
+  }
+
+  .public-amount-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
