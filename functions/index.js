@@ -451,6 +451,24 @@ async function resolveTeamName(db, { athlete = {}, campaign = {} }) {
   return "our team";
 }
 
+async function getOrganizationName(db, orgId) {
+  const normalizedOrgId = String(orgId || "").trim();
+  if (!normalizedOrgId) {
+    return "";
+  }
+
+  try {
+    const orgSnap = await db.collection("organizations").doc(normalizedOrgId).get();
+    if (!orgSnap.exists) {
+      return "";
+    }
+    const orgData = orgSnap.data() || {};
+    return String(orgData.name || orgData.orgName || "").trim();
+  } catch (_) {
+    return "";
+  }
+}
+
 async function buildDripRenderPayload({ profile, athleteId, phase }) {
   const db = admin.firestore();
   const athleteSnap = await db.collection("athletes").doc(athleteId).get();
@@ -1350,6 +1368,7 @@ exports.createManagedUserAccount = onCall(async (request) => {
     }
 
     const db = admin.firestore();
+    let resolvedTeamName = "";
     if (teamId) {
       const teamSnap = await db.collection("teams").doc(teamId).get();
       if (!teamSnap.exists) {
@@ -1359,7 +1378,9 @@ exports.createManagedUserAccount = onCall(async (request) => {
       if (String(teamData.orgId || "") !== orgId) {
         throw new HttpsError("permission-denied", "Team org mismatch");
       }
+      resolvedTeamName = String(teamData.name || teamData.teamName || "").trim();
     }
+    const resolvedOrgName = await getOrganizationName(db, orgId);
 
     const createdAuthUser = await admin.auth().createUser({
       email,
@@ -1379,8 +1400,10 @@ exports.createManagedUserAccount = onCall(async (request) => {
       photoURL: null,
       role,
       orgId,
+      orgName: resolvedOrgName || orgId,
       status: "active",
       teamId: teamId || null,
+      teamName: teamId ? resolvedTeamName || teamId : "",
       teamIds: role === "coach" ? (teamId ? [teamId] : []) : [],
       createdByUid: uid,
       createdAt: now,
@@ -1525,6 +1548,7 @@ exports.grantExistingUserAccess = onCall(async (request) => {
   }
 
   const db = admin.firestore();
+  let resolvedTeamName = "";
   if (teamId) {
     const teamSnap = await db.collection("teams").doc(teamId).get();
     if (!teamSnap.exists) {
@@ -1534,7 +1558,9 @@ exports.grantExistingUserAccess = onCall(async (request) => {
     if (String(teamData.orgId || "") !== orgId) {
       throw new HttpsError("permission-denied", "Team org mismatch");
     }
+    resolvedTeamName = String(teamData.name || teamData.teamName || "").trim();
   }
+  const resolvedOrgName = await getOrganizationName(db, orgId);
   const now = admin.firestore.FieldValue.serverTimestamp();
   const userRef = db.collection("users").doc(authUser.uid);
   const existingUserSnap = await userRef.get();
@@ -1573,8 +1599,12 @@ exports.grantExistingUserAccess = onCall(async (request) => {
     photoURL: authUser.photoURL || existingUser.photoURL || null,
     role,
     orgId,
+    orgName: resolvedOrgName || existingUser.orgName || orgId,
     status: "active",
     teamId: teamId || existingUser.teamId || null,
+    teamName: teamId
+      ? resolvedTeamName || String(existingUser.teamName || "").trim() || teamId
+      : String(existingUser.teamName || "").trim(),
     teamIds: role === "coach" ? mergedTeamIds : [],
     assignedTeamIds: role === "coach" ? mergedTeamIds : [],
     updatedAt: now,
@@ -1769,8 +1799,10 @@ exports.bootstrapSoloWorkspace = onCall(async (request) => {
       photoURL: authUser.photoURL || null,
       role: "admin",
       orgId: orgRef.id,
+      orgName,
       status: "active",
       teamId: teamRef.id,
+      teamName,
       teamIds: [teamRef.id],
       assignedTeamIds: [teamRef.id],
       createdByUid: uid,

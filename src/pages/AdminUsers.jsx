@@ -326,7 +326,9 @@ export default function AdminUsers() {
         email,
         role: inviteForm.role,
         orgId: scopedOrgId,
+        orgName: String(profile?.orgName || scopedOrgId || "").trim(),
         teamId: normalizedTeamId || null,
+        teamName: normalizedTeamId ? resolveTeamName(normalizedTeamId) : "",
         status: "pending",
         expiresAt: Timestamp.fromDate(
           new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000)

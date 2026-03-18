@@ -123,6 +123,11 @@ export default function AcceptInvite() {
             photoURL: user.photoURL || null,
             role: invite.role,
             orgId: invite.orgId,
+            orgName: String(invite.orgName || invite.orgId || "").trim(),
+            teamId: invite.teamId || null,
+            teamName: String(invite.teamName || invite.teamId || "").trim(),
+            teamIds: invite.role === "coach" && invite.teamId ? [invite.teamId] : [],
+            assignedTeamIds: invite.role === "coach" && invite.teamId ? [invite.teamId] : [],
             inviteId: invite.id,
             status: "active",
             createdAt: serverTimestamp(),
@@ -338,4 +343,3 @@ export default function AcceptInvite() {
     </div>
   );
 }
-

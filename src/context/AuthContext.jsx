@@ -99,29 +99,8 @@ export function AuthProvider({ children }) {
 
           const resolvedOrgId = String(nextProfile?.orgId || "").trim();
           const resolvedTeamId = String(nextProfile?.teamId || "").trim();
-          let orgName = String(nextProfile?.orgName || "").trim();
-          let teamName = String(nextProfile?.teamName || "").trim();
-
-          try {
-            const [orgSnap, teamSnap] = await Promise.all([
-              resolvedOrgId
-                ? getDoc(doc(db, "organizations", resolvedOrgId))
-                : Promise.resolve(null),
-              resolvedTeamId ? getDoc(doc(db, "teams", resolvedTeamId)) : Promise.resolve(null),
-            ]);
-
-            if (orgSnap?.exists?.()) {
-              const orgData = orgSnap.data() || {};
-              orgName = String(orgData.name || orgData.orgName || orgName || "").trim();
-            }
-            if (teamSnap?.exists?.()) {
-              const teamData = teamSnap.data() || {};
-              teamName = String(teamData.name || teamData.teamName || teamName || "").trim();
-            }
-          } catch (nameErr) {
-            // Do not block auth on display-name enrichment errors.
-            console.warn("Profile name enrichment skipped:", nameErr?.message || nameErr);
-          }
+          const orgName = String(nextProfile?.orgName || "").trim();
+          const teamName = String(nextProfile?.teamName || "").trim();
 
           nextProfile = {
             ...nextProfile,
