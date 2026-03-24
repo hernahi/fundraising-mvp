@@ -143,6 +143,7 @@ export default function DashboardHome() {
   const role = (profile?.role || "").toLowerCase();
   const isCoach = role === "coach";
   const isAdmin = role === "admin" || role === "super-admin";
+  const isAthlete = role === "athlete";
 
   /* ==============================
      Stats (existing)
@@ -177,7 +178,7 @@ export default function DashboardHome() {
   const [insightData, setInsightData] = useState(null);
 
   const fetchStats = useCallback(async () => {
-    if (!profile?.orgId || !activeCampaignId) {
+    if (!profile?.orgId || !activeCampaignId || (!isCoach && !isAdmin)) {
       setStats({
         activeCampaigns: 0,
         totalAthletes: 0,
@@ -244,7 +245,7 @@ export default function DashboardHome() {
         fundsRaised: 0,
       });
     }
-  }, [profile?.orgId, activeCampaignId]);
+  }, [profile?.orgId, activeCampaignId, isCoach, isAdmin]);
 
   const activeCampaign = useMemo(() => {
     return campaigns?.find((c) => c.id === activeCampaignId) || null;
@@ -399,7 +400,13 @@ export default function DashboardHome() {
      ============================== */
   const fetchRecentActivity = useCallback(
     async ({ mode = "reset", cursor = null } = {}) => {
-      if (!profile?.orgId || !activeCampaignId) return;
+      if (!profile?.orgId || !activeCampaignId || (!isCoach && !isAdmin)) {
+        setRecentActivity([]);
+        setActivityCursor(null);
+        setHasMoreActivity(false);
+        setActivityError("");
+        return;
+      }
 
       setActivityLoading(true);
       setActivityError("");
@@ -467,14 +474,14 @@ export default function DashboardHome() {
       } catch (err) {
         console.error("Recent Activity fetch failed:", err);
         setActivityError(
-          "Could not load recent activity. Check your Firestore indexes and donation fields."
+          "Could not load recent activity right now. Please try again in a moment."
         );
         setHasMoreActivity(false);
       } finally {
         setActivityLoading(false);
       }
     },
-    [profile?.orgId, activeCampaignId, buildDonationsQuery]
+    [profile?.orgId, activeCampaignId, buildDonationsQuery, isCoach, isAdmin]
   );
                 /* ==============================
    C5 — Export Donations CSV
@@ -748,14 +755,26 @@ export default function DashboardHome() {
      Fetch ONCE per campaign change
      ============================== */
   useEffect(() => {
-    if (!profile?.orgId || !activeCampaignId) return;
+    if (!profile?.orgId || !activeCampaignId || (!isCoach && !isAdmin)) {
+      resetActivity();
+      return;
+    }
     resetActivity();
     fetchRecentActivity({ mode: "reset" });
-  }, [profile?.orgId, activeCampaignId, resetActivity, fetchRecentActivity]);
+  }, [profile?.orgId, activeCampaignId, resetActivity, fetchRecentActivity, isCoach, isAdmin]);
 
   useEffect(() => {
+    if (!isCoach && !isAdmin) {
+      setStats({
+        activeCampaigns: 0,
+        totalAthletes: 0,
+        totalDonors: 0,
+        fundsRaised: 0,
+      });
+      return;
+    }
     fetchStats();
-  }, [fetchStats]);
+  }, [fetchStats, isCoach, isAdmin]);
 
   /* ==============================
      Render
@@ -768,7 +787,9 @@ export default function DashboardHome() {
           Dashboard
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          {activeCampaign?.name ? (
+          {isAthlete ? (
+            "Use your athlete profile and messages page to manage your fundraising progress."
+          ) : activeCampaign?.name ? (
             <>
               Viewing campaign:{" "}
               <span className="font-medium text-slate-700">
@@ -780,6 +801,29 @@ export default function DashboardHome() {
           )}
         </p>
       </div>
+
+      {isAthlete && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900">Athlete Dashboard</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Your fundraising workflow lives in your athlete profile and messages pages. Use those pages to finish your profile, add supporters, and send outreach.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              to={profile?.uid ? `/athletes/${profile.uid}` : "/athletes"}
+              className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Open My Athlete Profile
+            </Link>
+            <Link
+              to="/messages"
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Open Messages
+            </Link>
+          </div>
+        </div>
+      )}
 
       {(isCoach || isAdmin) && (
         <div className="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -941,7 +985,7 @@ export default function DashboardHome() {
             </div>
 
             <div className="p-5">
-              {insightLoading && <div className="text-sm text-slate-500">Loading summary…</div>}
+              {insightLoading && <div className="text-sm text-slate-500">Loading summary...</div>}
               {insightError && <div className="text-sm text-red-600">{insightError}</div>}
 
               {!insightLoading && !insightError && insightType === "athletes" && (

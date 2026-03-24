@@ -35,11 +35,44 @@ export function CampaignProvider({ children }) {
     if (!profile?.orgId) return;
     const coachTeamIds = getCoachScopedTeamIds(profile);
     const isCoach = String(profile?.role || "").toLowerCase() === "coach";
+    const isAthlete = String(profile?.role || "").toLowerCase() === "athlete";
 
-    const q = query(
-      collection(db, "campaigns"),
-      where("orgId", "==", profile.orgId)
-    );
+    if (isAthlete) {
+      setCampaigns([]);
+      setActiveCampaignId(null);
+      localStorage.removeItem("activeCampaignId");
+      setLoading(false);
+      return undefined;
+    }
+
+    if (isCoach && coachTeamIds.length === 0) {
+      setCampaigns([]);
+      setActiveCampaignId(null);
+      localStorage.removeItem("activeCampaignId");
+      setLoading(false);
+      return undefined;
+    }
+
+    let q;
+    if (isCoach && coachTeamIds.length === 1) {
+      q = query(
+        collection(db, "campaigns"),
+        where("orgId", "==", profile.orgId),
+        where("teamId", "==", coachTeamIds[0])
+      );
+    } else if (isCoach && coachTeamIds.length > 1) {
+      const scopedTeamIds = coachTeamIds.slice(0, 10);
+      q = query(
+        collection(db, "campaigns"),
+        where("orgId", "==", profile.orgId),
+        where("teamId", "in", scopedTeamIds)
+      );
+    } else {
+      q = query(
+        collection(db, "campaigns"),
+        where("orgId", "==", profile.orgId)
+      );
+    }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map((doc) => ({
