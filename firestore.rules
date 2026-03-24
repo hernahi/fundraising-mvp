@@ -87,6 +87,30 @@ service cloud.firestore {
         );
     }
 
+    function coachAssignedTeamIds() {
+      return !isSignedIn() || !isCoach() || !hasUserDoc()
+        ? []
+        : (
+            (("assignedTeamIds" in userDoc().data)
+              && userDoc().data.assignedTeamIds is list
+              && userDoc().data.assignedTeamIds.size() > 0)
+              ? userDoc().data.assignedTeamIds
+              : (
+                  (("teamIds" in userDoc().data)
+                    && userDoc().data.teamIds is list
+                    && userDoc().data.teamIds.size() > 0)
+                    ? userDoc().data.teamIds
+                    : (
+                        (("teamId" in userDoc().data)
+                          && userDoc().data.teamId is string
+                          && userDoc().data.teamId != "")
+                          ? [userDoc().data.teamId]
+                          : []
+                      )
+                )
+          );
+    }
+
     function canCoachReadByTeam(orgId, teamId) {
       return isSignedIn()
         && isCoach()
@@ -101,8 +125,17 @@ service cloud.firestore {
         && campaignId is string
         && campaignId != ""
         && exists(/databases/$(database)/documents/campaigns/$(campaignId))
-        && coachHasTeam(
-          get(/databases/$(database)/documents/campaigns/$(campaignId)).data.teamId
+        && (
+          coachHasTeam(
+            get(/databases/$(database)/documents/campaigns/$(campaignId)).data.teamId
+          )
+          || (
+            ("teamIds" in get(/databases/$(database)/documents/campaigns/$(campaignId)).data)
+            && get(/databases/$(database)/documents/campaigns/$(campaignId)).data.teamIds is list
+            && get(/databases/$(database)/documents/campaigns/$(campaignId)).data.teamIds.hasAny(
+              coachAssignedTeamIds()
+            )
+          )
         );
     }
 
@@ -357,6 +390,13 @@ service cloud.firestore {
           && (
             (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
             || canCoachReadByTeam(resource.data.orgId, resource.data.teamId)
+            || (
+              isCoach()
+              && userOrgId() == resource.data.orgId
+              && ("teamIds" in resource.data)
+              && resource.data.teamIds is list
+              && resource.data.teamIds.hasAny(coachAssignedTeamIds())
+            )
           ));
 
       // ✅ Only admins & super-admins may write
