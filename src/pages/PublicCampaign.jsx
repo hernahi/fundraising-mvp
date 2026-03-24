@@ -454,10 +454,10 @@ export default function PublicCampaign() {
 	                <div className="public-eyebrow">
 	                  {campaign.teamName || "Community Fundraiser"}
 	                </div>
+	                <h1 className="public-title">{campaign.name}</h1>
 	                {showDefaultWelcomeMessage && (
 	                  <p className="public-welcome-line">{welcomeLine}</p>
 	                )}
-	                <h1 className="public-title">{campaign.name}</h1>
 	              </div>
 	            </div>
 
