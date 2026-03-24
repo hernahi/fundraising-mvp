@@ -38,9 +38,29 @@ export default function EditCampaign() {
           return;
         }
 
-        const data = snap.data();
+	        const data = snap.data();
+	        const explicitTeamName = String(
+	          data.teamName || (Array.isArray(data.teamNames) ? data.teamNames[0] : "") || ""
+	        ).trim();
+	        let nextTeamName = explicitTeamName;
+	        if (!nextTeamName) {
+	          const fallbackTeamId = String(
+	            data.teamId || (Array.isArray(data.teamIds) ? data.teamIds[0] : "") || ""
+	          ).trim();
+	          if (fallbackTeamId) {
+	            try {
+	              const teamSnap = await getDoc(doc(db, "teams", fallbackTeamId));
+	              if (teamSnap.exists()) {
+	                const teamData = teamSnap.data() || {};
+	                nextTeamName = String(teamData.name || teamData.teamName || "").trim();
+	              }
+	            } catch (teamErr) {
+	              console.warn("Failed to resolve campaign team name:", teamErr);
+	            }
+	          }
+	        }
 
-        setForm({
+	        setForm({
           name: data.name || "",
           description: data.description || "",
           goalAmount: data.goalAmount || "",
@@ -48,13 +68,11 @@ export default function EditCampaign() {
           videoUrl: data.videoUrl || data.youtubeUrl || "",
           startDate: data.startDate || "",
           endDate: data.endDate || "",
-          isPublic: data.isPublic === true,
-          showDefaultWelcomeMessage: data.showDefaultWelcomeMessage !== false,
-        });
-        setCampaignTeamName(
-          String(data.teamName || (Array.isArray(data.teamNames) ? data.teamNames[0] : "") || "").trim()
-        );
-        setImagePreview(data.imageURL || "");
+	          isPublic: data.isPublic === true,
+	          showDefaultWelcomeMessage: data.showDefaultWelcomeMessage !== false,
+	        });
+	        setCampaignTeamName(nextTeamName);
+	        setImagePreview(data.imageURL || "");
 
         setLoading(false);
       } catch (err) {

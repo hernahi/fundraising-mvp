@@ -154,6 +154,7 @@ export default function PublicCampaign() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [athlete, setAthlete] = useState(null);
   const [campaignAthletes, setCampaignAthletes] = useState([]);
+  const [resolvedTeamName, setResolvedTeamName] = useState("");
 
   const [amountDollars, setAmountDollars] = useState("250");
   const [selectedAmountOption, setSelectedAmountOption] = useState("250");
@@ -235,7 +236,47 @@ export default function PublicCampaign() {
     }
 
     loadAthlete();
-  }, [athleteId, campaignId]);
+	  }, [athleteId, campaignId]);
+
+  useEffect(() => {
+    async function loadResolvedTeamName() {
+      if (!campaign) {
+        setResolvedTeamName("");
+        return;
+      }
+
+      const explicitName = String(
+        campaign.teamName || (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") || ""
+      ).trim();
+      if (explicitName) {
+        setResolvedTeamName(explicitName);
+        return;
+      }
+
+      const fallbackTeamId = String(
+        campaign.teamId || (Array.isArray(campaign.teamIds) ? campaign.teamIds[0] : "") || ""
+      ).trim();
+      if (!fallbackTeamId) {
+        setResolvedTeamName("");
+        return;
+      }
+
+      try {
+        const teamSnap = await getDoc(doc(db, "teams", fallbackTeamId));
+        if (!teamSnap.exists()) {
+          setResolvedTeamName("");
+          return;
+        }
+        const teamData = teamSnap.data() || {};
+        setResolvedTeamName(String(teamData.name || teamData.teamName || "").trim());
+      } catch (err) {
+        console.error("Failed to resolve public team name:", err);
+        setResolvedTeamName("");
+      }
+    }
+
+    loadResolvedTeamName();
+  }, [campaign]);
 
   useEffect(() => {
     async function loadCampaignAthletes() {
@@ -383,6 +424,7 @@ export default function PublicCampaign() {
   );
   const remainingChars = Math.max(0, 500 - donorMessage.length);
   const showAthlete = isAthletePage && !!athlete;
+  const displayTeamName = resolvedTeamName || "this team";
   const athleteRaisedCents = showAthlete
     ? Number(athlete.publicTotalRaisedCents || 0)
     : 0;
@@ -401,22 +443,20 @@ export default function PublicCampaign() {
       : "Donate";
   const supportTitle = showAthlete
     ? `Help ${athlete.name || "this athlete"} reach the season goal`
-    : `Help ${campaign.teamName || "this team"} reach the fundraising goal`;
+    : `Help ${displayTeamName} reach the fundraising goal`;
   const showDefaultWelcomeMessage = campaign?.showDefaultWelcomeMessage !== false;
-  const welcomeLine = `${
-    campaign.teamName || "This team"
-  } family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`;
+  const welcomeLine = `${displayTeamName} family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`;
   const supportSubtitle = showAthlete
     ? `${athlete.name || "This athlete"} is fundraising for ${
-        campaign.teamName || "the team"
+        displayTeamName
       }. Your gift helps cover season costs, travel, equipment, and team needs.`
-    : `Every donation helps ${campaign.teamName || "this group"} cover season costs, equipment, travel, and program essentials.`;
+    : `Every donation helps ${displayTeamName} cover season costs, equipment, travel, and program essentials.`;
   const donorProofText =
     donorCount === 1 ? "1 donor has already stepped up." : `${donorCount} donors have already stepped up.`;
   const impactItems = [
     showAthlete
-      ? `Supports ${athlete.name || "the athlete"} and ${campaign.teamName || "the team"}`
-      : `Supports ${campaign.teamName || "the team"} this season`,
+      ? `Supports ${athlete.name || "the athlete"} and ${displayTeamName}`
+      : `Supports ${displayTeamName} this season`,
     "Secure checkout and instant email receipt",
     campaign.endDate ? `Giving window ends ${formatShortDate(campaign.endDate)}` : "Giving is open now",
   ];
@@ -452,7 +492,7 @@ export default function PublicCampaign() {
               )}
 	              <div className="min-w-0">
 	                <div className="public-eyebrow">
-	                  {campaign.teamName || "Community Fundraiser"}
+	                  {displayTeamName || "Community Fundraiser"}
 	                </div>
 	                <h1 className="public-title">{campaign.name}</h1>
 	                {showDefaultWelcomeMessage && (
@@ -747,9 +787,9 @@ export default function PublicCampaign() {
                       <div className="text-lg font-semibold">
                         {athlete.name || "Athlete"}
                       </div>
-                      <div className="public-list-meta">
-                        {campaign.teamName || "Team supporter"}
-                      </div>
+	                      <div className="public-list-meta">
+	                        {displayTeamName || "Team supporter"}
+	                      </div>
                     </div>
                   </div>
                   <p className="public-muted" style={{ marginTop: "12px" }}>
@@ -775,8 +815,8 @@ export default function PublicCampaign() {
 	                  {campaign.teamNames?.length ? "Teams involved" : "Supporters so far"}
 	                </div>
 	                <div className="public-muted">
-	                  {campaign.teamNames?.slice(0, 3).join(", ") || "Open to all"}
-                </div>
+	                  {campaign.teamNames?.slice(0, 3).join(", ") || displayTeamName || "Open to all"}
+	                </div>
                 <div className="public-list-meta" style={{ marginTop: "8px" }}>
                   Start Date: {formatShortDate(campaign.startDate)}
                 </div>

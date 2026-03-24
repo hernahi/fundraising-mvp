@@ -222,11 +222,20 @@ useEffect(() => {
               </ul>
             </div>
 
-            <p className="mt-4 text-gray-700 max-w-2xl">
-              {campaign.description}
-            </p>
+	            <p className="mt-4 text-gray-700 max-w-2xl">
+	              {campaign.description}
+	            </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2 md:gap-3 mt-6">
+	            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+	              <div className="font-medium text-slate-800">Public welcome line</div>
+	              <div className="mt-1">
+	                {campaign.showDefaultWelcomeMessage !== false
+	                  ? `${campaign.teamName || teams[0]?.name || "This team"} family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`
+	                  : "Off"}
+	              </div>
+	            </div>
+
+	            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2 md:gap-3 mt-6">
               <Link
                 to={`/campaigns/${campaign.id}/edit`}
                 className={primaryActionClass}
