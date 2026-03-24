@@ -1414,8 +1414,8 @@ export default function Messages() {
 
       {isAthlete && (
         <div className="grid gap-6 md:gap-7 lg:grid-cols-[1.2fr_1fr]">
-          <div className="space-y-6">
-            <div id="contacts" className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+          <div className="min-w-0 space-y-6">
+            <div id="contacts" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
               <div className="flex flex-col gap-3 md:gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-800">
@@ -1820,7 +1820,7 @@ export default function Messages() {
               )}
             </div>
 
-            <div id="drip-campaign" className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+            <div id="drip-campaign" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
               <div className="flex flex-col gap-3 md:gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-800">
@@ -1935,14 +1935,14 @@ export default function Messages() {
             </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 space-y-6">
+            <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-lg font-semibold text-slate-800">
                   Campaign Automation
                 </h2>
                 <span
-                  className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-wide ${dripStatus.className}`}
+                  className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-wide ${dripStatus.className}`}
                 >
                   {dripStatus.label}
                 </span>
