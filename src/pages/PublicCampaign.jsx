@@ -364,6 +364,28 @@ export default function PublicCampaign() {
   const teamProgressWidth = `${Math.max(0, Math.min(100, percentRaised))}%`;
   const athleteProgressWidth =
     athletePercent === null ? "0%" : `${Math.max(0, Math.min(100, athletePercent))}%`;
+  const selectedAmountNumber = Number(amountDollars || 0);
+  const donateButtonLabel =
+    Number.isFinite(selectedAmountNumber) && selectedAmountNumber > 0
+      ? `Donate ${formatCurrency(selectedAmountNumber)}`
+      : "Donate";
+  const supportTitle = showAthlete
+    ? `Help ${athlete.name || "this athlete"} reach the season goal`
+    : `Help ${campaign.teamName || "this team"} reach the fundraising goal`;
+  const supportSubtitle = showAthlete
+    ? `${athlete.name || "This athlete"} is fundraising for ${
+        campaign.teamName || "the team"
+      }. Your gift helps cover season costs, travel, equipment, and team needs.`
+    : `Every donation helps ${campaign.teamName || "this group"} cover season costs, equipment, travel, and program essentials.`;
+  const donorProofText =
+    donorCount === 1 ? "1 donor has already stepped up." : `${donorCount} donors have already stepped up.`;
+  const impactItems = [
+    showAthlete
+      ? `Supports ${athlete.name || "the athlete"} and ${campaign.teamName || "the team"}`
+      : `Supports ${campaign.teamName || "the team"} this season`,
+    "Secure checkout and instant email receipt",
+    campaign.endDate ? `Giving window ends ${formatShortDate(campaign.endDate)}` : "Giving is open now",
+  ];
   const shareLink = (() => {
     if (typeof window === "undefined") return "";
     if (showAthlete) {
@@ -395,12 +417,22 @@ export default function PublicCampaign() {
               </div>
             </div>
 
-            <div className="public-hero-grid">
-              <div className="public-card public-card-soft public-donate-card">
-                <h2>Donate</h2>
-                {showAthlete && (
-                  <div
-                    className="public-list-meta"
+	            <div className="public-hero-grid">
+	              <div className="public-card public-card-soft public-donate-card">
+	                <div className="public-kicker-row">
+	                  <span className="public-kicker-badge">Most donors choose {formatCurrency(250)}</span>
+	                  <span className="public-list-meta">No account required</span>
+	                </div>
+	                <h2>{supportTitle}</h2>
+	                <p className="public-card-lead">{supportSubtitle}</p>
+	                <div className="public-trust-row">
+	                  <span>Secure Stripe checkout</span>
+	                  <span>Email receipt available</span>
+	                  <span>100% online donation</span>
+	                </div>
+	                {showAthlete && (
+	                  <div
+	                    className="public-list-meta"
                     style={{ marginBottom: "8px" }}
                   >
                     Supporting {athlete.name || "this athlete"}
@@ -408,10 +440,10 @@ export default function PublicCampaign() {
                 )}
                 <div className="public-form">
                   <div>
-                    <div className="public-list-meta" style={{ marginBottom: "8px" }}>
-                      Choose amount
-                    </div>
-                    <div className="public-amount-grid">
+	                    <div className="public-list-meta" style={{ marginBottom: "8px" }}>
+	                      Choose amount
+	                    </div>
+	                    <div className="public-amount-grid">
                       {DONATION_PRESETS.map((amount) => {
                         const key = String(amount);
                         const isActive = selectedAmountOption === key;
@@ -499,8 +531,8 @@ export default function PublicCampaign() {
                     {remainingChars} characters left
                   </div>
 
-                  <button
-                    onClick={async () => {
+	                  <button
+	                    onClick={async () => {
                       try {
                         setCheckoutLoading(true);
 
@@ -544,16 +576,18 @@ export default function PublicCampaign() {
                       } finally {
                         setCheckoutLoading(false);
                       }
-                    }}
-                    disabled={checkoutLoading}
-                    className="public-button"
-                  >
-                    {checkoutLoading ? "Redirecting..." : "Donate"}
-                  </button>
-                  <div className="public-list-meta">Secure checkout by Stripe</div>
+	                    }}
+	                    disabled={checkoutLoading}
+	                    className="public-button"
+	                  >
+	                    {checkoutLoading ? "Redirecting..." : donateButtonLabel}
+	                  </button>
+	                  <div className="public-list-meta">
+	                    Secure checkout by Stripe. Use your email if you want a receipt.
+	                  </div>
 
-                  <div>
-                    <div
+	                  <div>
+	                    <div
                       className="public-list-meta"
                       style={{ marginBottom: "8px" }}
                     >
@@ -617,10 +651,14 @@ export default function PublicCampaign() {
                 </div>
               </div>
 
-              <div className="public-card">
-                <h2>Goal Progress</h2>
+	              <div className="public-card">
+	                <h2>Goal Progress</h2>
+	                <div className="public-proof-band">
+	                  <strong>{formatCurrency(totalRaisedDollars)}</strong> raised so far.
+	                  <span>{donorProofText}</span>
+	                </div>
 
-                <div className="public-goal-block">
+	                <div className="public-goal-block">
                   <div className="public-goal-row">
                     <span className="public-goal-label">Team Goal</span>
                     <span className="public-goal-value">
@@ -693,14 +731,14 @@ export default function PublicCampaign() {
                 </div>
               )}
 
-              <div className="public-card public-card-soft">
-                <div className="public-list-meta">Donors</div>
-                <div className="public-metric-value">{donorCount}</div>
-                <div className="public-list-meta">
-                  {campaign.teamNames?.length ? "Teams involved" : "Supporters"}
-                </div>
-                <div className="public-muted">
-                  {campaign.teamNames?.slice(0, 3).join(", ") || "Open to all"}
+	              <div className="public-card public-card-soft">
+	                <div className="public-list-meta">Campaign Snapshot</div>
+	                <div className="public-metric-value">{donorCount}</div>
+	                <div className="public-list-meta">
+	                  {campaign.teamNames?.length ? "Teams involved" : "Supporters so far"}
+	                </div>
+	                <div className="public-muted">
+	                  {campaign.teamNames?.slice(0, 3).join(", ") || "Open to all"}
                 </div>
                 <div className="public-list-meta" style={{ marginTop: "8px" }}>
                   Start Date: {formatShortDate(campaign.startDate)}
@@ -720,9 +758,9 @@ export default function PublicCampaign() {
           </div>
         </section>
 
-        <div className="public-columns">
-          <section className="public-section">
-            <h2>Campaign Story</h2>
+	        <div className="public-columns">
+	          <section className="public-section">
+	            <h2>Campaign Story</h2>
             {campaignVideo ? (
               <div className="public-video">
                 <iframe
@@ -738,12 +776,19 @@ export default function PublicCampaign() {
                 here.
               </div>
             )}
-            <p className="public-subtitle" style={{ marginTop: "16px" }}>
-              {campaign.description ||
-                "Your support directly helps the team cover their season costs and keeps this program thriving."}
-            </p>
-          </section>
-        </div>
+	            <p className="public-subtitle" style={{ marginTop: "16px" }}>
+	              {campaign.description ||
+	                "Your support directly helps the team cover their season costs and keeps this program thriving."}
+	            </p>
+	            <div className="public-impact-grid">
+	              {impactItems.map((item) => (
+	                <div key={item} className="public-impact-item">
+	                  {item}
+	                </div>
+	              ))}
+	            </div>
+	          </section>
+	        </div>
 
         <div className="public-columns">
           <section className="public-section">
