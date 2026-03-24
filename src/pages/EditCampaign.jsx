@@ -24,6 +24,7 @@ export default function EditCampaign() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [imagePreview, setImagePreview] = useState("");
+  const [campaignTeamName, setCampaignTeamName] = useState("");
 
   // Load existing campaign
   useEffect(() => {
@@ -50,6 +51,9 @@ export default function EditCampaign() {
           isPublic: data.isPublic === true,
           showDefaultWelcomeMessage: data.showDefaultWelcomeMessage !== false,
         });
+        setCampaignTeamName(
+          String(data.teamName || (Array.isArray(data.teamNames) ? data.teamNames[0] : "") || "").trim()
+        );
         setImagePreview(data.imageURL || "");
 
         setLoading(false);
@@ -66,6 +70,9 @@ export default function EditCampaign() {
   const updateField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
+
+  const welcomeTeamName = campaignTeamName || "This team";
+  const welcomeExample = `${welcomeTeamName} family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`;
 
   // Save updates
   async function handleSave() {
@@ -220,9 +227,9 @@ export default function EditCampaign() {
             className="mt-1 h-4 w-4 rounded border-gray-300"
           />
           <label htmlFor="campaign-default-welcome" className="text-sm text-gray-700">
-            Show public welcome line under the team name
+            Show public welcome line under the team name for {welcomeTeamName}
             <div className="mt-1 text-xs text-gray-500">
-              Example: &quot;Team Name family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.&quot;
+              Example: &quot;{welcomeExample}&quot;
             </div>
           </label>
         </div>
