@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import safeImageURL from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
 import { FaArrowLeft, FaSave, FaUser } from "react-icons/fa";
+import { uploadAthleteImage } from "../utils/uploadAthleteImage";
 
 function formatGradeLabel(value) {
   const raw = String(value || "").trim();
@@ -46,11 +47,13 @@ function normalizeAthleteForEdit(id, data = {}) {
 export default function EditAthlete() {
   const { athleteId } = useParams();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
 
   const [athlete, setAthlete] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageStatus, setImageStatus] = useState("");
 
   const role = String(profile?.role || "").toLowerCase();
   const canManageAnyAthlete = role === "admin" || role === "super-admin" || role === "coach";
@@ -64,7 +67,11 @@ export default function EditAthlete() {
         const snap = await getDoc(ref);
 
         if (snap.exists()) {
-          setAthlete(normalizeAthleteForEdit(snap.id, snap.data() || {}));
+          const normalized = normalizeAthleteForEdit(snap.id, snap.data() || {});
+          if (!normalized.photoURL && canEditSelf && user?.photoURL) {
+            normalized.photoURL = user.photoURL;
+          }
+          setAthlete(normalized);
         }
       } catch (err) {
         console.error("Error loading athlete:", err);
@@ -74,7 +81,41 @@ export default function EditAthlete() {
     }
 
     fetchAthlete();
-  }, [athleteId]);
+  }, [athleteId, canEditSelf, user?.photoURL]);
+
+  async function handleImageFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    setImageStatus("");
+
+    if (!file || !athlete?.id) return;
+    if (!file.type.startsWith("image/")) {
+      setImageStatus("Please choose an image file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setImageStatus("Please choose an image smaller than 5MB.");
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+      const downloadUrl = await uploadAthleteImage(file, athlete.id);
+      if (!downloadUrl) {
+        throw new Error("No image URL returned.");
+      }
+      setAthlete((prev) => ({
+        ...prev,
+        photoURL: downloadUrl,
+      }));
+      setImageStatus("Image uploaded. Save changes to publish it.");
+    } catch (err) {
+      console.error("Athlete image upload failed:", err);
+      setImageStatus("Image upload failed. Check storage access and try again.");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
 
   async function handleSave(e) {
     e.preventDefault();
@@ -233,18 +274,6 @@ export default function EditAthlete() {
             />
           </div>
 
-          {/* Photo URL */}
-          <div>
-            <label className="block font-medium mb-1">Photo URL</label>
-            <input
-              type="text"
-              className="w-full border rounded-lg px-3 py-2"
-              value={athlete.photoURL || ""}
-              onChange={(e) =>
-                setAthlete({ ...athlete, photoURL: e.target.value })
-              }
-            />
-          </div>
         </div>
 
         {/* Preview */}
@@ -258,6 +287,52 @@ export default function EditAthlete() {
             alt="Preview"
             className="w-24 h-24 rounded-full object-cover border"
           />
+          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+            <div>
+              <label className="block font-medium mb-1">Photo URL</label>
+              <input
+                type="text"
+                className="w-full border rounded-lg px-3 py-2"
+                value={athlete.photoURL || ""}
+                onChange={(e) =>
+                  setAthlete({ ...athlete, photoURL: e.target.value })
+                }
+                placeholder="https://..."
+              />
+            </div>
+            <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              {uploadingImage ? "Uploading..." : "Upload Photo"}
+              <input
+                type="file"
+                accept="image/*"
+                capture="user"
+                className="hidden"
+                onChange={handleImageFileChange}
+                disabled={uploadingImage}
+              />
+            </label>
+            {canEditSelf && user?.photoURL ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setAthlete((prev) => ({
+                    ...prev,
+                    photoURL: user.photoURL,
+                  }));
+                  setImageStatus("Using Google profile photo. Save changes to publish it.");
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Use Google Avatar
+              </button>
+            ) : null}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Upload from your device, pick from your photo library, or take a selfie on supported phones and tablets.
+          </p>
+          {imageStatus ? (
+            <p className="mt-2 text-xs text-slate-600">{imageStatus}</p>
+          ) : null}
         </div>
 
         {/* Bio */}
