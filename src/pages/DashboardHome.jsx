@@ -180,6 +180,10 @@ export default function DashboardHome() {
   const [insightData, setInsightData] = useState(null);
   const [athleteCampaignId, setAthleteCampaignId] = useState("");
   const [athleteCampaign, setAthleteCampaign] = useState(null);
+  const [athleteTeamId, setAthleteTeamId] = useState("");
+  const [athleteName, setAthleteName] = useState("");
+  const [athleteGoalAmount, setAthleteGoalAmount] = useState(0);
+  const [athleteContactCount, setAthleteContactCount] = useState(0);
 
   useEffect(() => {
     if (!isAthlete || !profile?.uid) {
@@ -203,26 +207,53 @@ export default function DashboardHome() {
 
         const athleteData = athleteSnap.data() || {};
         const nextCampaignId = String(athleteData.campaignId || "").trim();
+        const nextTeamId = String(athleteData.teamId || "").trim();
+        const nextAthleteName = String(
+          athleteData.name || athleteData.displayName || profile?.displayName || ""
+        ).trim();
+        const nextAthleteGoal = Number(
+          athleteData.goal ?? athleteData.personalGoal ?? athleteData.fundraisingGoal ?? 0
+        );
         if (!nextCampaignId) {
           if (!cancelled) {
             setAthleteCampaignId("");
             setAthleteCampaign(null);
+            setAthleteTeamId(nextTeamId);
+            setAthleteName(nextAthleteName);
+            setAthleteGoalAmount(Number.isFinite(nextAthleteGoal) ? nextAthleteGoal : 0);
           }
           return;
         }
 
-        const campaignSnap = await getDoc(doc(db, "campaigns", nextCampaignId));
+        const [campaignSnap, contactsSnap] = await Promise.all([
+          getDoc(doc(db, "campaigns", nextCampaignId)),
+          getDocs(
+            query(
+              collection(db, "athlete_contacts"),
+              where("orgId", "==", profile?.orgId || "__none__"),
+              where("athleteId", "==", profile.uid)
+            )
+          ),
+        ]);
         if (!cancelled) {
           setAthleteCampaignId(nextCampaignId);
           setAthleteCampaign(
             campaignSnap.exists() ? { id: campaignSnap.id, ...campaignSnap.data() } : null
           );
+          setAthleteTeamId(nextTeamId);
+          setAthleteName(nextAthleteName);
+          setAthleteGoalAmount(Number.isFinite(nextAthleteGoal) ? nextAthleteGoal : 0);
+          setAthleteContactCount(contactsSnap.size || 0);
         }
       } catch (err) {
         console.error("Athlete campaign load failed:", err);
         if (!cancelled) {
           setAthleteCampaignId("");
           setAthleteCampaign(null);
+          setAthleteTeamId("");
+          setAthleteName("");
+          setAthleteGoalAmount(0);
+          setAthleteContactCount(0);
         }
       }
     }
@@ -232,7 +263,7 @@ export default function DashboardHome() {
     return () => {
       cancelled = true;
     };
-  }, [isAthlete, profile?.uid]);
+  }, [isAthlete, profile?.displayName, profile?.orgId, profile?.uid]);
 
   const resolvedCampaignId = isAthlete ? athleteCampaignId : activeCampaignId;
 
@@ -248,12 +279,19 @@ export default function DashboardHome() {
     }
 
     try {
+      const donationsQuery = isAthlete
+        ? query(
+            collection(db, "donations"),
+            where("orgId", "==", profile.orgId),
+            where("athleteId", "==", profile.uid)
+          )
+        : query(
+            collection(db, "donations"),
+            where("orgId", "==", profile.orgId),
+            where("campaignId", "==", resolvedCampaignId)
+          );
       const donationsSnap = await getDocs(
-        query(
-          collection(db, "donations"),
-          where("orgId", "==", profile.orgId),
-          where("campaignId", "==", resolvedCampaignId)
-        )
+        donationsQuery
       );
 
       let fundsRaised = 0;
@@ -275,18 +313,39 @@ export default function DashboardHome() {
       });
 
       let totalAthletes = 0;
-      try {
-        const campaignAthletesSnap = await getDocs(
-          query(
-            collection(db, "campaignAthletes"),
-            where("orgId", "==", profile.orgId),
-            where("campaignId", "==", resolvedCampaignId)
-          )
-        );
-        totalAthletes = campaignAthletesSnap.size;
-      } catch (err) {
-        // Fallback when campaignAthletes is unavailable/missing for legacy data.
-        totalAthletes = athleteIdsFromDonations.size;
+      if (isAthlete) {
+        try {
+          if (athleteTeamId) {
+            const campaignAthletesSnap = await getDocs(
+              query(
+                collection(db, "campaignAthletes"),
+                where("orgId", "==", profile.orgId),
+                where("campaignId", "==", resolvedCampaignId),
+                where("teamId", "==", athleteTeamId)
+              )
+            );
+            totalAthletes = campaignAthletesSnap.size;
+          }
+        } catch (err) {
+          totalAthletes = 0;
+        }
+        if (!totalAthletes) {
+          totalAthletes = 1;
+        }
+      } else {
+        try {
+          const campaignAthletesSnap = await getDocs(
+            query(
+              collection(db, "campaignAthletes"),
+              where("orgId", "==", profile.orgId),
+              where("campaignId", "==", resolvedCampaignId)
+            )
+          );
+          totalAthletes = campaignAthletesSnap.size;
+        } catch (err) {
+          // Fallback when campaignAthletes is unavailable/missing for legacy data.
+          totalAthletes = athleteIdsFromDonations.size;
+        }
       }
 
       setStats({
@@ -304,7 +363,7 @@ export default function DashboardHome() {
         fundsRaised: 0,
       });
     }
-  }, [profile?.orgId, resolvedCampaignId, isCoach, isAdmin, isAthlete]);
+  }, [profile?.orgId, profile?.uid, resolvedCampaignId, athleteTeamId, isCoach, isAdmin, isAthlete]);
 
   const activeCampaign = useMemo(() => {
     if (isAthlete) {
@@ -640,12 +699,19 @@ export default function DashboardHome() {
     }
 
     try {
+      const donationsQuery = isAthlete
+        ? query(
+            collection(db, "donations"),
+            where("orgId", "==", profile.orgId),
+            where("athleteId", "==", profile.uid)
+          )
+        : query(
+            collection(db, "donations"),
+            where("orgId", "==", profile.orgId),
+            where("campaignId", "==", resolvedCampaignId)
+          );
       const donationsSnap = await getDocs(
-        query(
-          collection(db, "donations"),
-          where("orgId", "==", profile.orgId),
-          where("campaignId", "==", resolvedCampaignId)
-        )
+        donationsQuery
       );
 
       const donations = donationsSnap.docs
@@ -678,6 +744,118 @@ export default function DashboardHome() {
           gifts: prev.gifts + 1,
         });
       });
+
+      if (isAthlete) {
+        if (type === "athletes") {
+          const raised = Number(athleteRaised.get(profile.uid) || 0);
+          const goal = Number(athleteGoalAmount || 0);
+          setInsightData({
+            title: "Athlete Summary",
+            subtitle: activeCampaign?.name || "Your current fundraiser",
+            athletes: [
+              {
+                id: profile.uid,
+                name: athleteName || "You",
+                email: profile?.email || "",
+                contacts: athleteContactCount,
+                raised,
+                goal,
+                goalPct: goal > 0 ? Math.round((raised / goal) * 100) : null,
+              },
+            ],
+          });
+          return;
+        }
+
+        if (type === "donors") {
+          const donors = Array.from(donorAgg.values()).sort((a, b) => b.amount - a.amount);
+          setInsightData({
+            title: "Supporter Summary",
+            subtitle: "Unique donors supporting you",
+            donors,
+          });
+          return;
+        }
+
+        if (type === "funds") {
+          const avgGift = donations.length ? raisedTotal / donations.length : 0;
+          setInsightData({
+            title: "Funds Raised Summary",
+            subtitle: "Your paid donations",
+            totals: {
+              raisedTotal,
+              gifts: donations.length,
+              avgGift,
+              topGift,
+            },
+          });
+          return;
+        }
+
+        if (type === "timeline") {
+          const dayMap = new Map();
+          donations.forEach((d) => {
+            const dt =
+              parseDateLike(d.createdAt) ||
+              parseDateLike(d.createdAtMs) ||
+              parseDateLike(d.updatedAt);
+            if (!dt) return;
+            const key = toDayKey(dt);
+            dayMap.set(key, (dayMap.get(key) || 0) + normalizeDonationAmount(d.amount));
+          });
+
+          const points = Array.from(dayMap.entries())
+            .map(([day, amount]) => ({ day, amount }))
+            .sort((a, b) => a.day.localeCompare(b.day));
+
+          const peak = points.reduce(
+            (best, p) => (!best || p.amount > best.amount ? p : best),
+            null
+          );
+          const valley = points.reduce(
+            (best, p) => (!best || p.amount < best.amount ? p : best),
+            null
+          );
+
+          const today = new Date();
+          const elapsedDays = campaignStartDate ? dayDiff(campaignStartDate, today) : null;
+          const totalDays =
+            campaignStartDate && campaignEndDate ? dayDiff(campaignStartDate, campaignEndDate) : null;
+          const remainingDays = campaignEndDate ? dayDiff(today, campaignEndDate) : null;
+
+          setInsightData({
+            title: "Campaign Timeline",
+            subtitle: activeCampaign?.name || "",
+            timeline: {
+              start: campaignStartDate,
+              end: campaignEndDate,
+              elapsedDays,
+              totalDays,
+              remainingDays,
+              points,
+              peak,
+              valley,
+            },
+          });
+          return;
+        }
+
+        const remaining = Math.max(0, athleteGoalAmount - raisedTotal);
+        setInsightData({
+          title: "Campaign Progress Summary",
+          subtitle: activeCampaign?.name || "",
+          progress: {
+            goal: athleteGoalAmount,
+            raised: raisedTotal,
+            remaining,
+            percent:
+              athleteGoalAmount > 0
+                ? Math.min(100, Math.round((raisedTotal / athleteGoalAmount) * 100))
+                : 0,
+          },
+        });
+        return;
+      }
 
       if (type === "athletes") {
         let athleteIds = [];
@@ -825,9 +1003,15 @@ export default function DashboardHome() {
       setInsightLoading(false);
     }
   }, [
+    isAthlete,
     profile?.orgId,
+    profile?.uid,
+    profile?.email,
     resolvedCampaignId,
     goalAmount,
+    athleteGoalAmount,
+    athleteContactCount,
+    athleteName,
     activeCampaign?.name,
     campaignStartDate,
     campaignEndDate,
