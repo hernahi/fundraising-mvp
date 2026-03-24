@@ -389,6 +389,14 @@ export default function DashboardHome() {
     );
   }, [stats.fundsRaised, goalAmount]);
 
+  const personalProgressPercent = useMemo(() => {
+    if (!athleteGoalAmount) return 0;
+    return Math.min(
+      100,
+      Math.round((Number(stats.fundsRaised || 0) / athleteGoalAmount) * 100)
+    );
+  }, [stats.fundsRaised, athleteGoalAmount]);
+
   const campaignStartDate = useMemo(() => {
     return (
       parseDateLike(activeCampaign?.startDate) ||
@@ -1183,6 +1191,31 @@ export default function DashboardHome() {
 
       {/* Analytics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        {isAthlete && (
+          <AnalyticsCard
+            title="My Personal Progress"
+            value={`${personalProgressPercent}%`}
+            onClick={() => openInsight("progress")}
+            subtext={
+              athleteGoalAmount
+                ? `${formatCurrency(stats.fundsRaised)} of ${formatCurrency(
+                    athleteGoalAmount
+                  )}`
+                : "No personal goal set"
+            }
+          >
+            {athleteGoalAmount > 0 && (
+              <div className="mt-3">
+                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-slate-900 transition-all"
+                    style={{ width: `${personalProgressPercent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </AnalyticsCard>
+        )}
         <AnalyticsCard
           title="Campaign Progress"
           value={`${progressPercent}%`}
