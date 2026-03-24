@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   collection,
+  doc,
+  getDoc,
   query,
   where,
   orderBy,
@@ -176,9 +178,66 @@ export default function DashboardHome() {
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightError, setInsightError] = useState("");
   const [insightData, setInsightData] = useState(null);
+  const [athleteCampaignId, setAthleteCampaignId] = useState("");
+  const [athleteCampaign, setAthleteCampaign] = useState(null);
+
+  useEffect(() => {
+    if (!isAthlete || !profile?.uid) {
+      setAthleteCampaignId("");
+      setAthleteCampaign(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAthleteCampaign() {
+      try {
+        const athleteSnap = await getDoc(doc(db, "athletes", profile.uid));
+        if (!athleteSnap.exists()) {
+          if (!cancelled) {
+            setAthleteCampaignId("");
+            setAthleteCampaign(null);
+          }
+          return;
+        }
+
+        const athleteData = athleteSnap.data() || {};
+        const nextCampaignId = String(athleteData.campaignId || "").trim();
+        if (!nextCampaignId) {
+          if (!cancelled) {
+            setAthleteCampaignId("");
+            setAthleteCampaign(null);
+          }
+          return;
+        }
+
+        const campaignSnap = await getDoc(doc(db, "campaigns", nextCampaignId));
+        if (!cancelled) {
+          setAthleteCampaignId(nextCampaignId);
+          setAthleteCampaign(
+            campaignSnap.exists() ? { id: campaignSnap.id, ...campaignSnap.data() } : null
+          );
+        }
+      } catch (err) {
+        console.error("Athlete campaign load failed:", err);
+        if (!cancelled) {
+          setAthleteCampaignId("");
+          setAthleteCampaign(null);
+        }
+      }
+    }
+
+    loadAthleteCampaign();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAthlete, profile?.uid]);
+
+  const resolvedCampaignId = isAthlete ? athleteCampaignId : activeCampaignId;
 
   const fetchStats = useCallback(async () => {
-    if (!profile?.orgId || !activeCampaignId || (!isCoach && !isAdmin)) {
+    if (!profile?.orgId || !resolvedCampaignId || (!isCoach && !isAdmin && !isAthlete)) {
       setStats({
         activeCampaigns: 0,
         totalAthletes: 0,
@@ -193,7 +252,7 @@ export default function DashboardHome() {
         query(
           collection(db, "donations"),
           where("orgId", "==", profile.orgId),
-          where("campaignId", "==", activeCampaignId)
+          where("campaignId", "==", resolvedCampaignId)
         )
       );
 
@@ -221,7 +280,7 @@ export default function DashboardHome() {
           query(
             collection(db, "campaignAthletes"),
             where("orgId", "==", profile.orgId),
-            where("campaignId", "==", activeCampaignId)
+            where("campaignId", "==", resolvedCampaignId)
           )
         );
         totalAthletes = campaignAthletesSnap.size;
@@ -245,11 +304,14 @@ export default function DashboardHome() {
         fundsRaised: 0,
       });
     }
-  }, [profile?.orgId, activeCampaignId, isCoach, isAdmin]);
+  }, [profile?.orgId, resolvedCampaignId, isCoach, isAdmin, isAthlete]);
 
   const activeCampaign = useMemo(() => {
+    if (isAthlete) {
+      return athleteCampaign;
+    }
     return campaigns?.find((c) => c.id === activeCampaignId) || null;
-  }, [campaigns, activeCampaignId]);
+  }, [isAthlete, athleteCampaign, campaigns, activeCampaignId]);
 
   /* ==============================
      C4 — Campaign Goal Progress
@@ -507,13 +569,13 @@ export default function DashboardHome() {
    C5 — Export Donations CSV
    ============================== */
   const exportDonationsCSV = async () => {
-  if (!profile?.orgId || !activeCampaignId) return;
+  if (!profile?.orgId || !resolvedCampaignId) return;
 
   try {
     const q = query(
       collection(db, "donations"),
       where("orgId", "==", profile.orgId),
-      where("campaignId", "==", activeCampaignId),
+      where("campaignId", "==", resolvedCampaignId),
       orderBy("createdAt", "desc")
     );
 
@@ -571,7 +633,7 @@ export default function DashboardHome() {
     setInsightError("");
     setInsightData(null);
 
-    if (!profile?.orgId || !activeCampaignId) {
+    if (!profile?.orgId || !resolvedCampaignId) {
       setInsightError("Select a campaign first.");
       setInsightLoading(false);
       return;
@@ -582,7 +644,7 @@ export default function DashboardHome() {
         query(
           collection(db, "donations"),
           where("orgId", "==", profile.orgId),
-          where("campaignId", "==", activeCampaignId)
+          where("campaignId", "==", resolvedCampaignId)
         )
       );
 
@@ -624,7 +686,7 @@ export default function DashboardHome() {
             query(
               collection(db, "campaignAthletes"),
               where("orgId", "==", profile.orgId),
-              where("campaignId", "==", activeCampaignId)
+              where("campaignId", "==", resolvedCampaignId)
             )
           );
           athleteIds = campaignAthletesSnap.docs
@@ -764,7 +826,7 @@ export default function DashboardHome() {
     }
   }, [
     profile?.orgId,
-    activeCampaignId,
+    resolvedCampaignId,
     goalAmount,
     activeCampaign?.name,
     campaignStartDate,
@@ -796,7 +858,7 @@ export default function DashboardHome() {
   ]);
 
   useEffect(() => {
-    if (!isCoach && !isAdmin) {
+    if (!isCoach && !isAdmin && !isAthlete) {
       setStats({
         activeCampaigns: 0,
         totalAthletes: 0,
@@ -806,7 +868,7 @@ export default function DashboardHome() {
       return;
     }
     fetchStats();
-  }, [fetchStats, isCoach, isAdmin]);
+  }, [fetchStats, isCoach, isAdmin, isAthlete]);
 
   /* ==============================
      Render
