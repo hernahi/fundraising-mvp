@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -152,6 +153,7 @@ export default function PublicCampaign() {
   const [pageLoading, setPageLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [athlete, setAthlete] = useState(null);
+  const [campaignAthletes, setCampaignAthletes] = useState([]);
 
   const [amountDollars, setAmountDollars] = useState("250");
   const [selectedAmountOption, setSelectedAmountOption] = useState("250");
@@ -234,6 +236,34 @@ export default function PublicCampaign() {
 
     loadAthlete();
   }, [athleteId, campaignId]);
+
+  useEffect(() => {
+    async function loadCampaignAthletes() {
+      if (!campaignId || campaign?.isPublic === false || isAthletePage) {
+        setCampaignAthletes([]);
+        return;
+      }
+
+      try {
+        const athletesQuery = query(
+          collection(db, "athletes"),
+          where("campaignId", "==", campaignId),
+          limit(12)
+        );
+        const snap = await getDocs(athletesQuery);
+        const next = snap.docs.map((entry) => ({
+          id: entry.id,
+          ...entry.data(),
+        }));
+        setCampaignAthletes(next);
+      } catch (err) {
+        console.error("Failed to load campaign athletes:", err);
+        setCampaignAthletes([]);
+      }
+    }
+
+    loadCampaignAthletes();
+  }, [campaignId, campaign?.isPublic, isAthletePage]);
 
   // ---------------------------------------------------
   // Load comments (public read)
@@ -386,6 +416,13 @@ export default function PublicCampaign() {
     "Secure checkout and instant email receipt",
     campaign.endDate ? `Giving window ends ${formatShortDate(campaign.endDate)}` : "Giving is open now",
   ];
+  const featuredAthletes = campaignAthletes
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(b.publicTotalRaisedCents || 0) - Number(a.publicTotalRaisedCents || 0)
+    )
+    .slice(0, 6);
   const shareLink = (() => {
     if (typeof window === "undefined") return "";
     if (showAthlete) {
@@ -760,8 +797,8 @@ export default function PublicCampaign() {
 
 	        <div className="public-columns">
 	          <section className="public-section">
-	            <h2>Campaign Story</h2>
-            {campaignVideo ? (
+	            <h2>{showAthlete ? "Athlete Story" : "Campaign Story"}</h2>
+	            {campaignVideo ? (
               <div className="public-video">
                 <iframe
                   src={campaignVideo}
@@ -777,8 +814,12 @@ export default function PublicCampaign() {
               </div>
             )}
 	            <p className="public-subtitle" style={{ marginTop: "16px" }}>
-	              {campaign.description ||
-	                "Your support directly helps the team cover their season costs and keeps this program thriving."}
+	              {showAthlete
+	                ? athlete?.bio ||
+	                  campaign.description ||
+	                  "Your support directly helps this athlete contribute to the team and cover season costs."
+	                : campaign.description ||
+	                  "Your support directly helps the team cover their season costs and keeps this program thriving."}
 	            </p>
 	            <div className="public-impact-grid">
 	              {impactItems.map((item) => (
@@ -790,7 +831,67 @@ export default function PublicCampaign() {
 	          </section>
 	        </div>
 
-        <div className="public-columns">
+	        {!showAthlete && featuredAthletes.length > 0 && (
+	          <div className="public-columns">
+	            <section className="public-section">
+	              <div className="public-section-header">
+	                <div>
+	                  <h2>Meet the Team</h2>
+	                  <p className="public-muted">
+	                    Donors can support the full program or choose a specific athlete page.
+	                  </p>
+	                </div>
+	              </div>
+	              <div className="public-athlete-grid">
+	                {featuredAthletes.map((entry) => {
+	                  const entryGoal = Number(entry.goal || entry.personalGoal || 0);
+	                  const entryRaised = Number(entry.publicTotalRaisedCents || 0) / 100;
+	                  const entryPercent =
+	                    entryGoal > 0
+	                      ? Math.max(0, Math.min(100, Math.round((entryRaised / entryGoal) * 100)))
+	                      : null;
+	                  return (
+	                    <a
+	                      key={entry.id}
+	                      href={`/donate/${campaign.id}/athlete/${entry.id}`}
+	                      className="public-athlete-card"
+	                    >
+	                      <img
+	                        src={safeImageURL(entry.photoURL)}
+	                        alt={entry.name || entry.displayName || "Athlete"}
+	                        className="public-athlete-avatar"
+	                      />
+	                      <div className="public-athlete-copy">
+	                        <div className="public-athlete-name">
+	                          {entry.name || entry.displayName || "Athlete"}
+	                        </div>
+	                        <div className="public-list-meta">
+	                          {entryGoal > 0
+	                            ? `${formatCurrency(entryRaised)} of ${formatCurrency(entryGoal)}`
+	                            : `${formatCurrency(entryRaised)} raised`}
+	                        </div>
+	                        {entryPercent !== null && (
+	                          <>
+	                            <div className="public-progress-track public-athlete-track">
+	                              <div
+	                                className="public-progress-fill"
+	                                style={{ width: `${entryPercent}%` }}
+	                              />
+	                            </div>
+	                            <div className="public-list-meta">{entryPercent}% of personal goal</div>
+	                          </>
+	                        )}
+	                      </div>
+	                      <span className="public-athlete-link">View athlete page</span>
+	                    </a>
+	                  );
+	                })}
+	              </div>
+	            </section>
+	          </div>
+	        )}
+
+	        <div className="public-columns">
           <section className="public-section">
             <h2>{showAthlete ? "Supporters" : "Recent Donors"}</h2>
             {publicDonors.length === 0 ? (

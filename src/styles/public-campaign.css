@@ -102,6 +102,14 @@
   margin-bottom: 12px;
 }
 
+.public-section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .public-banner {
   background: linear-gradient(120deg, #f59e0b 0%, #f97316 45%, #ea580c 100%);
   color: #0b1622;
@@ -382,6 +390,64 @@
   color: #334155;
   font-size: 14px;
   line-height: 1.45;
+}
+
+.public-athlete-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.public-athlete-card {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  border-radius: 16px;
+  padding: 14px;
+  background: #fbfdff;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.public-athlete-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.28);
+}
+
+.public-athlete-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  object-fit: cover;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: #ffffff;
+}
+
+.public-athlete-copy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.public-athlete-name {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.public-athlete-track {
+  height: 8px;
+}
+
+.public-athlete-link {
+  grid-column: 1 / -1;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 @media (max-width: 1080px) {
