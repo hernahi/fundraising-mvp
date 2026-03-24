@@ -380,19 +380,27 @@ export default function DashboardHome() {
 
   const buildDonationsQuery = useCallback(
     (cursorDoc = null) => {
-      const base = [
-        where("orgId", "==", profile?.orgId || "__none__"),
-        where("campaignId", "==", activeCampaignId || "__none__"),
-        orderBy("createdAt", "desc"),
-        limit(PAGE_SIZE),
-      ];
+      const base = isAthlete
+        ? [
+            where("orgId", "==", profile?.orgId || "__none__"),
+            where("athleteId", "==", profile?.uid || "__none__"),
+            where("status", "==", "paid"),
+            orderBy("createdAt", "desc"),
+            limit(PAGE_SIZE),
+          ]
+        : [
+            where("orgId", "==", profile?.orgId || "__none__"),
+            where("campaignId", "==", activeCampaignId || "__none__"),
+            orderBy("createdAt", "desc"),
+            limit(PAGE_SIZE),
+          ];
 
       if (cursorDoc) {
         return query(collection(db, "donations"), ...base, startAfter(cursorDoc));
       }
       return query(collection(db, "donations"), ...base);
     },
-    [profile?.orgId, activeCampaignId]
+    [isAthlete, profile?.orgId, profile?.uid, activeCampaignId]
   );
 
   /* ==============================
@@ -400,7 +408,10 @@ export default function DashboardHome() {
      ============================== */
   const fetchRecentActivity = useCallback(
     async ({ mode = "reset", cursor = null } = {}) => {
-      if (!profile?.orgId || !activeCampaignId || (!isCoach && !isAdmin)) {
+      const canLoadAthleteActivity = isAthlete && profile?.uid;
+      const canLoadCampaignActivity =
+        !isAthlete && profile?.orgId && activeCampaignId && (isCoach || isAdmin);
+      if (!profile?.orgId || (!canLoadAthleteActivity && !canLoadCampaignActivity)) {
         setRecentActivity([]);
         setActivityCursor(null);
         setHasMoreActivity(false);
@@ -430,19 +441,28 @@ export default function DashboardHome() {
         const athleteIds = Array.from(
           new Set(donations.map((d) => d.athleteId).filter(Boolean))
         );
-        const teamIds = Array.from(
-          new Set(donations.map((d) => d.teamId).filter(Boolean))
-        );
 
         // Batch fetch
-        const [athletesById, teamsById] = await Promise.all([
-          fetchDocsByIds({ collectionName: "athletes", ids: athleteIds }),
-          fetchDocsByIds({ collectionName: "teams", ids: teamIds }),
-        ]);
+        const athletesById = await fetchDocsByIds({
+          collectionName: "athletes",
+          ids: athleteIds,
+        });
+        const teamIds = Array.from(
+          new Set([
+            ...donations.map((d) => d.teamId).filter(Boolean),
+            ...Object.values(athletesById)
+              .map((athlete) => athlete?.teamId)
+              .filter(Boolean),
+          ])
+        );
+        const teamsById = await fetchDocsByIds({
+          collectionName: "teams",
+          ids: teamIds,
+        });
 
         const items = donations.map((d) => {
           const athlete = d.athleteId ? athletesById[d.athleteId] : null;
-          const team = d.teamId ? teamsById[d.teamId] : null;
+          const team = (d.teamId || athlete?.teamId) ? teamsById[d.teamId || athlete?.teamId] : null;
 
           return {
             id: d.id,
@@ -481,7 +501,7 @@ export default function DashboardHome() {
         setActivityLoading(false);
       }
     },
-    [profile?.orgId, activeCampaignId, buildDonationsQuery, isCoach, isAdmin]
+    [profile?.orgId, profile?.uid, activeCampaignId, buildDonationsQuery, isAthlete, isCoach, isAdmin]
   );
                 /* ==============================
    C5 — Export Donations CSV
@@ -755,13 +775,25 @@ export default function DashboardHome() {
      Fetch ONCE per campaign change
      ============================== */
   useEffect(() => {
-    if (!profile?.orgId || !activeCampaignId || (!isCoach && !isAdmin)) {
+    const canLoadAthleteActivity = isAthlete && profile?.uid;
+    const canLoadCampaignActivity =
+      !isAthlete && profile?.orgId && activeCampaignId && (isCoach || isAdmin);
+    if (!profile?.orgId || (!canLoadAthleteActivity && !canLoadCampaignActivity)) {
       resetActivity();
       return;
     }
     resetActivity();
     fetchRecentActivity({ mode: "reset" });
-  }, [profile?.orgId, activeCampaignId, resetActivity, fetchRecentActivity, isCoach, isAdmin]);
+  }, [
+    profile?.orgId,
+    profile?.uid,
+    activeCampaignId,
+    resetActivity,
+    fetchRecentActivity,
+    isAthlete,
+    isCoach,
+    isAdmin,
+  ]);
 
   useEffect(() => {
     if (!isCoach && !isAdmin) {
@@ -1130,7 +1162,9 @@ export default function DashboardHome() {
               Recent Activity
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Latest donations for this campaign
+              {isAthlete
+                ? "Latest supporters for your fundraiser"
+                : "Latest donations for this campaign"}
             </p>
           </div>
 
@@ -1162,7 +1196,9 @@ export default function DashboardHome() {
         <div className="divide-y divide-slate-100">
           {recentActivity.length === 0 && !activityLoading && (
             <div className="px-4 py-8 text-sm text-slate-500">
-              No activity yet for this campaign.
+              {isAthlete
+                ? "No supporter activity yet for your fundraiser."
+                : "No activity yet for this campaign."}
             </div>
           )}
 
@@ -1227,7 +1263,8 @@ export default function DashboardHome() {
         {/* Pagination */}
         <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
           <p className="text-xs text-slate-500">
-            Showing {recentActivity.length} most recent donations
+            Showing {recentActivity.length} most recent{" "}
+            {isAthlete ? "supporters" : "donations"}
           </p>
 
           <button
