@@ -1534,7 +1534,7 @@ export default function Messages() {
                       No contacts match the selected filter.
                     </p>
                   )}
-                  <div className="md:hidden space-y-3">
+                  <div className="lg:hidden space-y-3">
                     <label className="mb-2 inline-flex items-center gap-2 text-xs text-slate-600">
                       <input
                         type="checkbox"
@@ -1665,7 +1665,7 @@ export default function Messages() {
                     ))}
                   </div>
 
-                  <div className="hidden md:block overflow-x-auto">
+                  <div className="hidden lg:block overflow-x-auto">
                     <table className="min-w-full text-sm">
                       <thead className="bg-slate-50 text-slate-600">
                         <tr>
