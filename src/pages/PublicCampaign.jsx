@@ -682,20 +682,7 @@ export default function PublicCampaign() {
               </div>
 
 	              <div className="public-card">
-	                <div className="public-kicker-row">
-	                  <span className="public-kicker-badge">Most donors choose {formatCurrency(250)}</span>
-	                  <span className="public-list-meta">No account required</span>
-	                </div>
 	                <h2>Goal Progress</h2>
-	                <div className="public-hero-copy-block">
-	                  <h3 className="public-progress-hero-title">{supportTitle}</h3>
-	                  <p className="public-card-lead">{supportSubtitle}</p>
-	                  <div className="public-trust-row">
-	                    <span>Secure Stripe checkout</span>
-	                    <span>Email receipt available</span>
-	                    <span>100% online donation</span>
-	                  </div>
-	                </div>
 	                <div className="public-proof-band">
 	                  <strong>{formatCurrency(totalRaisedDollars)}</strong> raised so far.
 	                  <span>{donorProofText}</span>

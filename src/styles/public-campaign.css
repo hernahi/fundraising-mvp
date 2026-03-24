@@ -200,18 +200,6 @@
   line-height: 1.6;
 }
 
-.public-hero-copy-block {
-  display: grid;
-  gap: 12px;
-}
-
-.public-progress-hero-title {
-  margin: 0;
-  font-size: clamp(24px, 3vw, 30px);
-  line-height: 1.15;
-  font-weight: 700;
-}
-
 .public-trust-row {
   display: flex;
   flex-wrap: wrap;
