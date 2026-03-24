@@ -53,6 +53,14 @@
   margin: 8px 0 4px;
 }
 
+.public-welcome-line {
+  margin: 10px 0 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 760px;
+}
+
 .public-subtitle {
   color: #334155;
   font-family: "Source Serif 4", "Times New Roman", serif;

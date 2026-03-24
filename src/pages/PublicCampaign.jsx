@@ -402,6 +402,10 @@ export default function PublicCampaign() {
   const supportTitle = showAthlete
     ? `Help ${athlete.name || "this athlete"} reach the season goal`
     : `Help ${campaign.teamName || "this team"} reach the fundraising goal`;
+  const showDefaultWelcomeMessage = campaign?.showDefaultWelcomeMessage !== false;
+  const welcomeLine = `${
+    campaign.teamName || "This team"
+  } family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`;
   const supportSubtitle = showAthlete
     ? `${athlete.name || "This athlete"} is fundraising for ${
         campaign.teamName || "the team"
@@ -446,13 +450,16 @@ export default function PublicCampaign() {
                   className="h-12 w-12 rounded-xl object-contain border border-slate-200 bg-white"
                 />
               )}
-              <div className="min-w-0">
-                <div className="public-eyebrow">
-                  {campaign.teamName || "Community Fundraiser"}
-                </div>
-                <h1 className="public-title">{campaign.name}</h1>
-              </div>
-            </div>
+	              <div className="min-w-0">
+	                <div className="public-eyebrow">
+	                  {campaign.teamName || "Community Fundraiser"}
+	                </div>
+	                {showDefaultWelcomeMessage && (
+	                  <p className="public-welcome-line">{welcomeLine}</p>
+	                )}
+	                <h1 className="public-title">{campaign.name}</h1>
+	              </div>
+	            </div>
 
 	            <div className="public-hero-grid">
 	              <div className="public-card public-card-soft public-donate-card">

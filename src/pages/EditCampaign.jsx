@@ -18,6 +18,7 @@ export default function EditCampaign() {
     startDate: "",
     endDate: "",
     isPublic: false,
+    showDefaultWelcomeMessage: true,
   });
 
   const [loading, setLoading] = useState(true);
@@ -47,6 +48,7 @@ export default function EditCampaign() {
           startDate: data.startDate || "",
           endDate: data.endDate || "",
           isPublic: data.isPublic === true,
+          showDefaultWelcomeMessage: data.showDefaultWelcomeMessage !== false,
         });
         setImagePreview(data.imageURL || "");
 
@@ -79,6 +81,7 @@ export default function EditCampaign() {
         startDate: form.startDate,
         endDate: form.endDate,
         isPublic: form.isPublic === true,
+        showDefaultWelcomeMessage: form.showDefaultWelcomeMessage !== false,
       });
 
       navigate(`/campaigns/${campaignId}`);
@@ -205,6 +208,22 @@ export default function EditCampaign() {
           />
           <label htmlFor="campaign-public" className="text-sm text-gray-700">
             Make this campaign public (donation page visible)
+          </label>
+        </div>
+
+        <div className="flex items-start gap-2">
+          <input
+            id="campaign-default-welcome"
+            type="checkbox"
+            checked={form.showDefaultWelcomeMessage}
+            onChange={(e) => updateField("showDefaultWelcomeMessage", e.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-gray-300"
+          />
+          <label htmlFor="campaign-default-welcome" className="text-sm text-gray-700">
+            Show public welcome line under the team name
+            <div className="mt-1 text-xs text-gray-500">
+              Example: &quot;Team Name family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.&quot;
+            </div>
           </label>
         </div>
 
