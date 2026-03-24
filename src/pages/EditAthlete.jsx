@@ -8,6 +8,25 @@ import safeImageURL from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
 import { FaArrowLeft, FaSave, FaUser } from "react-icons/fa";
 
+function formatGradeLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/(st|nd|rd|th)\b/i.test(raw)) return raw;
+  if (!/^\d+$/.test(raw)) return raw;
+
+  const gradeNumber = Number(raw);
+  const teenRemainder = gradeNumber % 100;
+  if (teenRemainder >= 11 && teenRemainder <= 13) {
+    return `${gradeNumber}th`;
+  }
+
+  const remainder = gradeNumber % 10;
+  if (remainder === 1) return `${gradeNumber}st`;
+  if (remainder === 2) return `${gradeNumber}nd`;
+  if (remainder === 3) return `${gradeNumber}rd`;
+  return `${gradeNumber}th`;
+}
+
 function normalizeAthleteForEdit(id, data = {}) {
   return {
     id,
@@ -68,7 +87,7 @@ export default function EditAthlete() {
         displayName: athlete.name || "",
         age: athlete.age || "",
         position: athlete.position || "",
-        grade: athlete.grade || "",
+        grade: formatGradeLabel(athlete.grade),
         jerseyNumber: athlete.jerseyNumber || "",
         goal: athlete.goal === "" ? null : Number(athlete.goal) || 0,
         photoURL: athlete.photoURL || "",
@@ -176,6 +195,12 @@ export default function EditAthlete() {
               value={athlete.grade || ""}
               onChange={(e) =>
                 setAthlete({ ...athlete, grade: e.target.value })
+              }
+              onBlur={() =>
+                setAthlete((prev) => ({
+                  ...prev,
+                  grade: formatGradeLabel(prev.grade),
+                }))
               }
               placeholder="Ex: 9th Grade"
             />

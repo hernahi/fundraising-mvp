@@ -59,7 +59,27 @@ function formatShortDate(value) {
 }
 
 function compactAthleteMeta(athlete = {}) {
-  return [athlete.position, athlete.grade, athlete.jerseyNumber ? `#${athlete.jerseyNumber}` : ""]
+  const rawGrade = String(athlete.grade || "").trim();
+  let displayGrade = rawGrade;
+  if (rawGrade && !/(st|nd|rd|th)\b/i.test(rawGrade) && /^\d+$/.test(rawGrade)) {
+    const gradeNumber = Number(rawGrade);
+    const teenRemainder = gradeNumber % 100;
+    if (teenRemainder >= 11 && teenRemainder <= 13) {
+      displayGrade = `${gradeNumber}th`;
+    } else {
+      const remainder = gradeNumber % 10;
+      displayGrade =
+        remainder === 1
+          ? `${gradeNumber}st`
+          : remainder === 2
+          ? `${gradeNumber}nd`
+          : remainder === 3
+          ? `${gradeNumber}rd`
+          : `${gradeNumber}th`;
+    }
+  }
+
+  return [athlete.position, displayGrade, athlete.jerseyNumber ? `#${athlete.jerseyNumber}` : ""]
     .map((value) => String(value || "").trim())
     .filter(Boolean);
 }

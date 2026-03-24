@@ -19,6 +19,25 @@ import safeImageURL from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
 import { FaArrowLeft, FaEdit, FaTrophy, FaUser } from "react-icons/fa";
 
+function formatGradeLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/(st|nd|rd|th)\b/i.test(raw)) return raw;
+  if (!/^\d+$/.test(raw)) return raw;
+
+  const gradeNumber = Number(raw);
+  const teenRemainder = gradeNumber % 100;
+  if (teenRemainder >= 11 && teenRemainder <= 13) {
+    return `${gradeNumber}th`;
+  }
+
+  const remainder = gradeNumber % 10;
+  if (remainder === 1) return `${gradeNumber}st`;
+  if (remainder === 2) return `${gradeNumber}nd`;
+  if (remainder === 3) return `${gradeNumber}rd`;
+  return `${gradeNumber}th`;
+}
+
 export default function AthleteDetail() {
   const { athleteId } = useParams();
   const { profile } = useAuth();
@@ -485,7 +504,7 @@ export default function AthleteDetail() {
 
 	          <div>
 	            <h3 className="font-semibold text-gray-700 mb-1">Grade</h3>
-	            <p>{athlete.grade || "N/A"}</p>
+	            <p>{formatGradeLabel(athlete.grade) || "N/A"}</p>
 	          </div>
 
 	          <div>
