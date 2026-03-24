@@ -424,7 +424,7 @@ export default function PublicCampaign() {
   );
   const remainingChars = Math.max(0, 500 - donorMessage.length);
   const showAthlete = isAthletePage && !!athlete;
-  const displayTeamName = resolvedTeamName || "this team";
+  const displayTeamName = resolvedTeamName || String(campaign?.name || "").trim() || "this team";
   const athleteRaisedCents = showAthlete
     ? Number(athlete.publicTotalRaisedCents || 0)
     : 0;
