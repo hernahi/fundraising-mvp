@@ -160,6 +160,15 @@ export default function AthleteDetail() {
   );
   const totalRaisedDollars = (totalRaisedCents / 100).toFixed(2);
   const goalAmount = Number(athlete?.goal || 0);
+  const profileCompletionChecks = [
+    Boolean(athlete?.photoURL),
+    Boolean(athlete?.bio),
+    goalAmount > 0,
+    Boolean(athlete?.supporterMessage),
+  ];
+  const profileCompletionPercent = Math.round(
+    (profileCompletionChecks.filter(Boolean).length / profileCompletionChecks.length) * 100
+  );
   const computedStats = useMemo(() => {
     const uniqueCampaigns = new Set();
     const uniqueSupporters = new Set();
@@ -271,7 +280,7 @@ export default function AthleteDetail() {
   if (!athlete) return <div className="p-4 md:p-6">Athlete not found.</div>;
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-6xl mx-auto">
+	    <div className="p-4 md:p-6 lg:p-8 max-w-6xl mx-auto">
       <Link
         to="/athletes"
         className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-3"
@@ -372,8 +381,8 @@ export default function AthleteDetail() {
         </div>
       )}
 
-      {/* Athlete Card */}
-      <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7 grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
+	      {/* Athlete Card */}
+	      <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7 grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
         {/* Avatar */}
         <div className="flex flex-col items-center">
           <img
@@ -389,9 +398,23 @@ export default function AthleteDetail() {
         </div>
 
         {/* Details */}
-        <div className="md:col-span-2 space-y-4">
-          <div>
-            <h3 className="font-semibold text-gray-700 mb-1">Team</h3>
+	        <div className="md:col-span-2 space-y-4">
+	          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+	            <div className="flex items-center justify-between gap-3">
+	              <div>
+	                <div className="text-sm font-semibold text-slate-800">Profile completion</div>
+	                <p className="mt-1 text-xs text-slate-500">
+	                  Complete the key profile fields donors see on your public page.
+	                </p>
+	              </div>
+	              <div className="text-lg font-semibold text-slate-800">
+	                {profileCompletionPercent}%
+	              </div>
+	            </div>
+	          </div>
+
+	          <div>
+	            <h3 className="font-semibold text-gray-700 mb-1">Team</h3>
             <Link
               to={`/teams/${athlete.teamId}`}
               className="text-blue-600 hover:underline"
@@ -455,28 +478,45 @@ export default function AthleteDetail() {
             <p>{athlete.orgName || "Unknown organization"}</p>
           </div>
 
-          <div>
-            <h3 className="font-semibold text-gray-700 mb-1">Age</h3>
-            <p>{athlete.age || "N/A"}</p>
-          </div>
+	          <div>
+	            <h3 className="font-semibold text-gray-700 mb-1">Age</h3>
+	            <p>{athlete.age || "N/A"}</p>
+	          </div>
 
-          <div>
-            <h3 className="font-semibold text-gray-700 mb-1">About</h3>
+	          <div>
+	            <h3 className="font-semibold text-gray-700 mb-1">Grade</h3>
+	            <p>{athlete.grade || "N/A"}</p>
+	          </div>
+
+	          <div>
+	            <h3 className="font-semibold text-gray-700 mb-1">Jersey Number</h3>
+	            <p>{athlete.jerseyNumber || "N/A"}</p>
+	          </div>
+
+	          <div>
+	            <h3 className="font-semibold text-gray-700 mb-1">About</h3>
             <p className="text-gray-700">
               {athlete.bio || "No athlete bio available."}
             </p>
           </div>
 
-          {goalAmount > 0 && (
-            <div>
+	          {goalAmount > 0 && (
+	            <div>
               <h3 className="font-semibold text-gray-700 mb-1">
                 Recommended Goal
               </h3>
-              <p>${goalAmount.toLocaleString()}</p>
-            </div>
-          )}
-        </div>
-      </div>
+	              <p>${goalAmount.toLocaleString()}</p>
+	            </div>
+	          )}
+
+	          <div>
+	            <h3 className="font-semibold text-gray-700 mb-1">Supporter Message</h3>
+	            <p className="text-gray-700">
+	              {athlete.supporterMessage || "No supporter message added yet."}
+	            </p>
+	          </div>
+	        </div>
+	      </div>
 
       {/* Stats Section */}
       <div className="mt-8 md:mt-10 bg-white rounded-xl shadow p-4 md:p-6">

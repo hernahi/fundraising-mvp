@@ -15,8 +15,12 @@ function normalizeAthleteForEdit(id, data = {}) {
     name: data.name || data.displayName || "",
     age: data.age ?? "",
     position: data.position || data.role || "",
+    grade: data.grade || "",
+    jerseyNumber: data.jerseyNumber || data.jerseyNo || "",
+    goal: data.goal ?? data.personalGoal ?? "",
     photoURL: data.photoURL || data.avatar || data.imgUrl || "",
     bio: data.bio || data.story || data.description || "",
+    supporterMessage: data.supporterMessage || data.fundraisingMessage || "",
   };
 }
 
@@ -64,9 +68,13 @@ export default function EditAthlete() {
         displayName: athlete.name || "",
         age: athlete.age || "",
         position: athlete.position || "",
+        grade: athlete.grade || "",
+        jerseyNumber: athlete.jerseyNumber || "",
+        goal: athlete.goal === "" ? null : Number(athlete.goal) || 0,
         photoURL: athlete.photoURL || "",
         avatar: athlete.photoURL || "",
         bio: athlete.bio || "",
+        supporterMessage: athlete.supporterMessage || "",
       });
 
       navigate(`/athletes/${athlete.id}`);
@@ -160,6 +168,46 @@ export default function EditAthlete() {
             />
           </div>
 
+          <div>
+            <label className="block font-medium mb-1">Grade</label>
+            <input
+              type="text"
+              className="w-full border rounded-lg px-3 py-2"
+              value={athlete.grade || ""}
+              onChange={(e) =>
+                setAthlete({ ...athlete, grade: e.target.value })
+              }
+              placeholder="Ex: 9th Grade"
+            />
+          </div>
+
+          <div>
+            <label className="block font-medium mb-1">Jersey Number</label>
+            <input
+              type="text"
+              className="w-full border rounded-lg px-3 py-2"
+              value={athlete.jerseyNumber || ""}
+              onChange={(e) =>
+                setAthlete({ ...athlete, jerseyNumber: e.target.value })
+              }
+              placeholder="Ex: 12"
+            />
+          </div>
+
+          <div>
+            <label className="block font-medium mb-1">Personal Goal ($)</label>
+            <input
+              type="number"
+              min="0"
+              className="w-full border rounded-lg px-3 py-2"
+              value={athlete.goal ?? ""}
+              onChange={(e) =>
+                setAthlete({ ...athlete, goal: e.target.value })
+              }
+              placeholder="Ex: 500"
+            />
+          </div>
+
           {/* Photo URL */}
           <div>
             <label className="block font-medium mb-1">Photo URL</label>
@@ -196,6 +244,18 @@ export default function EditAthlete() {
             onChange={(e) =>
               setAthlete({ ...athlete, bio: e.target.value })
             }
+          ></textarea>
+        </div>
+
+        <div>
+          <label className="block font-medium mb-1">Supporter Message</label>
+          <textarea
+            className="w-full border rounded-lg px-3 py-2 h-24"
+            value={athlete.supporterMessage || ""}
+            onChange={(e) =>
+              setAthlete({ ...athlete, supporterMessage: e.target.value })
+            }
+            placeholder="Share a short message donors will see on your public page."
           ></textarea>
         </div>
 

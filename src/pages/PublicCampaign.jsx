@@ -58,6 +58,12 @@ function formatShortDate(value) {
   return "TBD";
 }
 
+function compactAthleteMeta(athlete = {}) {
+  return [athlete.position, athlete.grade, athlete.jerseyNumber ? `#${athlete.jerseyNumber}` : ""]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
 function getYoutubeEmbed(url) {
   if (!url || typeof url !== "string") return "";
   const match = url.match(
@@ -436,6 +442,7 @@ export default function PublicCampaign() {
   const teamProgressWidth = `${Math.max(0, Math.min(100, percentRaised))}%`;
   const athleteProgressWidth =
     athletePercent === null ? "0%" : `${Math.max(0, Math.min(100, athletePercent))}%`;
+  const athleteMeta = showAthlete ? compactAthleteMeta(athlete) : [];
   const selectedAmountNumber = Number(amountDollars || 0);
   const donateButtonLabel =
     Number.isFinite(selectedAmountNumber) && selectedAmountNumber > 0
@@ -775,28 +782,37 @@ export default function PublicCampaign() {
                 )}
               </div>
 
-              {showAthlete && (
-                <div className="public-card public-card-soft">
-                  <div className="flex items-center gap-3">
+	              {showAthlete && (
+	                <div className="public-card public-card-soft">
+	                  <div className="flex items-center gap-3">
                     <img
                       src={safeImageURL(athlete.photoURL)}
                       alt={athlete.name || "Athlete"}
                       className="h-14 w-14 rounded-full object-cover border border-slate-700/40"
                     />
                     <div>
-                      <div className="text-lg font-semibold">
-                        {athlete.name || "Athlete"}
-                      </div>
+	                      <div className="text-lg font-semibold">
+	                        {athlete.name || "Athlete"}
+	                      </div>
 	                      <div className="public-list-meta">
 	                        {displayTeamName || "Team supporter"}
 	                      </div>
-                    </div>
-                  </div>
-                  <p className="public-muted" style={{ marginTop: "12px" }}>
-                    {athlete.bio || "Supporting this season with the team."}
-                  </p>
-                  <div className="public-list-meta" style={{ marginTop: "12px" }}>
-                    Personal goal:{" "}
+	                    </div>
+	                  </div>
+	                  {athleteMeta.length > 0 && (
+	                    <div className="public-trust-row">
+	                      {athleteMeta.map((item) => (
+	                        <span key={item}>{item}</span>
+	                      ))}
+	                    </div>
+	                  )}
+	                  <p className="public-muted" style={{ marginTop: "12px" }}>
+	                    {athlete.supporterMessage ||
+	                      athlete.bio ||
+	                      "Supporting this season with the team."}
+	                  </p>
+	                  <div className="public-list-meta" style={{ marginTop: "12px" }}>
+	                    Personal goal:{" "}
                     {athleteGoalAmount
                       ? formatCurrency(athleteGoalAmount)
                       : "Optional"}
@@ -809,28 +825,45 @@ export default function PublicCampaign() {
               )}
 
 	              <div className="public-card public-card-soft">
-	                <div className="public-list-meta">Campaign Snapshot</div>
-	                <div className="public-metric-value">{donorCount}</div>
 	                <div className="public-list-meta">
-	                  {campaign.teamNames?.length ? "Teams involved" : "Supporters so far"}
+	                  {showAthlete ? "Athlete Snapshot" : "Campaign Snapshot"}
+	                </div>
+	                <div className="public-metric-value">
+	                  {showAthlete ? formatCurrency(athleteRaisedDollars) : donorCount}
+	                </div>
+	                <div className="public-list-meta">
+	                  {showAthlete
+	                    ? "Raised toward personal goal"
+	                    : campaign.teamNames?.length
+	                    ? "Teams involved"
+	                    : "Supporters so far"}
 	                </div>
 	                <div className="public-muted">
-	                  {campaign.teamNames?.slice(0, 3).join(", ") || displayTeamName || "Open to all"}
+	                  {showAthlete
+	                    ? athleteGoalAmount
+	                      ? `${athletePercent ?? 0}% of ${formatCurrency(athleteGoalAmount)}`
+	                      : "No personal goal set yet"
+	                    : campaign.teamNames?.slice(0, 3).join(", ") || displayTeamName || "Open to all"}
 	                </div>
-                <div className="public-list-meta" style={{ marginTop: "8px" }}>
-                  Start Date: {formatShortDate(campaign.startDate)}
-                </div>
-                <div className="public-list-meta">
-                  End Date: {formatShortDate(campaign.endDate)}
-                </div>
-                <div className="public-list-meta" style={{ marginTop: "8px" }}>
-                  <span className="public-countdown-label">
-                    {countdown.label}
-                  </span>
-                  : {countdown.days}d {countdown.hours}h {countdown.minutes}m{" "}
-                  {countdown.seconds}s
-                </div>
-              </div>
+	                {showAthlete && athleteMeta.length > 0 && (
+	                  <div className="public-list-meta" style={{ marginTop: "8px" }}>
+	                    {athleteMeta.join(" • ")}
+	                  </div>
+	                )}
+	                <div className="public-list-meta" style={{ marginTop: "8px" }}>
+	                  Start Date: {formatShortDate(campaign.startDate)}
+	                </div>
+	                <div className="public-list-meta">
+	                  End Date: {formatShortDate(campaign.endDate)}
+	                </div>
+	                <div className="public-list-meta" style={{ marginTop: "8px" }}>
+	                  <span className="public-countdown-label">
+	                    {countdown.label}
+	                  </span>
+	                  : {countdown.days}d {countdown.hours}h {countdown.minutes}m{" "}
+	                  {countdown.seconds}s
+	                </div>
+	              </div>
             </div>
           </div>
         </section>
