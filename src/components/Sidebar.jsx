@@ -20,7 +20,7 @@ const navActive = "bg-blue-50 text-blue-700";
 const navInactive = "text-gray-700 hover:bg-gray-100";
 
 export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
-  const { profile } = useAuth();
+  const { profile, isSuperAdmin, activeOrgId, activeOrgName } = useAuth();
   const { campaigns, activeCampaignId } = useCampaign();
 
   const role = (profile?.role || "").toLowerCase();
@@ -30,11 +30,15 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   const isCoach = role === "coach";
   const isAthlete = role === "athlete";
   const canManageOrg = isAdmin || isCoach;
+  const selectedOrgLabel =
+    isSuperAdmin
+      ? activeOrgName || activeOrgId || "All Organizations"
+      : profile?.orgName || profile?.orgId || "Organization";
   const sidebarHeading = isAthlete
     ? (profile?.teamName || profile?.teamId || "Athlete Team")
-    : (profile?.orgName || profile?.orgId || "Organization");
+    : selectedOrgLabel;
   const sidebarSubheading = isAthlete
-    ? (profile?.orgName || profile?.orgId || "")
+    ? (activeOrgName || profile?.orgName || profile?.orgId || "")
     : "";
   const [mainOpen, setMainOpen] = useState(true);
   const [opsOpen, setOpsOpen] = useState(true);

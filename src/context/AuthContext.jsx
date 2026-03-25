@@ -18,6 +18,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [activeOrgId, setActiveOrgId] = useState(null);
+  const [activeOrgName, setActiveOrgName] = useState("");
   const [loading, setLoading] = useState(true);
   const isSuperAdmin = profile?.role === "super-admin";
 
@@ -43,6 +44,7 @@ export function AuthProvider({ children }) {
     setUser(null);
     setProfile(null);
     setActiveOrgId(null);
+    setActiveOrgName("");
   };
 
   const loadProfile = useCallback(
@@ -222,6 +224,49 @@ export function AuthProvider({ children }) {
     return () => unsubscribe();
   }, [loadProfile]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveActiveOrgName() {
+      if (!profile) {
+        if (!cancelled) setActiveOrgName("");
+        return;
+      }
+
+      const role = String(profile.role || "").toLowerCase();
+      const targetOrgId =
+        role === "super-admin"
+          ? String(activeOrgId || "").trim()
+          : String(profile.orgId || "").trim();
+
+      if (!targetOrgId) {
+        if (!cancelled) setActiveOrgName("");
+        return;
+      }
+
+      if (role !== "super-admin" && String(profile.orgName || "").trim()) {
+        if (!cancelled) setActiveOrgName(String(profile.orgName || "").trim());
+        return;
+      }
+
+      try {
+        const orgSnap = await getDoc(doc(db, "organizations", targetOrgId));
+        const nextName = orgSnap.exists()
+          ? String(orgSnap.data()?.name || targetOrgId).trim()
+          : targetOrgId;
+        if (!cancelled) setActiveOrgName(nextName);
+      } catch (err) {
+        console.warn("Active org name resolution skipped:", err?.message || err);
+        if (!cancelled) setActiveOrgName(targetOrgId);
+      }
+    }
+
+    resolveActiveOrgName();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, activeOrgId]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -235,6 +280,7 @@ export function AuthProvider({ children }) {
         logout,
         reloadProfile: () => user && loadProfile(user.uid),
         activeOrgId,
+        activeOrgName,
         setActiveOrgId,
         isSuperAdmin,
       }}

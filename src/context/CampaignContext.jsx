@@ -23,7 +23,7 @@ function getCoachScopedTeamIds(profile) {
 }
 
 export function CampaignProvider({ children }) {
-  const { profile } = useAuth();
+  const { profile, isSuperAdmin, activeOrgId } = useAuth();
   const [campaigns, setCampaigns] = useState([]);
   const [activeCampaignId, setActiveCampaignId] = useState(
     localStorage.getItem("activeCampaignId") || null
@@ -32,7 +32,16 @@ export function CampaignProvider({ children }) {
 
   // Load campaigns for the user's org
   useEffect(() => {
-    if (!profile?.orgId) return;
+    const resolvedOrgId = String(
+      isSuperAdmin ? activeOrgId || "" : profile?.orgId || ""
+    ).trim();
+    if (!resolvedOrgId) {
+      setCampaigns([]);
+      setActiveCampaignId(null);
+      localStorage.removeItem("activeCampaignId");
+      setLoading(false);
+      return undefined;
+    }
     const coachTeamIds = getCoachScopedTeamIds(profile);
     const isCoach = String(profile?.role || "").toLowerCase() === "coach";
     const isAthlete = String(profile?.role || "").toLowerCase() === "athlete";
@@ -57,20 +66,20 @@ export function CampaignProvider({ children }) {
     if (isCoach && coachTeamIds.length === 1) {
       q = query(
         collection(db, "campaigns"),
-        where("orgId", "==", profile.orgId),
+        where("orgId", "==", resolvedOrgId),
         where("teamId", "==", coachTeamIds[0])
       );
     } else if (isCoach && coachTeamIds.length > 1) {
       const scopedTeamIds = coachTeamIds.slice(0, 10);
       q = query(
         collection(db, "campaigns"),
-        where("orgId", "==", profile.orgId),
+        where("orgId", "==", resolvedOrgId),
         where("teamId", "in", scopedTeamIds)
       );
     } else {
       q = query(
         collection(db, "campaigns"),
-        where("orgId", "==", profile.orgId)
+        where("orgId", "==", resolvedOrgId)
       );
     }
 
@@ -103,7 +112,15 @@ export function CampaignProvider({ children }) {
     });
 
     return unsubscribe;
-  }, [profile?.orgId, profile?.role, profile?.teamId, JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || []), activeCampaignId]);
+  }, [
+    profile?.orgId,
+    profile?.role,
+    profile?.teamId,
+    JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || []),
+    activeCampaignId,
+    isSuperAdmin,
+    activeOrgId,
+  ]);
 
   // When the user manually selects a campaign
   const selectCampaign = (id) => {
