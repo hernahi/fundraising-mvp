@@ -1262,61 +1262,71 @@ export default function DashboardHome() {
             </p>
           </div>
 
-          {coachFlowLoading ? (
-            <div className="px-4 py-4 text-sm text-slate-500">Loading onboarding status...</div>
-          ) : (
-            <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-              {[
-                {
-                  key: "team",
-                  label: "1. Create Team",
-                  done: coachFlow.teamCount > 0,
-                  detail: `${coachFlow.teamCount} team${coachFlow.teamCount === 1 ? "" : "s"}`,
-                  to: "/teams",
-                  cta: "Open Teams",
-                },
-                {
-                  key: "invite",
-                  label: "2. Invite Athletes",
-                  done: coachFlow.athleteCount > 0,
-                  detail: `${coachFlow.athleteCount} athlete${coachFlow.athleteCount === 1 ? "" : "s"}`,
-                  to: "/coach/invite",
-                  cta: "Onboard Athletes",
-                },
-                {
-                  key: "campaign",
-                  label: "3. Assign Campaign",
-                  done: coachFlow.assignedCampaignCount > 0,
-                  detail: `${coachFlow.assignedCampaignCount} campaign${coachFlow.assignedCampaignCount === 1 ? "" : "s"}`,
-                  to: "/campaigns",
-                  cta: "Open Campaigns",
-                },
-                {
-                  key: "messages",
-                  label: "4. Launch Messages",
-                  done: coachFlow.contactCount > 0,
-                  detail: `${coachFlow.contactCount} contact${coachFlow.contactCount === 1 ? "" : "s"}`,
-                  to: "/messages",
-                  cta: "Open Messages",
-                },
-              ].map((step) => (
-                <div
-                  key={step.key}
-                  className="rounded-lg border border-slate-200 p-3 flex flex-col gap-2 bg-slate-50/40"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium text-slate-800">{step.label}</div>
-                    <span
-                      className={[
-                        "text-[11px] px-2 py-1 rounded-full",
-                        step.done
-                          ? "bg-green-100 text-green-700"
-                          : "bg-amber-100 text-amber-700",
-                      ].join(" ")}
-                    >
-                      {step.done ? "Done" : "Pending"}
-                    </span>
-                  </div>
+	          {coachFlowLoading ? (
+	            <div className="px-4 py-4 text-sm text-slate-500">Loading onboarding status...</div>
+	          ) : (
+	            <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+	              {[
+	                {
+	                  key: "team",
+	                  label: "1. Create Team",
+	                  detail: `${coachFlow.teamCount} team${coachFlow.teamCount === 1 ? "" : "s"}`,
+	                  to: "/teams",
+	                  cta: "Open Teams",
+	                  status: getAthleteFlowStatus({
+	                    complete: coachFlow.teamCount > 0,
+	                    started: false,
+	                  }),
+	                },
+	                {
+	                  key: "invite",
+	                  label: "2. Invite Athletes",
+	                  detail: `${coachFlow.athleteCount} athlete${coachFlow.athleteCount === 1 ? "" : "s"}`,
+	                  to: "/coach/invite",
+	                  cta: "Onboard Athletes",
+	                  status: getAthleteFlowStatus({
+	                    complete: coachFlow.athleteCount > 0,
+	                    started: coachFlow.teamCount > 0,
+	                  }),
+	                },
+	                {
+	                  key: "campaign",
+	                  label: "3. Assign Campaign",
+	                  detail: `${coachFlow.assignedCampaignCount} campaign${coachFlow.assignedCampaignCount === 1 ? "" : "s"}`,
+	                  to: "/campaigns",
+	                  cta: "Open Campaigns",
+	                  status: getAthleteFlowStatus({
+	                    complete: coachFlow.assignedCampaignCount > 0,
+	                    started: coachFlow.teamCount > 0 || coachFlow.athleteCount > 0,
+	                  }),
+	                },
+	                {
+	                  key: "messages",
+	                  label: "4. Launch Messages",
+	                  detail: `${coachFlow.contactCount} contact${coachFlow.contactCount === 1 ? "" : "s"}`,
+	                  to: "/messages",
+	                  cta: "Open Messages",
+	                  status: getAthleteFlowStatus({
+	                    complete: coachFlow.contactCount >= 20,
+	                    started: coachFlow.contactCount > 0,
+	                  }),
+	                },
+	              ].map((step) => (
+	                <div
+	                  key={step.key}
+	                  className="rounded-lg border border-slate-200 p-3 flex flex-col gap-2 bg-slate-50/40"
+	                >
+	                  <div className="flex items-center justify-between">
+	                    <div className="text-sm font-medium text-slate-800">{step.label}</div>
+	                    <span
+	                      className={[
+	                        "text-[11px] px-2 py-1 rounded-full font-semibold",
+	                        step.status.className,
+	                      ].join(" ")}
+	                    >
+	                      {step.status.label}
+	                    </span>
+	                  </div>
                   <div className="text-xs text-slate-600">{step.detail}</div>
                   <Link
                     to={step.to}
