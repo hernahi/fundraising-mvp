@@ -1,7 +1,16 @@
 // src/pages/EditAthlete.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  documentId,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import safeImageURL from "../utils/safeImage";
@@ -41,7 +50,25 @@ function normalizeAthleteForEdit(id, data = {}) {
     photoURL: data.photoURL || data.avatar || data.imgUrl || "",
     bio: data.bio || data.story || data.description || "",
     supporterMessage: data.supporterMessage || data.fundraisingMessage || "",
+    teamId: String(data.teamId || "").trim(),
+    teamName: String(data.teamName || data.team || "").trim(),
   };
+}
+
+function getScopedTeamIds(profile) {
+  const fromArray = Array.isArray(profile?.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile?.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const single = String(profile?.teamId || "").trim();
+  return Array.from(
+    new Set(
+      [...fromArray, single]
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 export default function EditAthlete() {
@@ -54,11 +81,14 @@ export default function EditAthlete() {
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageStatus, setImageStatus] = useState("");
+  const [teamOptions, setTeamOptions] = useState([]);
 
   const role = String(profile?.role || "").toLowerCase();
   const canManageAnyAthlete = role === "admin" || role === "super-admin" || role === "coach";
   const canEditSelf = role === "athlete" && profile?.uid === athleteId;
   const canEditAthlete = canManageAnyAthlete || canEditSelf;
+  const canAssignTeam = role === "admin" || role === "super-admin" || role === "coach";
+  const scopedTeamIds = useMemo(() => getScopedTeamIds(profile), [profile]);
 
   useEffect(() => {
     async function fetchAthlete() {
@@ -82,6 +112,61 @@ export default function EditAthlete() {
 
     fetchAthlete();
   }, [athleteId, canEditSelf, user?.photoURL]);
+
+  useEffect(() => {
+    async function loadTeamOptions() {
+      if (!canAssignTeam || !profile?.orgId) {
+        setTeamOptions([]);
+        return;
+      }
+
+      try {
+        if (role === "admin" || role === "super-admin") {
+          const snap = await getDocs(
+            query(collection(db, "teams"), where("orgId", "==", profile.orgId))
+          );
+          setTeamOptions(
+            snap.docs.map((teamDoc) => ({
+              id: teamDoc.id,
+              ...teamDoc.data(),
+            }))
+          );
+          return;
+        }
+
+        if (!scopedTeamIds.length) {
+          setTeamOptions([]);
+          return;
+        }
+
+        const chunks = [];
+        for (let i = 0; i < scopedTeamIds.length; i += 10) {
+          chunks.push(scopedTeamIds.slice(i, i + 10));
+        }
+
+        const snaps = await Promise.all(
+          chunks.map((ids) =>
+            getDocs(
+              query(collection(db, "teams"), where(documentId(), "in", ids))
+            )
+          )
+        );
+        setTeamOptions(
+          snaps
+            .flatMap((snap) => snap.docs)
+            .map((teamDoc) => ({
+              id: teamDoc.id,
+              ...teamDoc.data(),
+            }))
+        );
+      } catch (err) {
+        console.error("Error loading team options:", err);
+        setTeamOptions([]);
+      }
+    }
+
+    loadTeamOptions();
+  }, [canAssignTeam, profile?.orgId, role, scopedTeamIds]);
 
   async function handleImageFileChange(event) {
     const file = event.target.files?.[0];
@@ -123,6 +208,8 @@ export default function EditAthlete() {
 
     try {
       const ref = doc(db, "athletes", athlete.id);
+      const normalizedTeamId = String(athlete.teamId || "").trim();
+      const selectedTeam = teamOptions.find((team) => team.id === normalizedTeamId);
       await updateDoc(ref, {
         name: athlete.name || "",
         displayName: athlete.name || "",
@@ -135,6 +222,10 @@ export default function EditAthlete() {
         avatar: athlete.photoURL || "",
         bio: athlete.bio || "",
         supporterMessage: athlete.supporterMessage || "",
+        teamId: normalizedTeamId || null,
+        teamName: normalizedTeamId
+          ? String(selectedTeam?.name || selectedTeam?.teamName || athlete.teamName || normalizedTeamId).trim()
+          : "",
       });
 
       navigate(`/athletes/${athlete.id}`);
@@ -273,6 +364,34 @@ export default function EditAthlete() {
               placeholder="Ex: 500"
             />
           </div>
+
+          {canAssignTeam ? (
+            <div>
+              <label className="block font-medium mb-1">Assigned Team</label>
+              <select
+                className="w-full border rounded-lg px-3 py-2"
+                value={athlete.teamId || ""}
+                onChange={(e) => {
+                  const nextTeam = teamOptions.find((team) => team.id === e.target.value);
+                  setAthlete((prev) => ({
+                    ...prev,
+                    teamId: e.target.value,
+                    teamName: String(nextTeam?.name || nextTeam?.teamName || "").trim(),
+                  }));
+                }}
+              >
+                <option value="">No team assigned</option>
+                {teamOptions.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name || team.teamName || team.id}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Team assignment is separate from campaign assignment.
+              </p>
+            </div>
+          ) : null}
 
         </div>
 
