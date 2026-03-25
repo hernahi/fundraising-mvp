@@ -301,10 +301,10 @@ export default function AthleteDetail() {
   return (
 	    <div className="p-4 md:p-6 lg:p-8 max-w-6xl mx-auto">
       <Link
-        to="/athletes"
+        to={isSelf ? "/" : "/athletes"}
         className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-3"
       >
-        <FaArrowLeft /> Back to Athletes
+        <FaArrowLeft /> {isSelf ? "Back to Dashboard" : "Back to Athletes"}
       </Link>
 
       {/* Header Section */}
@@ -383,8 +383,8 @@ export default function AthleteDetail() {
               </div>
             ))}
           </div>
-          <div className={`mt-4 rounded-lg border px-4 py-3 ${readinessBlockerClasses}`}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+	          <div className={`mt-4 rounded-lg border px-4 py-3 ${readinessBlockerClasses}`}>
+	            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-sm font-semibold">{readinessBlocker.title}</div>
                 <p className="mt-1 text-xs opacity-90">{readinessBlocker.detail}</p>
@@ -394,11 +394,35 @@ export default function AthleteDetail() {
                 className="inline-flex items-center justify-center rounded-md border border-current/20 bg-white px-3 py-2 text-xs font-semibold hover:bg-white/80"
               >
                 {readinessBlocker.actionLabel}
-              </Link>
+	              </Link>
+	            </div>
+	          </div>
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-4">
+              <h2 className="text-lg font-semibold text-slate-800">Next Action</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Use Messages to manage contacts, choose your template, and send outreach. Keep this page for your progress, donation page, and supporter activity.
+              </p>
+              <div className="mt-4 space-y-3">
+                <Link
+                  to="/messages"
+                  className="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Open Messages
+                </Link>
+                {donateLink && (
+                  <a
+                    href={donateLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    View Donation Page
+                  </a>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+	        </div>
+	      )}
 
 	      {/* Athlete Card */}
 	      <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7 grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
@@ -570,40 +594,7 @@ export default function AthleteDetail() {
       </div>
 
       {isSelf && (
-        <div className="mt-8 md:mt-10 grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 md:gap-6">
-          <div className="min-w-0 bg-white rounded-xl shadow p-4 md:p-6">
-            <h2 className="text-xl font-semibold mb-2">Next Action</h2>
-            <p className="text-sm text-gray-600">
-              Use Messages to manage contacts, choose your template, and send outreach. Keep this page for your progress, donation page, and supporter activity.
-            </p>
-            <div className="mt-4 space-y-3">
-              <Link
-                to="/messages"
-                className="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                Open Messages
-              </Link>
-              {donateLink && (
-                <a
-                  href={donateLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  View Donation Page
-                </a>
-              )}
-            </div>
-            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <div className="font-medium text-slate-800">Keep moving</div>
-              <ul className="mt-2 space-y-1 text-xs">
-                <li>1. Confirm your campaign is assigned</li>
-                <li>2. Add at least 20 supporter contacts</li>
-                <li>3. Send your first outreach message</li>
-              </ul>
-            </div>
-          </div>
-
+        <div className="mt-8 md:mt-10">
           <div className="min-w-0 bg-white rounded-xl shadow p-4 md:p-6">
             <h2 className="text-xl font-semibold mb-2">My Donors</h2>
             <p className="text-sm text-gray-600 mb-4">

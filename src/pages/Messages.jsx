@@ -1892,7 +1892,7 @@ export default function Messages() {
                     <div className="text-xs uppercase tracking-wide text-slate-400">
                       Final Email Preview (Base Message + Your Personal Note)
                     </div>
-                    <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700 font-sans">
+                    <pre className="mt-2 whitespace-pre-wrap break-words break-all text-sm text-slate-700 font-sans">
                       {athleteTemplatePreview}
                     </pre>
                   </div>
