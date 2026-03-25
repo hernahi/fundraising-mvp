@@ -139,6 +139,25 @@ function formatShortDate(dateLike) {
   });
 }
 
+function getAthleteFlowStatus({ complete, started }) {
+  if (complete) {
+    return {
+      label: "Complete",
+      className: "bg-green-100 text-green-700",
+    };
+  }
+  if (started) {
+    return {
+      label: "Incomplete",
+      className: "bg-amber-100 text-amber-700",
+    };
+  }
+  return {
+    label: "Not Started",
+    className: "bg-red-100 text-red-700",
+  };
+}
+
 export default function DashboardHome() {
   const { profile } = useAuth();
   const { activeCampaignId, campaigns } = useCampaign();
@@ -184,6 +203,11 @@ export default function DashboardHome() {
   const [athleteName, setAthleteName] = useState("");
   const [athleteGoalAmount, setAthleteGoalAmount] = useState(0);
   const [athleteContactCount, setAthleteContactCount] = useState(0);
+  const [athleteProfileFlags, setAthleteProfileFlags] = useState({
+    hasPhoto: false,
+    hasBio: false,
+    hasPersonalNote: false,
+  });
 
   useEffect(() => {
     if (!isAthlete || !profile?.uid) {
@@ -214,6 +238,13 @@ export default function DashboardHome() {
         const nextAthleteGoal = Number(
           athleteData.goal ?? athleteData.personalGoal ?? athleteData.fundraisingGoal ?? 0
         );
+        const nextProfileFlags = {
+          hasPhoto: Boolean(athleteData.photoURL || athleteData.avatar || athleteData.imgUrl),
+          hasBio: Boolean(athleteData.bio || athleteData.story || athleteData.description),
+          hasPersonalNote: Boolean(
+            String(athleteData.inviteMessage || athleteData.supporterMessage || "").trim()
+          ),
+        };
         if (!nextCampaignId) {
           if (!cancelled) {
             setAthleteCampaignId("");
@@ -221,6 +252,7 @@ export default function DashboardHome() {
             setAthleteTeamId(nextTeamId);
             setAthleteName(nextAthleteName);
             setAthleteGoalAmount(Number.isFinite(nextAthleteGoal) ? nextAthleteGoal : 0);
+            setAthleteProfileFlags(nextProfileFlags);
           }
           return;
         }
@@ -244,6 +276,7 @@ export default function DashboardHome() {
           setAthleteName(nextAthleteName);
           setAthleteGoalAmount(Number.isFinite(nextAthleteGoal) ? nextAthleteGoal : 0);
           setAthleteContactCount(contactsSnap.size || 0);
+          setAthleteProfileFlags(nextProfileFlags);
         }
       } catch (err) {
         console.error("Athlete campaign load failed:", err);
@@ -254,6 +287,11 @@ export default function DashboardHome() {
           setAthleteName("");
           setAthleteGoalAmount(0);
           setAthleteContactCount(0);
+          setAthleteProfileFlags({
+            hasPhoto: false,
+            hasBio: false,
+            hasPersonalNote: false,
+          });
         }
       }
     }
@@ -396,6 +434,72 @@ export default function DashboardHome() {
       Math.round((Number(stats.fundsRaised || 0) / athleteGoalAmount) * 100)
     );
   }, [stats.fundsRaised, athleteGoalAmount]);
+
+  const athleteFlowSteps = useMemo(() => {
+    if (!isAthlete) return [];
+
+    const profileFieldsCompleteCount = [
+      athleteProfileFlags.hasPhoto,
+      athleteProfileFlags.hasBio,
+      athleteGoalAmount > 0,
+    ].filter(Boolean).length;
+    const profileComplete = profileFieldsCompleteCount === 3;
+    const profileStarted = profileFieldsCompleteCount > 0;
+
+    const contactsComplete = athleteContactCount >= 20;
+    const contactsStarted = athleteContactCount > 0;
+
+    const notesComplete = athleteProfileFlags.hasPersonalNote;
+    const notesStarted = athleteProfileFlags.hasPersonalNote || athleteContactCount > 0;
+
+    return [
+      {
+        key: "profile",
+        label: "1. Create/Modify Profile",
+        detail: profileComplete
+          ? "Photo, bio, and personal goal are ready."
+          : `${profileFieldsCompleteCount}/3 profile items complete`,
+        to: profile?.uid ? `/athletes/${profile.uid}` : "/athletes",
+        cta: "Open Profile",
+        status: getAthleteFlowStatus({
+          complete: profileComplete,
+          started: profileStarted,
+        }),
+      },
+      {
+        key: "contacts",
+        label: "2. Complete 20+ email address entries",
+        detail: contactsComplete
+          ? `${athleteContactCount} contacts ready`
+          : `${athleteContactCount}/20 contacts added`,
+        to: "/messages#contacts",
+        cta: "Open Contacts",
+        status: getAthleteFlowStatus({
+          complete: contactsComplete,
+          started: contactsStarted,
+        }),
+      },
+      {
+        key: "notes",
+        label: "3. Send personal notes whenever possible",
+        detail: notesComplete
+          ? "Personal note is ready to personalize outreach."
+          : "Add a short personal note to make messages feel more direct.",
+        to: "/messages#drip-campaign",
+        cta: "Open Invite Message",
+        status: getAthleteFlowStatus({
+          complete: notesComplete,
+          started: notesStarted,
+        }),
+      },
+    ];
+  }, [
+    isAthlete,
+    athleteProfileFlags,
+    athleteGoalAmount,
+    athleteContactCount,
+    profile?.uid,
+  ]);
 
   const campaignStartDate = useMemo(() => {
     return (
@@ -1107,6 +1211,44 @@ export default function DashboardHome() {
             >
               Open Messages
             </Link>
+          </div>
+        </div>
+      )}
+
+      {isAthlete && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="px-4 py-3 border-b border-slate-200">
+            <h2 className="text-sm font-semibold text-slate-900">Athlete Onboarding Flow</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Follow this sequence to finish setup and start stronger outreach.
+            </p>
+          </div>
+          <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            {athleteFlowSteps.map((step) => (
+              <div
+                key={step.key}
+                className="rounded-lg border border-slate-200 p-3 flex flex-col gap-2 bg-slate-50/40"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium text-slate-800">{step.label}</div>
+                  <span
+                    className={[
+                      "text-[11px] px-2 py-1 rounded-full font-semibold",
+                      step.status.className,
+                    ].join(" ")}
+                  >
+                    {step.status.label}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-600">{step.detail}</div>
+                <Link
+                  to={step.to}
+                  className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  {step.cta}
+                </Link>
+              </div>
+            ))}
           </div>
         </div>
       )}
