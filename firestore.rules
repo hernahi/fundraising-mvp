@@ -332,10 +332,14 @@ service cloud.firestore {
         && canAccessOrg(resource.data.orgId)
         && orgIdUnchanged();
 
-      // ✅ Athlete can update their own invite message (no other fields)
+      // ✅ Athlete can update their own profile-facing fields.
+      // Legacy athlete docs may be missing orgId, so self-edit should not fail on that shape.
       allow update: if isSignedIn()
         && request.auth.uid == athleteId
-        && canAccessOrg(resource.data.orgId)
+        && (
+          !("orgId" in resource.data)
+          || canAccessOrg(resource.data.orgId)
+        )
         && request.resource.data.diff(resource.data).changedKeys()
           .hasOnly([
             "name",
