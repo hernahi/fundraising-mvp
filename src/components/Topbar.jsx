@@ -27,6 +27,13 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
   const menuRef = useRef(null);
   const role = (profile?.role || "").toLowerCase();
   const isAthlete = role === "athlete";
+  const displayLabel =
+    profile?.displayName ||
+    profile?.name ||
+    user?.displayName ||
+    profile?.email ||
+    user?.email ||
+    "User";
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -53,7 +60,7 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
   const avatarSrc = safeImage(
     profile?.photoURL || user?.photoURL || "",
     avatarFallback({
-      label: profile?.name || user?.displayName || "User",
+      label: displayLabel,
       type: "user",
       size: 96,
     })
@@ -126,7 +133,7 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
 
             <div className="leading-tight text-right hidden sm:block">
               <div className="text-sm font-medium truncate max-w-[180px]">
-                {profile?.name || user?.displayName || "User"}
+                {displayLabel}
               </div>
               <div className="text-xs text-gray-500">
                 Role: {profile?.role || "user"}
@@ -174,4 +181,3 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
     </header>
   );
 }
-

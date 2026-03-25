@@ -53,7 +53,20 @@ export function AuthProvider({ children }) {
 
         if (snap.exists()) {
           const data = snap.data() || {};
-          let nextProfile = data;
+          const authDisplayName = String(auth.currentUser?.displayName || "").trim();
+          const authEmail = String(auth.currentUser?.email || "").trim();
+          const authPhotoURL = String(auth.currentUser?.photoURL || "").trim();
+          let nextProfile = {
+            ...data,
+            displayName: String(
+              data?.displayName || data?.name || authDisplayName || authEmail || ""
+            ).trim(),
+            name: String(
+              data?.name || data?.displayName || authDisplayName || authEmail || ""
+            ).trim(),
+            email: String(data?.email || authEmail || "").trim(),
+            photoURL: String(data?.photoURL || authPhotoURL || "").trim(),
+          };
 
           if (String(data?.role || "").toLowerCase() === "coach" && data?.orgId) {
             const explicitTeamIds = Array.isArray(data.teamIds)
@@ -102,6 +115,15 @@ export function AuthProvider({ children }) {
               const athleteSnap = await getDoc(doc(db, "athletes", uid));
               if (athleteSnap.exists()) {
                 const athleteData = athleteSnap.data() || {};
+                const athleteDisplayName = String(
+                  athleteData?.name ||
+                    athleteData?.displayName ||
+                    nextProfile?.displayName ||
+                    nextProfile?.name ||
+                    authDisplayName ||
+                    authEmail ||
+                    ""
+                ).trim();
                 const athleteTeamId = String(
                   nextProfile?.teamId || athleteData?.teamId || ""
                 ).trim();
@@ -120,6 +142,15 @@ export function AuthProvider({ children }) {
 
                 nextProfile = {
                   ...nextProfile,
+                  displayName: athleteDisplayName || nextProfile?.displayName || "",
+                  name: athleteDisplayName || nextProfile?.name || "",
+                  photoURL: String(
+                    athleteData?.photoURL ||
+                      athleteData?.avatar ||
+                      nextProfile?.photoURL ||
+                      authPhotoURL ||
+                      ""
+                  ).trim(),
                   teamId: athleteTeamId || nextProfile?.teamId || "",
                   teamName: athleteTeamName || nextProfile?.teamName || athleteTeamId || "",
                 };

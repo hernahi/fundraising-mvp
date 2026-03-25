@@ -12,6 +12,7 @@ import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { safeImageURL } from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
+import { uploadTeamImage } from "../utils/uploadTeamImage";
 import { FaArrowLeft } from "react-icons/fa";
 
 export default function EditTeam() {
@@ -30,6 +31,7 @@ export default function EditTeam() {
   const [notes, setNotes] = useState("");
   const [avatar, setAvatar] = useState("");        // stored URL
   const [avatarPreview, setAvatarPreview] = useState(""); // preview on screen
+  const [avatarFile, setAvatarFile] = useState(null);
 
   const [saving, setSaving] = useState(false);
 
@@ -56,8 +58,10 @@ export default function EditTeam() {
         setAddress(data.address || "");
         setPhone(data.phone || "");
         setNotes(data.notes || "");
-        setAvatar(data.avatar || "");
-        setAvatarPreview(safeImageURL(data.avatar));
+        const resolvedAvatar =
+          data.avatar || data.photoURL || data.imgUrl || data.logo || "";
+        setAvatar(resolvedAvatar);
+        setAvatarPreview(safeImageURL(resolvedAvatar));
       } catch (e) {
         console.error("Error loading team:", e);
       }
@@ -80,7 +84,7 @@ export default function EditTeam() {
     setAvatarPreview(localURL);
 
     // In a real system we upload to storage here — for now store raw file name
-    setAvatar(localURL);
+    setAvatarFile(file);
   }
 
 
@@ -97,6 +101,10 @@ export default function EditTeam() {
       setSaving(true);
 
       const ref = doc(db, "teams", teamId);
+      let finalAvatar = String(avatar || "").trim();
+      if (avatarFile) {
+        finalAvatar = (await uploadTeamImage(avatarFile, teamId)) || finalAvatar;
+      }
 
       await updateDoc(ref, {
         name: name.trim(),
@@ -104,7 +112,9 @@ export default function EditTeam() {
         address: address.trim(),
         phone: phone.trim(),
         notes: notes.trim(),
-        avatar,
+        avatar: finalAvatar,
+        photoURL: finalAvatar,
+        imgUrl: finalAvatar,
         ...(isSuperAdmin && { orgId: orgId.trim() }), // super-admin only
       });
 

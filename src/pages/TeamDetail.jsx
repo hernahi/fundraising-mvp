@@ -267,9 +267,9 @@ export default function TeamDetail() {
 
       {/* TEAM AVATAR */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
-        <img
-          src={safeImageURL(
-            team.avatar,
+          <img
+            src={safeImageURL(
+            team.avatar || team.photoURL || team.imgUrl || team.logo,
             avatarFallback({ label: team.name || "Team", type: "team", size: 192 })
           )}
           alt="Team Avatar"

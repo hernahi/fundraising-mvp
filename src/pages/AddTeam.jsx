@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { FaArrowLeft } from "react-icons/fa";
 
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { safeImageURL } from "../utils/safeImage";
 import avatarFallback from "../utils/avatarFallback";
+import { uploadTeamImage } from "../utils/uploadTeamImage";
 
 export default function AddTeam() {
   const { profile, isSuperAdmin, activeOrgId } = useAuth();
@@ -22,6 +23,7 @@ export default function AddTeam() {
   const [notes, setNotes] = useState("");
   const [avatar, setAvatar] = useState("");
   const [avatarPreview, setAvatarPreview] = useState("");
+  const [avatarFile, setAvatarFile] = useState(null);
 
   const [saving, setSaving] = useState(false);
 
@@ -40,7 +42,7 @@ export default function AddTeam() {
 
     const localURL = URL.createObjectURL(file);
     setAvatarPreview(localURL);
-    setAvatar(localURL);
+    setAvatarFile(file);
   }
 
   // ---------------------------------------------------
@@ -60,17 +62,31 @@ export default function AddTeam() {
 
     try {
       setSaving(true);
-
-      await addDoc(collection(db, "teams"), {
+      const teamRef = await addDoc(collection(db, "teams"), {
         name: name.trim(),
         orgId: effectiveOrgId,
         description: description.trim(),
         address: address.trim(),
         phone: phone.trim(),
         notes: notes.trim(),
-        avatar: avatar || "",
+        avatar: "",
+        photoURL: "",
+        imgUrl: "",
         createdAt: serverTimestamp(),
       });
+
+      let finalAvatar = String(avatar || "").trim();
+      if (avatarFile) {
+        finalAvatar = (await uploadTeamImage(avatarFile, teamRef.id)) || "";
+      }
+
+      if (finalAvatar) {
+        await updateDoc(doc(db, "teams", teamRef.id), {
+          avatar: finalAvatar,
+          photoURL: finalAvatar,
+          imgUrl: finalAvatar,
+        });
+      }
 
       navigate("/teams");
     } catch (err) {
