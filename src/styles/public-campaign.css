@@ -445,6 +445,13 @@
   font-size: 16px;
   font-weight: 700;
   line-height: 1.2;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.public-card .text-lg.font-semibold {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .public-athlete-track {
