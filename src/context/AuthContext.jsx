@@ -176,8 +176,13 @@ export function AuthProvider({ children }) {
 
           setProfile(nextProfile);
 
-          // Initialize activeOrgId once profile is loaded.
-          if (!activeOrgId && nextProfile?.orgId) {
+          const nextRole = String(nextProfile?.role || "").toLowerCase();
+          if (nextRole === "super-admin") {
+            setActiveOrgId((currentOrgId) =>
+              currentOrgId === nextProfile?.orgId ? null : currentOrgId
+            );
+          } else if (!activeOrgId && nextProfile?.orgId) {
+            // Non-super-admin roles stay pinned to their org by default.
             setActiveOrgId(nextProfile.orgId);
           }
 

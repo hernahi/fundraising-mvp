@@ -111,7 +111,9 @@ export default function AdminUsers() {
   const role = String(profile?.role || "").toLowerCase();
   const isManager = role === "admin" || role === "super-admin" || role === "coach";
   const isAdmin = role === "admin" || role === "super-admin";
-  const scopedOrgId = String(activeOrgId || profile?.orgId || "").trim();
+  const scopedOrgId = String(
+    isSuperAdmin ? activeOrgId || "" : activeOrgId || profile?.orgId || ""
+  ).trim();
 
   const [users, setUsers] = useState([]);
   const [invites, setInvites] = useState([]);
