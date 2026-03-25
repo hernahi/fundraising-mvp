@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  collection,
-  documentId,
-  query,
-  where,
-  getDocs,
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { collection, documentId, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { buildCoachTotals } from "../utils/coachAttribution";
@@ -63,7 +55,15 @@ export default function Coaches() {
   const coachTeamIds = getCoachScopedTeamIds(profile);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setCoaches([]);
+      setRollups([]);
+      setCampaigns([]);
+      setTeams([]);
+      setUsersByUid({});
+      setLoading(false);
+      return;
+    }
 
     async function load() {
       setLoading(true);
