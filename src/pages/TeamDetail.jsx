@@ -33,7 +33,7 @@ export default function TeamDetail() {
   const { teamId } = useParams();
   const id = teamId;
 
-  const { profile } = useAuth();
+  const { profile, activeOrgId, isSuperAdmin } = useAuth();
 
   const [team, setTeam] = useState(null);
   const [athletes, setAthletes] = useState([]);
@@ -84,6 +84,17 @@ export default function TeamDetail() {
         const teamData = { id: teamSnap.id, ...teamSnap.data() };
 
         // Basic org guard (query-level isolation remains primary; this is a safe UI check)
+        const selectedOrgId = String(activeOrgId || "").trim();
+        if (
+          isSuperAdmin &&
+          selectedOrgId &&
+          teamData.orgId &&
+          teamData.orgId !== selectedOrgId
+        ) {
+          if (!cancelled) setTeam(null);
+          return;
+        }
+
         if (profile?.orgId && teamData.orgId && teamData.orgId !== profile.orgId && profile.role !== "super-admin") {
           if (!cancelled) setTeam(null);
           return;
@@ -97,14 +108,23 @@ export default function TeamDetail() {
           orgId
             ? query(collection(db, "athletes"), where("orgId", "==", orgId), where("teamId", "==", id))
             : query(collection(db, "athletes"), where("teamId", "==", id));
-        const campaignsQuery =
-          orgId
-            ? query(collection(db, "campaigns"), where("orgId", "==", orgId), where("teamId", "==", id))
-            : query(collection(db, "campaigns"), where("teamId", "==", id));
 
-        const [athletesSnap, campaignsSnap, coachSnap] = await Promise.all([
+        const [athletesSnap, campaignsSnapByTeamId, campaignsSnapByTeamIds, coachSnap] = await Promise.all([
           getDocs(athletesQuery),
-          getDocs(campaignsQuery),
+          orgId
+            ? getDocs(
+                query(collection(db, "campaigns"), where("orgId", "==", orgId), where("teamId", "==", id))
+              )
+            : getDocs(query(collection(db, "campaigns"), where("teamId", "==", id))),
+          orgId
+            ? getDocs(
+                query(
+                  collection(db, "campaigns"),
+                  where("orgId", "==", orgId),
+                  where("teamIds", "array-contains", id)
+                )
+              )
+            : Promise.resolve({ docs: [] }),
           teamData.coachId ? getDoc(doc(db, "users", teamData.coachId)) : Promise.resolve(null),
         ]);
 
@@ -122,6 +142,14 @@ export default function TeamDetail() {
             console.warn("Athlete self fallback skipped:", selfErr?.message || selfErr);
           }
         }
+
+        const campaignRowsById = new Map();
+        campaignsSnapByTeamId.docs.forEach((entry) => {
+          campaignRowsById.set(entry.id, { id: entry.id, ...entry.data() });
+        });
+        campaignsSnapByTeamIds.docs.forEach((entry) => {
+          campaignRowsById.set(entry.id, { id: entry.id, ...entry.data() });
+        });
 
         let resolvedCoachUser =
           coachSnap && coachSnap.exists && coachSnap.exists()
@@ -168,7 +196,7 @@ export default function TeamDetail() {
 
         if (!cancelled) {
           setAthletes(athleteRows);
-          setCampaigns(campaignsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setCampaigns(Array.from(campaignRowsById.values()));
           setCoachUser(resolvedCoachUser);
         }
       } catch (err) {
@@ -182,7 +210,7 @@ export default function TeamDetail() {
     return () => {
       cancelled = true;
     };
-  }, [id, profile, reloadKey]);
+  }, [id, profile, reloadKey, activeOrgId, isSuperAdmin]);
 
   const joinLink = useMemo(() => {
     return team?.joinCode ? `${window.location.origin}/join?code=${team.joinCode}` : null;

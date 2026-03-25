@@ -68,29 +68,25 @@ export default function Coaches() {
     async function load() {
       setLoading(true);
       try {
-        const coachesSnap = await getDocs(
-          query(collection(db, "coaches"), where("orgId", "==", orgId))
-        );
+        const [coachesSnap, coachUsersSnap] = await Promise.all([
+          getDocs(query(collection(db, "coaches"), where("orgId", "==", orgId))),
+          getDocs(
+            query(
+              collection(db, "users"),
+              where("orgId", "==", orgId),
+              where("role", "==", "coach")
+            )
+          ),
+        ]);
 
-        const coachRows = coachesSnap.docs.map((d) => ({
+        const coachRowsFromDocs = coachesSnap.docs.map((d) => ({
           id: d.id,
           ...d.data(),
         }));
-
-        const coachUids = coachRows.map((c) => c.uid).filter(Boolean);
-        const usersMap = {};
-        await Promise.all(
-          coachUids.slice(0, 100).map(async (uid) => {
-            try {
-              const userSnap = await getDoc(doc(db, "users", uid));
-              if (userSnap.exists()) {
-                usersMap[uid] = userSnap.data();
-              }
-            } catch (_) {
-              // Skip unreadable user docs so one record does not block page load.
-            }
-          })
-        );
+        const usersMap = coachUsersSnap.docs.reduce((acc, entry) => {
+          acc[entry.id] = entry.data() || {};
+          return acc;
+        }, {});
 
         const [rollupsSnap, campaignsSnap, teamsSnap] = await Promise.all([
           isAdmin
@@ -158,8 +154,42 @@ export default function Coaches() {
           })(),
         ]);
 
+        const coachesByUid = new Map();
+        coachRowsFromDocs.forEach((coachRow) => {
+          const key = String(coachRow.uid || coachRow.id || "").trim();
+          if (key) coachesByUid.set(key, coachRow);
+        });
+
+        const mergedCoachRows = [...coachRowsFromDocs];
+        coachUsersSnap.docs.forEach((entry) => {
+          const uid = entry.id;
+          const userData = entry.data() || {};
+          if (coachesByUid.has(uid)) return;
+          mergedCoachRows.push({
+            id: uid,
+            uid,
+            orgId,
+            name:
+              userData.displayName ||
+              userData.name ||
+              userData.email ||
+              "Coach",
+            email: userData.email || "",
+            teamId: userData.teamId || "",
+            teamIds: Array.isArray(userData.teamIds)
+              ? userData.teamIds
+              : Array.isArray(userData.assignedTeamIds)
+                ? userData.assignedTeamIds
+                : [],
+            status: userData.status || "active",
+            role: userData.role || "coach",
+            createdAt: userData.createdAt || null,
+            _fromUsersOnly: true,
+          });
+        });
+
         setUsersByUid(usersMap);
-        setCoaches(coachRows);
+        setCoaches(mergedCoachRows);
         setRollups(rollupsSnap.docs.map((d) => d.data()));
         setCampaigns(
           campaignsSnap.docs.map((d) => ({
@@ -194,14 +224,30 @@ export default function Coaches() {
       const user = usersByUid[c.uid] || {};
       const role = resolveCoachRole(user, c);
       const status = resolveCoachStatus(user, c);
+      const linkedCoachId = String(c.uid || c.id || "").trim();
       const assignedTeamIds = new Set(
-        teams.filter((t) => t.coachId === c.uid).map((t) => t.id)
+        teams.filter((t) => String(t.coachId || "").trim() === linkedCoachId).map((t) => t.id)
       );
       if (c.teamId && teams.some((t) => t.id === c.teamId)) {
         assignedTeamIds.add(c.teamId);
       }
+      const explicitTeamIds = Array.isArray(c.teamIds)
+        ? c.teamIds
+        : Array.isArray(user.teamIds)
+          ? user.teamIds
+          : Array.isArray(user.assignedTeamIds)
+            ? user.assignedTeamIds
+            : [];
+      explicitTeamIds
+        .map((teamId) => String(teamId || "").trim())
+        .filter(Boolean)
+        .forEach((teamId) => {
+          if (teams.some((t) => t.id === teamId)) {
+            assignedTeamIds.add(teamId);
+          }
+        });
       const teamsCount = assignedTeamIds.size;
-      const raisedCents = Number((coachTotals[c.uid] || { amount: 0 }).amount || 0);
+      const raisedCents = Number((coachTotals[linkedCoachId] || { amount: 0 }).amount || 0);
       const name = user.displayName || c.name || "Coach";
       const email = user.email || c.email || "-";
 

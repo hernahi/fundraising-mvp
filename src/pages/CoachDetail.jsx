@@ -7,6 +7,7 @@ import {
   getDoc,
   getDocs,
   query,
+  setDoc,
   serverTimestamp,
   updateDoc,
   where,
@@ -18,8 +19,8 @@ import ListLoadingSpinner from "../components/ListLoadingSpinner";
 
 export default function CoachDetail() {
   const { id } = useParams();
-  const { profile, activeOrgId, loading: authLoading } = useAuth();
-  const orgId = activeOrgId || profile?.orgId;
+  const { profile, activeOrgId, isSuperAdmin, loading: authLoading } = useAuth();
+  const orgId = isSuperAdmin ? activeOrgId || "" : profile?.orgId || "";
   const isAdmin = ["admin", "super-admin"].includes(profile?.role);
 
   const [loading, setLoading] = useState(true);
@@ -43,32 +44,58 @@ export default function CoachDetail() {
     async function load() {
       setLoading(true);
       try {
-        const coachSnap = await getDoc(doc(db, "coaches", id));
-        if (!coachSnap.exists()) {
+        const [coachSnap, userSnap] = await Promise.all([
+          getDoc(doc(db, "coaches", id)),
+          getDoc(doc(db, "users", id)),
+        ]);
+
+        const coachData = coachSnap.exists()
+          ? { id: coachSnap.id, ...coachSnap.data() }
+          : null;
+        const userData = userSnap.exists()
+          ? { id: userSnap.id, ...userSnap.data() }
+          : null;
+
+        if (!coachData && !(userData && String(userData.role || "").toLowerCase() === "coach")) {
           setCoach(null);
           setNoAccess(false);
           return;
         }
 
-        const coachData = { id: coachSnap.id, ...coachSnap.data() };
-        if (coachData.orgId !== orgId) {
+        const resolvedOrg = coachData?.orgId || userData?.orgId || "";
+        if (resolvedOrg !== orgId) {
           setNoAccess(true);
           setCoach(null);
           return;
         }
 
-        const coachUid = coachData.uid || coachData.id;
-        const userSnap = coachUid ? await getDoc(doc(db, "users", coachUid)) : null;
-        const userData = userSnap?.exists?.() ? { id: userSnap.id, ...userSnap.data() } : null;
+        const resolvedCoach = coachData || {
+          id: id,
+          uid: id,
+          orgId: resolvedOrg,
+          name:
+            userData?.displayName ||
+            userData?.name ||
+            userData?.email ||
+            "Coach",
+          email: userData?.email || "",
+          teamId: userData?.teamId || "",
+          team: userData?.teamName || "",
+          role: "coach",
+          status: userData?.status || "active",
+          _fromUsersOnly: true,
+        };
+
+        const coachUid = resolvedCoach.uid || resolvedCoach.id;
 
         const [teamSnap, athletesSnap] = await Promise.all([
           getDocs(query(collection(db, "teams"), where("orgId", "==", orgId))),
-          coachData.teamId
+          resolvedCoach.teamId
             ? getDocs(
                 query(
                   collection(db, "athletes"),
                   where("orgId", "==", orgId),
-                  where("teamId", "==", coachData.teamId)
+                  where("teamId", "==", resolvedCoach.teamId)
                 )
               )
             : Promise.resolve({ size: 0 }),
@@ -78,15 +105,15 @@ export default function CoachDetail() {
         setTeamOptions(nextTeams);
         setAthleteCount(athletesSnap.size || 0);
 
-        const resolvedName = userData?.displayName || coachData.name || "";
-        const resolvedEmail = userData?.email || coachData.email || "";
-        const resolvedTeamId = coachData.teamId || "";
+        const resolvedName = userData?.displayName || resolvedCoach.name || "";
+        const resolvedEmail = userData?.email || resolvedCoach.email || "";
+        const resolvedTeamId = resolvedCoach.teamId || "";
         const resolvedTeamName =
           nextTeams.find((t) => t.id === resolvedTeamId)?.name ||
-          coachData.team ||
+          resolvedCoach.team ||
           "";
 
-        setCoach(coachData);
+        setCoach(resolvedCoach);
         setUser(userData);
         setNoAccess(false);
         setForm({
@@ -138,14 +165,29 @@ export default function CoachDetail() {
       const nextTeamName = selectedTeam?.name || "";
       const nextCoachUid = coach.uid || coach.id;
       const nextTeamId = form.teamId || null;
-
-      await updateDoc(doc(db, "coaches", coach.id), {
+      const coachRef = doc(db, "coaches", coach.id);
+      const coachPayload = {
         name: form.name.trim(),
         email: form.email.trim(),
         teamId: nextTeamId,
         team: nextTeamName || null,
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      if (coach._fromUsersOnly) {
+        await setDoc(
+          coachRef,
+          {
+            uid: nextCoachUid,
+            orgId,
+            createdAt: serverTimestamp(),
+            ...coachPayload,
+          },
+          { merge: true }
+        );
+      } else {
+        await updateDoc(coachRef, coachPayload);
+      }
 
       if (nextCoachUid && user?.id) {
         await updateDoc(doc(db, "users", nextCoachUid), {
@@ -166,6 +208,7 @@ export default function CoachDetail() {
         prev
           ? {
               ...prev,
+              _fromUsersOnly: false,
               name: form.name.trim(),
               email: form.email.trim(),
               teamId: nextTeamId,

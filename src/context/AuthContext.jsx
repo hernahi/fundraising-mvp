@@ -13,11 +13,18 @@ import { collection, doc, getDoc, getDocs, query, where } from "firebase/firesto
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
+const ACTIVE_ORG_STORAGE_KEY = "activeOrgId";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [activeOrgId, setActiveOrgId] = useState(null);
+  const [activeOrgId, setActiveOrgId] = useState(() => {
+    try {
+      return localStorage.getItem(ACTIVE_ORG_STORAGE_KEY) || null;
+    } catch {
+      return null;
+    }
+  });
   const [activeOrgName, setActiveOrgName] = useState("");
   const [loading, setLoading] = useState(true);
   const isSuperAdmin = profile?.role === "super-admin";
@@ -45,6 +52,11 @@ export function AuthProvider({ children }) {
     setProfile(null);
     setActiveOrgId(null);
     setActiveOrgName("");
+    try {
+      localStorage.removeItem(ACTIVE_ORG_STORAGE_KEY);
+    } catch {
+      // Ignore storage cleanup issues during logout.
+    }
   };
 
   const loadProfile = useCallback(
@@ -266,6 +278,22 @@ export function AuthProvider({ children }) {
       cancelled = true;
     };
   }, [profile, activeOrgId]);
+
+  useEffect(() => {
+    try {
+      if (isSuperAdmin) {
+        if (activeOrgId) {
+          localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, activeOrgId);
+        } else {
+          localStorage.removeItem(ACTIVE_ORG_STORAGE_KEY);
+        }
+        return;
+      }
+      localStorage.removeItem(ACTIVE_ORG_STORAGE_KEY);
+    } catch {
+      // Ignore storage sync issues so auth state still works.
+    }
+  }, [isSuperAdmin, activeOrgId]);
 
   return (
     <AuthContext.Provider

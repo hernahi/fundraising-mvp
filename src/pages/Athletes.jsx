@@ -54,7 +54,7 @@ function StatusBadge({ status }) {
 }
 
 export default function Athletes() {
-  const { profile } = useAuth();
+  const { profile, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
 
   const [athletes, setAthletes] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -68,15 +68,20 @@ export default function Athletes() {
   // ---------------------------------------------------
   // ACCESS CONTROL FLAGS
   // ---------------------------------------------------
-  const isSuperAdmin = profile?.role === "super-admin";
   const isAdmin = profile?.role === "admin";
   const isCoach = profile?.role === "coach";
+  const resolvedOrgId = isSuperAdmin
+    ? String(activeOrgId || "").trim()
+    : String(profile?.orgId || "").trim();
+  const orgDisplayName = isSuperAdmin
+    ? activeOrgName || resolvedOrgId || "the selected organization"
+    : profile?.orgName || resolvedOrgId || "your organization";
 
   // ---------------------------------------------------
   // LOAD ATHLETES + TEAMS
   // ---------------------------------------------------
   useEffect(() => {
-    if (!profile?.orgId || (!isAdmin && !isCoach && !isSuperAdmin)) {
+    if (!resolvedOrgId || (!isAdmin && !isCoach && !isSuperAdmin)) {
       setLoading(false);
       return;
     }
@@ -90,13 +95,13 @@ export default function Athletes() {
 // -----------------------------
 let teamsQ = query(
   collection(db, "teams"),
-  where("orgId", "==", profile.orgId)
+  where("orgId", "==", resolvedOrgId)
 );
 
 if (isCoach && profile.uid) {
   teamsQ = query(
     collection(db, "teams"),
-    where("orgId", "==", profile.orgId),
+    where("orgId", "==", resolvedOrgId),
     where("coachId", "==", profile.uid)
   );
 }
@@ -122,7 +127,7 @@ if (isCoach) {
   } else if (coachTeamIds.length === 1) {
     const athletesQ = query(
       collection(db, "athletes"),
-      where("orgId", "==", profile.orgId),
+      where("orgId", "==", resolvedOrgId),
       where("teamId", "==", coachTeamIds[0])
     );
     const snap = await getDocs(athletesQ);
@@ -130,7 +135,7 @@ if (isCoach) {
   } else if (coachTeamIds.length <= 10) {
     const athletesQ = query(
       collection(db, "athletes"),
-      where("orgId", "==", profile.orgId),
+      where("orgId", "==", resolvedOrgId),
       where("teamId", "in", coachTeamIds)
     );
     const snap = await getDocs(athletesQ);
@@ -142,7 +147,7 @@ if (isCoach) {
 } else {
   const athletesQ = query(
     collection(db, "athletes"),
-    where("orgId", "==", profile.orgId)
+    where("orgId", "==", resolvedOrgId)
   );
   const snap = await getDocs(athletesQ);
   athleteRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -164,7 +169,7 @@ if (isCoach && teamRows.length > 0) {
     }
 
     loadData();
-  }, [profile?.orgId, isAdmin, isCoach, isSuperAdmin, profile?.uid]);
+  }, [resolvedOrgId, isAdmin, isCoach, isSuperAdmin, profile?.uid]);
 
   // ---------------------------------------------------
   // FILTERED ATHLETES
@@ -262,7 +267,9 @@ if (isCoach && teamRows.length > 0) {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">Athletes</h1>
           <p className="text-gray-500 mt-1">
-            View and manage athletes in your organization.
+            {isSuperAdmin
+              ? `Viewing athletes for ${orgDisplayName}.`
+              : "View and manage athletes in your organization."}
           </p>
           <p className="text-sm text-slate-500 mt-2">
             {isCoach
@@ -351,10 +358,16 @@ if (isCoach && teamRows.length > 0) {
       )}
 
       {/* LOADING */}
-      {loading && <p className="text-gray-600">Loading athletes…</p>}
+      {loading && <p className="text-gray-600">Loading athletes...</p>}
+
+      {!loading && isSuperAdmin && !resolvedOrgId && (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
+          Select an organization to view athletes.
+        </div>
+      )}
 
       {/* EMPTY */}
-      {!loading && visibleAthletes.length === 0 && (
+      {!loading && resolvedOrgId && visibleAthletes.length === 0 && (
         <div className="p-10 bg-white border rounded-xl text-center shadow">
           <h2 className="text-xl font-semibold">No Athletes Found</h2>
           <p className="text-gray-500 mt-2">
@@ -382,7 +395,7 @@ if (isCoach && teamRows.length > 0) {
       )}
 
       {/* GRID */}
-      {!loading && visibleAthletes.length > 0 && (
+      {!loading && resolvedOrgId && visibleAthletes.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5 lg:gap-6">
           {visibleAthletes.map((ath) => {
             const teamName =

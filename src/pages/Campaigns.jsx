@@ -1,21 +1,46 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { Link } from "react-router-dom";
 
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function Campaigns() {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
   const [campaigns, setCampaigns] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
 
-  const orgId = profile?.orgId || null;
-  const role = (profile?.role || "").toLowerCase();
+  const role = String(profile?.role || "").toLowerCase();
+  const resolvedOrgId = isSuperAdmin ? activeOrgId || "" : profile?.orgId || "";
+  const orgDisplayName = isSuperAdmin
+    ? activeOrgName || resolvedOrgId || "the selected organization"
+    : profile?.orgName || resolvedOrgId || "your organization";
+  const coachTeamIds = useMemo(
+    () => getCoachScopedTeamIds(profile),
+    [profile?.role, profile?.teamId, JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || [])]
+  );
 
   useEffect(() => {
     async function load() {
-      if (!user || !orgId) {
+      if (!user || !resolvedOrgId) {
+        setCampaigns([]);
         setLoadingCampaigns(false);
         return;
       }
@@ -23,36 +48,58 @@ export default function Campaigns() {
       try {
         setLoadingCampaigns(true);
 
-        let campaignsQuery;
+        let campaignRows = [];
 
         if (role === "coach") {
-          const teamsQ = query(
-            collection(db, "teams"),
-            where("orgId", "==", orgId),
-            where("coachId", "==", profile.uid)
-          );
-
-          const teamsSnap = await getDocs(teamsQ);
-          const coachTeamIds = teamsSnap.docs.map((d) => d.id);
-
           if (coachTeamIds.length === 0) {
             setCampaigns([]);
             return;
           }
 
-          campaignsQuery = query(
-            collection(db, "campaigns"),
-            where("teamIds", "array-contains-any", coachTeamIds.slice(0, 10))
+          const chunkedTeamIds = [];
+          for (let i = 0; i < coachTeamIds.length; i += 10) {
+            chunkedTeamIds.push(coachTeamIds.slice(i, i + 10));
+          }
+
+          const snaps = await Promise.all(
+            chunkedTeamIds.map((chunk) =>
+              getDocs(
+                query(
+                  collection(db, "campaigns"),
+                  where("orgId", "==", resolvedOrgId),
+                  chunk.length === 1
+                    ? where("teamId", "==", chunk[0])
+                    : where("teamId", "in", chunk)
+                )
+              )
+            )
           );
+
+          const merged = new Map();
+          snaps.forEach((snap) => {
+            snap.docs.forEach((entry) => {
+              merged.set(entry.id, { id: entry.id, ...entry.data() });
+            });
+          });
+          campaignRows = Array.from(merged.values());
         } else {
-          campaignsQuery = query(
-            collection(db, "campaigns"),
-            where("orgId", "==", orgId)
+          const snap = await getDocs(
+            query(collection(db, "campaigns"), where("orgId", "==", resolvedOrgId))
           );
+          campaignRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         }
 
-        const snap = await getDocs(campaignsQuery);
-        setCampaigns(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        campaignRows.sort((left, right) => {
+          const leftTime =
+            left.createdAt?.toDate?.()?.getTime?.() ||
+            (left.createdAt?.seconds ? left.createdAt.seconds * 1000 : 0);
+          const rightTime =
+            right.createdAt?.toDate?.()?.getTime?.() ||
+            (right.createdAt?.seconds ? right.createdAt.seconds * 1000 : 0);
+          return rightTime - leftTime;
+        });
+
+        setCampaigns(campaignRows);
       } catch (err) {
         console.error("Error loading campaigns:", err);
       } finally {
@@ -61,7 +108,7 @@ export default function Campaigns() {
     }
 
     load();
-  }, [user, orgId, role, profile?.uid]);
+  }, [user, resolvedOrgId, role, JSON.stringify(coachTeamIds)]);
 
   if (loading || loadingCampaigns) {
     return <div className="p-4 md:p-6 text-base">Loading campaigns...</div>;
@@ -73,12 +120,18 @@ export default function Campaigns() {
         <div>
           <h1 className="text-2xl font-semibold">Campaigns</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Open a campaign to assign teams, review performance, and launch fundraising activity.
+            {isSuperAdmin
+              ? `Viewing campaigns for ${orgDisplayName}.`
+              : "Open a campaign to assign teams, review performance, and launch fundraising activity."}
           </p>
         </div>
       </div>
 
-      {campaigns.length === 0 ? (
+      {isSuperAdmin && !resolvedOrgId ? (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
+          Select an organization to view campaigns.
+        </div>
+      ) : campaigns.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">
           No campaigns found for this organization.
           <div className="mt-2 text-sm text-slate-500">
