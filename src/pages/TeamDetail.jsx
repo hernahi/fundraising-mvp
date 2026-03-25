@@ -48,6 +48,7 @@ export default function TeamDetail() {
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super-admin";
   const isCoach = profile?.role === "coach";
+  const isAthlete = profile?.role === "athlete";
   const primaryActionClass =
     "px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm text-center shadow-sm";
   const secondaryActionClass =
@@ -63,6 +64,9 @@ export default function TeamDetail() {
     if (Number.isNaN(parsed.getTime())) return null;
     return parsed;
   };
+
+  const profileBackTo = isAthlete && profile?.uid ? `/athletes/${profile.uid}` : "/teams";
+  const profileBackLabel = isAthlete ? "Back to My Athlete Page" : "Back to Teams";
 
   useEffect(() => {
     let cancelled = false;
@@ -89,16 +93,83 @@ export default function TeamDetail() {
 
         const orgId = teamData.orgId;
 
+        const athletesQuery =
+          orgId
+            ? query(collection(db, "athletes"), where("orgId", "==", orgId), where("teamId", "==", id))
+            : query(collection(db, "athletes"), where("teamId", "==", id));
+        const campaignsQuery =
+          orgId
+            ? query(collection(db, "campaigns"), where("orgId", "==", orgId), where("teamId", "==", id))
+            : query(collection(db, "campaigns"), where("teamId", "==", id));
+
         const [athletesSnap, campaignsSnap, coachSnap] = await Promise.all([
-          getDocs(query(collection(db, "athletes"), where("orgId", "==", orgId), where("teamId", "==", id))),
-          getDocs(query(collection(db, "campaigns"), where("orgId", "==", orgId), where("teamId", "==", id))),
+          getDocs(athletesQuery),
+          getDocs(campaignsQuery),
           teamData.coachId ? getDoc(doc(db, "users", teamData.coachId)) : Promise.resolve(null),
         ]);
 
+        let athleteRows = athletesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        if (!athleteRows.length && profile?.uid && isAthlete) {
+          try {
+            const selfAthleteSnap = await getDoc(doc(db, "athletes", profile.uid));
+            if (selfAthleteSnap.exists()) {
+              const selfAthlete = { id: selfAthleteSnap.id, ...selfAthleteSnap.data() };
+              if (String(selfAthlete.teamId || "").trim() === id) {
+                athleteRows = [selfAthlete];
+              }
+            }
+          } catch (selfErr) {
+            console.warn("Athlete self fallback skipped:", selfErr?.message || selfErr);
+          }
+        }
+
+        let resolvedCoachUser =
+          coachSnap && coachSnap.exists && coachSnap.exists()
+            ? { id: coachSnap.id, ...coachSnap.data() }
+            : null;
+
+        if (!resolvedCoachUser && !teamData.coachId) {
+          const fallbackCoachName = String(teamData.coachName || teamData.coach || "").trim();
+          if (fallbackCoachName) {
+            resolvedCoachUser = { id: "", displayName: fallbackCoachName };
+          }
+        }
+
+        if (!resolvedCoachUser && (isAdmin || isCoach) && orgId) {
+          try {
+            const usersSnap = await getDocs(
+              query(
+                collection(db, "users"),
+                where("orgId", "==", orgId),
+                where("role", "==", "coach")
+              )
+            );
+            const matchedCoach = usersSnap.docs
+              .map((entry) => ({ id: entry.id, ...entry.data() }))
+              .find((entry) => {
+                const singleTeamId = String(entry.teamId || "").trim();
+                const multiTeamIds = Array.isArray(entry.teamIds)
+                  ? entry.teamIds
+                  : Array.isArray(entry.assignedTeamIds)
+                    ? entry.assignedTeamIds
+                    : [];
+                return (
+                  singleTeamId === id ||
+                  multiTeamIds.map((teamId) => String(teamId || "").trim()).includes(id)
+                );
+              });
+            if (matchedCoach) {
+              resolvedCoachUser = matchedCoach;
+            }
+          } catch (coachErr) {
+            console.warn("Coach fallback lookup skipped:", coachErr?.message || coachErr);
+          }
+        }
+
         if (!cancelled) {
-          setAthletes(athletesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setAthletes(athleteRows);
           setCampaigns(campaignsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-          setCoachUser(coachSnap && coachSnap.exists && coachSnap.exists() ? { id: coachSnap.id, ...coachSnap.data() } : null);
+          setCoachUser(resolvedCoachUser);
         }
       } catch (err) {
         console.error("Error loading team detail:", err);
@@ -171,10 +242,10 @@ export default function TeamDetail() {
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-6xl mx-auto space-y-6 md:space-y-8">
       <Link
-        to="/teams"
+        to={profileBackTo}
         className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
       >
-        <FaArrowLeft /> Back to Teams
+        <FaArrowLeft /> {profileBackLabel}
       </Link>
 
       {/* HEADER */}

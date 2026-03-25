@@ -122,9 +122,9 @@ export default function EditTeam() {
     } catch (e) {
       console.error("Error saving team:", e);
       alert("Failed to update team");
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
   }
 
 
