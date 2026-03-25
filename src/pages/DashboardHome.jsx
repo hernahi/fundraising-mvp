@@ -500,6 +500,7 @@ export default function DashboardHome() {
     athleteContactCount,
     profile?.uid,
   ]);
+  const showCampaignAnalytics = isAthlete || Boolean(activeCampaignId);
 
   const campaignStartDate = useMemo(() => {
     return (
@@ -1341,92 +1342,121 @@ export default function DashboardHome() {
         </div>
       )}
 
-      {/* Analytics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        {isAthlete && (
+      {!showCampaignAnalytics && (isCoach || isAdmin) && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900">Campaign Overview</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Select a campaign to load performance summaries, donation activity, and timeline details.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              to="/campaigns"
+              className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Open Campaigns
+            </Link>
+            <Link
+              to="/teams"
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Open Teams
+            </Link>
+          </div>
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+            {campaigns?.length
+              ? `${campaigns.length} campaign${campaigns.length === 1 ? "" : "s"} available. Choose one from your campaign selector to continue.`
+              : "No campaigns are available yet. Create or assign a campaign first."}
+          </div>
+        </div>
+      )}
+
+      {showCampaignAnalytics && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+          {isAthlete && (
+            <AnalyticsCard
+              title="My Personal Progress"
+              value={`${personalProgressPercent}%`}
+              onClick={() => openInsight("progress")}
+              subtext={
+                athleteGoalAmount
+                  ? `${formatCurrency(stats.fundsRaised)} of ${formatCurrency(
+                      athleteGoalAmount
+                    )}`
+                  : "No personal goal set"
+              }
+            >
+              {athleteGoalAmount > 0 && (
+                <div className="mt-3">
+                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-slate-900 transition-all"
+                      style={{ width: `${personalProgressPercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </AnalyticsCard>
+          )}
           <AnalyticsCard
-            title="My Personal Progress"
-            value={`${personalProgressPercent}%`}
+            title="Campaign Progress"
+            value={`${progressPercent}%`}
             onClick={() => openInsight("progress")}
             subtext={
-              athleteGoalAmount
+              goalAmount
                 ? `${formatCurrency(stats.fundsRaised)} of ${formatCurrency(
-                    athleteGoalAmount
+                    goalAmount
                   )}`
-                : "No personal goal set"
+                : "No goal set"
             }
           >
-            {athleteGoalAmount > 0 && (
+            {goalAmount > 0 && (
               <div className="mt-3">
                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-slate-900 transition-all"
-                    style={{ width: `${personalProgressPercent}%` }}
+                    style={{ width: `${progressPercent}%` }}
                   />
                 </div>
               </div>
             )}
           </AnalyticsCard>
-        )}
-        <AnalyticsCard
-          title="Campaign Progress"
-          value={`${progressPercent}%`}
-          onClick={() => openInsight("progress")}
-          subtext={
-            goalAmount
-              ? `${formatCurrency(stats.fundsRaised)} of ${formatCurrency(
-                  goalAmount
-                )}`
-              : "No goal set"
-          }
-        >
-          {goalAmount > 0 && (
-            <div className="mt-3">
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-slate-900 transition-all"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </AnalyticsCard>
 
-        <AnalyticsCard
-          title="Funds Raised"
-          value={formatCurrency(stats.fundsRaised)}
-          onClick={() => openInsight("funds")}
-          subtext="Campaign-scoped"
-        />
-        <AnalyticsCard
-          title="Total Donors"
-          value={stats.totalDonors}
-          onClick={() => openInsight("donors")}
-          subtext="Unique donors"
-        />
-        <AnalyticsCard
-          title="Total Athletes"
-          value={stats.totalAthletes}
-          onClick={() => openInsight("athletes")}
-          subtext="In this campaign"
-        />
-        <AnalyticsCard
-          title="Campaign Timeline"
-          value={
-            campaignStartDate && campaignEndDate
-              ? `${formatShortDate(campaignStartDate)} - ${formatShortDate(campaignEndDate)}`
-              : campaignStartDate
-              ? `Started ${formatShortDate(campaignStartDate)}`
-              : "No dates set"
-          }
-          onClick={() => openInsight("timeline")}
-          subtext={
-            campaignStartDate && campaignEndDate
-              ? `${dayDiff(campaignStartDate, campaignEndDate)} day window`
-              : "Start/end and daily trend"
-          }
-        />
-      </div>
+          <AnalyticsCard
+            title="Funds Raised"
+            value={formatCurrency(stats.fundsRaised)}
+            onClick={() => openInsight("funds")}
+            subtext="Campaign-scoped"
+          />
+          <AnalyticsCard
+            title="Total Donors"
+            value={stats.totalDonors}
+            onClick={() => openInsight("donors")}
+            subtext="Unique donors"
+          />
+          <AnalyticsCard
+            title="Total Athletes"
+            value={stats.totalAthletes}
+            onClick={() => openInsight("athletes")}
+            subtext="In this campaign"
+          />
+          <AnalyticsCard
+            title="Campaign Timeline"
+            value={
+              campaignStartDate && campaignEndDate
+                ? `${formatShortDate(campaignStartDate)} - ${formatShortDate(campaignEndDate)}`
+                : campaignStartDate
+                ? `Started ${formatShortDate(campaignStartDate)}`
+                : "No dates set"
+            }
+            onClick={() => openInsight("timeline")}
+            subtext={
+              campaignStartDate && campaignEndDate
+                ? `${dayDiff(campaignStartDate, campaignEndDate)} day window`
+                : "Start/end and daily trend"
+            }
+          />
+        </div>
+      )}
 
       {insightOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -1585,7 +1615,7 @@ export default function DashboardHome() {
         </div>
       )}
 
-      {/* Recent Activity */}
+      {showCampaignAnalytics && (
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
           <div>
@@ -1709,6 +1739,7 @@ export default function DashboardHome() {
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }
