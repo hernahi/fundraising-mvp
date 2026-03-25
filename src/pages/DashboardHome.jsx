@@ -159,7 +159,7 @@ function getAthleteFlowStatus({ complete, started }) {
 }
 
 export default function DashboardHome() {
-  const { profile, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
+  const { profile, activeOrgId, activeOrgName, isSuperAdmin, setActiveOrgId } = useAuth();
   const { activeCampaignId, campaigns } = useCampaign();
   const role = (profile?.role || "").toLowerCase();
   const isCoach = role === "coach";
@@ -180,6 +180,17 @@ export default function DashboardHome() {
     totalAthletes: 0,
     totalDonors: 0,
     fundsRaised: 0,
+  });
+  const [superAdminOverviewLoading, setSuperAdminOverviewLoading] = useState(false);
+  const [superAdminOverview, setSuperAdminOverview] = useState({
+    organizations: [],
+    totals: {
+      orgCount: 0,
+      teamCount: 0,
+      athleteCount: 0,
+      activeCampaignCount: 0,
+      coachCount: 0,
+    },
   });
 
   /* ==============================
@@ -447,6 +458,138 @@ export default function DashboardHome() {
       Math.round((Number(stats.fundsRaised || 0) / athleteGoalAmount) * 100)
     );
   }, [stats.fundsRaised, athleteGoalAmount]);
+
+  useEffect(() => {
+    if (!isSuperAdmin || isAthlete || resolvedOrgId) {
+      setSuperAdminOverviewLoading(false);
+      setSuperAdminOverview({
+        organizations: [],
+        totals: {
+          orgCount: 0,
+          teamCount: 0,
+          athleteCount: 0,
+          activeCampaignCount: 0,
+          coachCount: 0,
+        },
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSuperAdminOverview() {
+      setSuperAdminOverviewLoading(true);
+      try {
+        const orgsSnap = await getDocs(
+          query(collection(db, "organizations"), orderBy("name"))
+        );
+        const orgRows = orgsSnap.docs.map((entry) => ({
+          id: entry.id,
+          ...entry.data(),
+        }));
+        const now = Date.now();
+
+        const summaryRows = await Promise.all(
+          orgRows.map(async (org) => {
+            const [teamsSnap, athletesSnap, campaignsSnap, coachUsersSnap] = await Promise.all([
+              getDocs(query(collection(db, "teams"), where("orgId", "==", org.id))),
+              getDocs(query(collection(db, "athletes"), where("orgId", "==", org.id))),
+              getDocs(query(collection(db, "campaigns"), where("orgId", "==", org.id))),
+              getDocs(
+                query(
+                  collection(db, "users"),
+                  where("orgId", "==", org.id),
+                  where("role", "==", "coach")
+                )
+              ),
+            ]);
+
+            const campaigns = campaignsSnap.docs.map((entry) => ({
+              id: entry.id,
+              ...entry.data(),
+            }));
+            const activeCampaignCount = campaigns.filter((campaign) => {
+              const startDate = parseDateLike(campaign.startDate);
+              const endDate = parseDateLike(campaign.endDate);
+              const start = startDate ? startDate.getTime() : null;
+              const end = endDate ? endDate.getTime() : null;
+              return (
+                campaign.status === "active" ||
+                campaign.isActive === true ||
+                (start && end ? now >= start && now <= end : false)
+              );
+            }).length;
+
+            const alerts = [];
+            if (teamsSnap.size === 0) alerts.push("No teams");
+            if (coachUsersSnap.size === 0) alerts.push("No coaches");
+            if (athletesSnap.size === 0) alerts.push("No athletes");
+            if (campaigns.length === 0) {
+              alerts.push("No campaigns");
+            } else if (activeCampaignCount === 0) {
+              alerts.push("No active campaigns");
+            }
+
+            return {
+              id: org.id,
+              name: org.name || org.id,
+              teams: teamsSnap.size || 0,
+              athletes: athletesSnap.size || 0,
+              campaigns: campaigns.length,
+              activeCampaigns: activeCampaignCount,
+              coaches: coachUsersSnap.size || 0,
+              alerts,
+            };
+          })
+        );
+
+        const totals = summaryRows.reduce(
+          (acc, row) => ({
+            orgCount: acc.orgCount + 1,
+            teamCount: acc.teamCount + row.teams,
+            athleteCount: acc.athleteCount + row.athletes,
+            activeCampaignCount: acc.activeCampaignCount + row.activeCampaigns,
+            coachCount: acc.coachCount + row.coaches,
+          }),
+          {
+            orgCount: 0,
+            teamCount: 0,
+            athleteCount: 0,
+            activeCampaignCount: 0,
+            coachCount: 0,
+          }
+        );
+
+        if (!cancelled) {
+          setSuperAdminOverview({
+            organizations: summaryRows,
+            totals,
+          });
+        }
+      } catch (err) {
+        console.error("Super-admin overview load failed:", err);
+        if (!cancelled) {
+          setSuperAdminOverview({
+            organizations: [],
+            totals: {
+              orgCount: 0,
+              teamCount: 0,
+              athleteCount: 0,
+              activeCampaignCount: 0,
+              coachCount: 0,
+            },
+          });
+        }
+      } finally {
+        if (!cancelled) setSuperAdminOverviewLoading(false);
+      }
+    }
+
+    loadSuperAdminOverview();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSuperAdmin, isAthlete, resolvedOrgId]);
 
   const athleteFlowSteps = useMemo(() => {
     if (!isAthlete) return [];
@@ -1195,6 +1338,8 @@ export default function DashboardHome() {
         <p className="text-sm text-slate-500 mt-1">
           {isAthlete ? (
             "Use your athlete profile and messages page to manage your fundraising progress."
+          ) : isSuperAdmin && !resolvedOrgId ? (
+            "All Organizations overview for cross-org visibility and maintenance triage."
           ) : activeCampaign?.name ? (
             <>
               Viewing campaign:{" "}
@@ -1216,8 +1361,114 @@ export default function DashboardHome() {
       </div>
 
       {!isAthlete && isSuperAdmin && !resolvedOrgId && (
-        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
-          Select an organization to load dashboard analytics.
+        <div className="mb-6 space-y-6">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            All Organizations is a neutral super-admin state. Use this dashboard to compare org health, then pick an organization from the top selector when you want to do scoped maintenance.
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+            <AnalyticsCard
+              title="Organizations"
+              value={superAdminOverviewLoading ? "..." : superAdminOverview.totals.orgCount}
+              subtext="Total orgs in the platform"
+            />
+            <AnalyticsCard
+              title="Teams"
+              value={superAdminOverviewLoading ? "..." : superAdminOverview.totals.teamCount}
+              subtext="Across all organizations"
+            />
+            <AnalyticsCard
+              title="Athletes"
+              value={superAdminOverviewLoading ? "..." : superAdminOverview.totals.athleteCount}
+              subtext="Across all organizations"
+            />
+            <AnalyticsCard
+              title="Active Campaigns"
+              value={
+                superAdminOverviewLoading ? "..." : superAdminOverview.totals.activeCampaignCount
+              }
+              subtext="Currently active across orgs"
+            />
+            <AnalyticsCard
+              title="Coaches"
+              value={superAdminOverviewLoading ? "..." : superAdminOverview.totals.coachCount}
+              subtext="Coach users assigned in orgs"
+            />
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="px-4 py-3 border-b border-slate-200">
+              <h2 className="text-sm font-semibold text-slate-900">Organization Health</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Select an organization to move from overview into scoped maintenance.
+              </p>
+            </div>
+
+            {superAdminOverviewLoading ? (
+              <div className="px-4 py-6 text-sm text-slate-500">Loading organization summary...</div>
+            ) : superAdminOverview.organizations.length === 0 ? (
+              <div className="px-4 py-6 text-sm text-slate-500">No organizations found.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
+                      <th className="px-4 py-3 font-medium">Organization</th>
+                      <th className="px-4 py-3 font-medium text-right">Teams</th>
+                      <th className="px-4 py-3 font-medium text-right">Athletes</th>
+                      <th className="px-4 py-3 font-medium text-right">Campaigns</th>
+                      <th className="px-4 py-3 font-medium text-right">Active</th>
+                      <th className="px-4 py-3 font-medium text-right">Coaches</th>
+                      <th className="px-4 py-3 font-medium">Alerts</th>
+                      <th className="px-4 py-3 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {superAdminOverview.organizations.map((org) => (
+                      <tr key={org.id} className="border-b border-slate-100 align-top">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-900">{org.name}</div>
+                          <div className="text-xs text-slate-400">{org.id}</div>
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-700">{org.teams}</td>
+                        <td className="px-4 py-3 text-right text-slate-700">{org.athletes}</td>
+                        <td className="px-4 py-3 text-right text-slate-700">{org.campaigns}</td>
+                        <td className="px-4 py-3 text-right text-slate-700">{org.activeCampaigns}</td>
+                        <td className="px-4 py-3 text-right text-slate-700">{org.coaches}</td>
+                        <td className="px-4 py-3">
+                          {org.alerts.length ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {org.alerts.map((alert) => (
+                                <span
+                                  key={alert}
+                                  className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                                >
+                                  {alert}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800">
+                              Healthy
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setActiveOrgId(org.id)}
+                            className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
+                          >
+                            Open Org
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1370,7 +1621,7 @@ export default function DashboardHome() {
         </div>
       )}
 
-      {!showCampaignAnalytics && (isCoach || isAdmin) && (
+      {!showCampaignAnalytics && (isCoach || isAdmin) && (resolvedOrgId || !isSuperAdmin) && (
         <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900">Campaign Overview</h2>
           <p className="mt-1 text-sm text-slate-600">
