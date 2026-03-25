@@ -35,8 +35,8 @@ function getCoachScopedTeamIds(profile) {
 export default function DonorDetail() {
   const { donorId: donorIdParam } = useParams();
   const donorId = decodeURIComponent(donorIdParam || "");
-  const { profile, activeOrgId, loading: authLoading } = useAuth();
-  const orgId = activeOrgId || profile?.orgId;
+  const { profile, activeOrgId, activeOrgName, isSuperAdmin, loading: authLoading } = useAuth();
+  const orgId = isSuperAdmin ? activeOrgId || "" : profile?.orgId || "";
   const role = String(profile?.role || "").toLowerCase();
   const isCoach = role === "coach";
   const coachTeamIds = getCoachScopedTeamIds(profile);
@@ -380,6 +380,11 @@ export default function DonorDetail() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">{donorName}</h1>
             <div className="text-sm text-slate-500">{donorEmail}</div>
+            <div className="mt-1 text-xs text-slate-400">
+              {isSuperAdmin
+                ? `Selected org: ${activeOrgName || orgId || "none"}`
+                : `Organization: ${profile?.orgName || orgId || "unknown"}`}
+            </div>
             <div className="mt-1 text-xs text-slate-400">
               Donor ID: {donorId}
               {donor.createdAt?.toDate?.() && (

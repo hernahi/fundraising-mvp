@@ -44,7 +44,7 @@ function getCoachScopedTeamIds(profile) {
 }
 
 export default function Coaches() {
-  const { profile, activeOrgId } = useAuth();
+  const { profile, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [coaches, setCoaches] = useState([]);
   const [rollups, setRollups] = useState([]);
@@ -57,7 +57,7 @@ export default function Coaches() {
   const [sortBy, setSortBy] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
 
-  const orgId = activeOrgId || profile?.orgId;
+  const orgId = isSuperAdmin ? activeOrgId || "" : profile?.orgId || "";
   const isAdmin = ["admin", "super-admin"].includes(profile?.role);
   const isCoach = String(profile?.role || "").toLowerCase() === "coach";
   const coachTeamIds = getCoachScopedTeamIds(profile);
@@ -290,11 +290,28 @@ export default function Coaches() {
   }
 
   if (loading) return <div>Loading coaches...</div>;
+  if (!orgId) {
+    return (
+      <div className="p-6 space-y-3">
+        <h1 className="text-2xl font-bold">Coaches</h1>
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
+          Select an organization to view coaches.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Coaches</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Coaches</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {isSuperAdmin
+              ? `Viewing coaches for ${activeOrgName || orgId || "the selected organization"}`
+              : `Viewing coaches for ${profile?.orgName || orgId || "your organization"}`}
+          </p>
+        </div>
 
         {isAdmin && (
           <>

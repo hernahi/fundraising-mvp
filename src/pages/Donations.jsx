@@ -38,7 +38,7 @@ function getCoachScopedTeamIds(profile) {
 }
 
 export default function Donors() {
-  const { profile, activeOrgId, loading: authLoading } = useAuth();
+  const { profile, activeOrgId, activeOrgName, isSuperAdmin, loading: authLoading } = useAuth();
   const { push } = useToast();
   const navigate = useNavigate();
 
@@ -49,7 +49,7 @@ export default function Donors() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("created");
   const [activityFilter, setActivityFilter] = useState("all");
-  const orgId = activeOrgId || profile?.orgId;
+  const orgId = isSuperAdmin ? activeOrgId || "" : profile?.orgId || "";
   const role = String(profile?.role || "").toLowerCase();
   const isCoach = role === "coach";
   const coachTeamIds = useMemo(() => getCoachScopedTeamIds(profile), [
@@ -472,6 +472,11 @@ export default function Donors() {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
             Donors
           </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {isSuperAdmin
+              ? `Viewing donors for ${activeOrgName || orgId || "the selected organization"}`
+              : `Viewing donors for ${profile?.orgName || orgId || "your organization"}`}
+          </p>
           {lastUpdated && (
             <div className="mt-1 text-xs text-slate-400">
               Last synced: {lastUpdated}
@@ -538,7 +543,9 @@ export default function Donors() {
         </div>
       </div>
 
-      {loading ? (
+      {!orgId ? (
+        <ListEmptyState message="Select an organization to view donors." />
+      ) : loading ? (
         <ListLoadingSpinner />
       ) : visibleDonors.length === 0 ? (
         <ListEmptyState message="No donors found." />

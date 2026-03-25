@@ -35,7 +35,7 @@ async function fetchTeamCounts(orgId, teamId) {
 }
 
 export default function Teams() {
-  const { profile, activeOrgId } = useAuth();
+  const { profile, activeOrgId, activeOrgName } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState([]);
@@ -60,7 +60,9 @@ export default function Teams() {
   const resolvedUid = useMemo(() => {
     return profile?.uid || profile?.id || profile?.userId || null;
   }, [profile]);
-  const orgDisplayName = profile?.orgName || resolvedOrgId || "-";
+  const orgDisplayName = isSuperAdmin
+    ? activeOrgName || resolvedOrgId || "-"
+    : profile?.orgName || resolvedOrgId || "-";
 
   useEffect(() => {
     let cancelled = false;

@@ -54,10 +54,10 @@ function getCoachScopedTeamIds(profile) {
 }
 
 export default function Accounting() {
-  const { profile, user, activeOrgId, isSuperAdmin } = useAuth();
+  const { profile, user, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
   const role = String(profile?.role || "").toLowerCase();
   const canAccessAccounting = ["admin", "super-admin", "coach"].includes(role);
-  const resolvedOrgId = (isSuperAdmin ? activeOrgId : profile?.orgId) || profile?.orgId || "";
+  const resolvedOrgId = isSuperAdmin ? activeOrgId || "" : profile?.orgId || "";
   const coachTeamIds = useMemo(() => getCoachScopedTeamIds(profile), [
     profile?.role,
     profile?.teamId,
@@ -490,12 +490,14 @@ export default function Accounting() {
               Accounting
             </h1>
             <p className="text-sm text-slate-500">
-              Gross donations, estimated fees, payout planning, and campaign-level net views for{" "}
-              <span className="font-medium text-slate-700">
-                {orgName || resolvedOrgId || "your organization"}
-              </span>
-              .
-            </p>
+                Gross donations, estimated fees, payout planning, and campaign-level net views for{" "}
+                <span className="font-medium text-slate-700">
+                  {isSuperAdmin
+                    ? activeOrgName || orgName || resolvedOrgId || "the selected organization"
+                    : orgName || resolvedOrgId || "your organization"}
+                </span>
+                .
+              </p>
           </div>
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
             Accounting Overview
