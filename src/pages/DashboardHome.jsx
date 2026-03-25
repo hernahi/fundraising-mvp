@@ -159,12 +159,18 @@ function getAthleteFlowStatus({ complete, started }) {
 }
 
 export default function DashboardHome() {
-  const { profile } = useAuth();
+  const { profile, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
   const { activeCampaignId, campaigns } = useCampaign();
   const role = (profile?.role || "").toLowerCase();
   const isCoach = role === "coach";
   const isAdmin = role === "admin" || role === "super-admin";
   const isAthlete = role === "athlete";
+  const resolvedOrgId =
+    isSuperAdmin && !isAthlete ? activeOrgId || "" : profile?.orgId || "";
+  const resolvedOrgLabel =
+    isSuperAdmin && !isAthlete
+      ? activeOrgName || resolvedOrgId || "the selected organization"
+      : profile?.orgName || resolvedOrgId || "your organization";
 
   /* ==============================
      Stats (existing)
@@ -268,7 +274,7 @@ export default function DashboardHome() {
           getDocs(
             query(
               collection(db, "athlete_contacts"),
-              where("orgId", "==", profile?.orgId || "__none__"),
+              where("orgId", "==", resolvedOrgId || "__none__"),
               where("athleteId", "==", profile.uid)
             )
           ),
@@ -308,12 +314,12 @@ export default function DashboardHome() {
     return () => {
       cancelled = true;
     };
-  }, [isAthlete, profile?.displayName, profile?.orgId, profile?.uid]);
+  }, [isAthlete, profile?.displayName, resolvedOrgId, profile?.uid]);
 
   const resolvedCampaignId = isAthlete ? athleteCampaignId : activeCampaignId;
 
   const fetchStats = useCallback(async () => {
-    if (!profile?.orgId || !resolvedCampaignId || (!isCoach && !isAdmin && !isAthlete)) {
+    if (!resolvedOrgId || !resolvedCampaignId || (!isCoach && !isAdmin && !isAthlete)) {
       setStats({
         activeCampaigns: 0,
         totalAthletes: 0,
@@ -327,12 +333,12 @@ export default function DashboardHome() {
       const donationsQuery = isAthlete
         ? query(
             collection(db, "donations"),
-            where("orgId", "==", profile.orgId),
+            where("orgId", "==", resolvedOrgId),
             where("athleteId", "==", profile.uid)
           )
         : query(
             collection(db, "donations"),
-            where("orgId", "==", profile.orgId),
+            where("orgId", "==", resolvedOrgId),
             where("campaignId", "==", resolvedCampaignId)
           );
       const donationsSnap = await getDocs(
@@ -364,7 +370,7 @@ export default function DashboardHome() {
             const campaignAthletesSnap = await getDocs(
               query(
                 collection(db, "campaignAthletes"),
-                where("orgId", "==", profile.orgId),
+                where("orgId", "==", resolvedOrgId),
                 where("campaignId", "==", resolvedCampaignId),
                 where("teamId", "==", athleteTeamId)
               )
@@ -382,7 +388,7 @@ export default function DashboardHome() {
           const campaignAthletesSnap = await getDocs(
             query(
               collection(db, "campaignAthletes"),
-              where("orgId", "==", profile.orgId),
+              where("orgId", "==", resolvedOrgId),
               where("campaignId", "==", resolvedCampaignId)
             )
           );
@@ -408,7 +414,7 @@ export default function DashboardHome() {
         fundsRaised: 0,
       });
     }
-  }, [profile?.orgId, profile?.uid, resolvedCampaignId, athleteTeamId, isCoach, isAdmin, isAthlete]);
+  }, [resolvedOrgId, profile?.uid, resolvedCampaignId, athleteTeamId, isCoach, isAdmin, isAthlete]);
 
   const activeCampaign = useMemo(() => {
     if (isAthlete) {
@@ -536,7 +542,7 @@ export default function DashboardHome() {
   }, []);
 
   useEffect(() => {
-    if (!profile?.orgId || (!isCoach && !isAdmin)) return;
+    if (!resolvedOrgId || (!isCoach && !isAdmin)) return;
 
     let cancelled = false;
 
@@ -548,10 +554,10 @@ export default function DashboardHome() {
           isCoach && profile?.uid
             ? query(
                 collection(db, "teams"),
-                where("orgId", "==", profile.orgId),
+                where("orgId", "==", resolvedOrgId),
                 where("coachId", "==", profile.uid)
               )
-            : query(collection(db, "teams"), where("orgId", "==", profile.orgId));
+            : query(collection(db, "teams"), where("orgId", "==", resolvedOrgId));
 
         const teamsSnap = await getDocs(teamsQ);
         const teamRows = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -562,7 +568,7 @@ export default function DashboardHome() {
           const athletesSnap = await getDocs(
             query(
               collection(db, "athletes"),
-              where("orgId", "==", profile.orgId),
+              where("orgId", "==", resolvedOrgId),
               where("teamId", "==", teamIds[0])
             )
           );
@@ -571,14 +577,14 @@ export default function DashboardHome() {
           const athletesSnap = await getDocs(
             query(
               collection(db, "athletes"),
-              where("orgId", "==", profile.orgId),
+              where("orgId", "==", resolvedOrgId),
               where("teamId", "in", teamIds)
             )
           );
           athleteCount = athletesSnap.size;
         } else if (teamIds.length > 10 || isAdmin) {
           const athletesSnap = await getDocs(
-            query(collection(db, "athletes"), where("orgId", "==", profile.orgId))
+            query(collection(db, "athletes"), where("orgId", "==", resolvedOrgId))
           );
           athleteCount = isCoach
             ? athletesSnap.docs.filter((d) => teamIds.includes(d.data()?.teamId)).length
@@ -596,7 +602,7 @@ export default function DashboardHome() {
         const assignedCampaignCount = scopedCampaigns.length;
 
         const contactsSnap = await getDocs(
-          query(collection(db, "athlete_contacts"), where("orgId", "==", profile.orgId))
+          query(collection(db, "athlete_contacts"), where("orgId", "==", resolvedOrgId))
         );
 
         if (!cancelled) {
@@ -619,20 +625,20 @@ export default function DashboardHome() {
     return () => {
       cancelled = true;
     };
-  }, [profile?.orgId, profile?.uid, isCoach, isAdmin, campaigns]);
+  }, [resolvedOrgId, profile?.uid, isCoach, isAdmin, campaigns]);
 
   const buildDonationsQuery = useCallback(
     (cursorDoc = null) => {
       const base = isAthlete
         ? [
-            where("orgId", "==", profile?.orgId || "__none__"),
+            where("orgId", "==", resolvedOrgId || "__none__"),
             where("athleteId", "==", profile?.uid || "__none__"),
             where("status", "==", "paid"),
             orderBy("createdAt", "desc"),
             limit(PAGE_SIZE),
           ]
         : [
-            where("orgId", "==", profile?.orgId || "__none__"),
+            where("orgId", "==", resolvedOrgId || "__none__"),
             where("campaignId", "==", activeCampaignId || "__none__"),
             orderBy("createdAt", "desc"),
             limit(PAGE_SIZE),
@@ -643,7 +649,7 @@ export default function DashboardHome() {
       }
       return query(collection(db, "donations"), ...base);
     },
-    [isAthlete, profile?.orgId, profile?.uid, activeCampaignId]
+    [isAthlete, resolvedOrgId, profile?.uid, activeCampaignId]
   );
 
   /* ==============================
@@ -653,8 +659,8 @@ export default function DashboardHome() {
     async ({ mode = "reset", cursor = null } = {}) => {
       const canLoadAthleteActivity = isAthlete && profile?.uid;
       const canLoadCampaignActivity =
-        !isAthlete && profile?.orgId && activeCampaignId && (isCoach || isAdmin);
-      if (!profile?.orgId || (!canLoadAthleteActivity && !canLoadCampaignActivity)) {
+        !isAthlete && resolvedOrgId && activeCampaignId && (isCoach || isAdmin);
+      if (!resolvedOrgId || (!canLoadAthleteActivity && !canLoadCampaignActivity)) {
         setRecentActivity([]);
         setActivityCursor(null);
         setHasMoreActivity(false);
@@ -744,18 +750,18 @@ export default function DashboardHome() {
         setActivityLoading(false);
       }
     },
-    [profile?.orgId, profile?.uid, activeCampaignId, buildDonationsQuery, isAthlete, isCoach, isAdmin]
+    [resolvedOrgId, profile?.uid, activeCampaignId, buildDonationsQuery, isAthlete, isCoach, isAdmin]
   );
                 /* ==============================
    C5 — Export Donations CSV
    ============================== */
   const exportDonationsCSV = async () => {
-  if (!profile?.orgId || !resolvedCampaignId) return;
+  if (!resolvedOrgId || !resolvedCampaignId) return;
 
   try {
     const q = query(
       collection(db, "donations"),
-      where("orgId", "==", profile.orgId),
+      where("orgId", "==", resolvedOrgId),
       where("campaignId", "==", resolvedCampaignId),
       orderBy("createdAt", "desc")
     );
@@ -814,7 +820,7 @@ export default function DashboardHome() {
     setInsightError("");
     setInsightData(null);
 
-    if (!profile?.orgId || !resolvedCampaignId) {
+    if (!resolvedOrgId || !resolvedCampaignId) {
       setInsightError("Select a campaign first.");
       setInsightLoading(false);
       return;
@@ -824,12 +830,12 @@ export default function DashboardHome() {
       const donationsQuery = isAthlete
         ? query(
             collection(db, "donations"),
-            where("orgId", "==", profile.orgId),
+            where("orgId", "==", resolvedOrgId),
             where("athleteId", "==", profile.uid)
           )
         : query(
             collection(db, "donations"),
-            where("orgId", "==", profile.orgId),
+            where("orgId", "==", resolvedOrgId),
             where("campaignId", "==", resolvedCampaignId)
           );
       const donationsSnap = await getDocs(
@@ -985,7 +991,7 @@ export default function DashboardHome() {
           const campaignAthletesSnap = await getDocs(
             query(
               collection(db, "campaignAthletes"),
-              where("orgId", "==", profile.orgId),
+              where("orgId", "==", resolvedOrgId),
               where("campaignId", "==", resolvedCampaignId)
             )
           );
@@ -1007,7 +1013,7 @@ export default function DashboardHome() {
         });
 
         const contactsSnap = await getDocs(
-          query(collection(db, "athlete_contacts"), where("orgId", "==", profile.orgId))
+          query(collection(db, "athlete_contacts"), where("orgId", "==", resolvedOrgId))
         );
         const contactCounts = new Map();
         contactsSnap.forEach((d) => {
@@ -1126,7 +1132,7 @@ export default function DashboardHome() {
     }
   }, [
     isAthlete,
-    profile?.orgId,
+    resolvedOrgId,
     profile?.uid,
     profile?.email,
     resolvedCampaignId,
@@ -1145,15 +1151,15 @@ export default function DashboardHome() {
   useEffect(() => {
     const canLoadAthleteActivity = isAthlete && profile?.uid;
     const canLoadCampaignActivity =
-      !isAthlete && profile?.orgId && activeCampaignId && (isCoach || isAdmin);
-    if (!profile?.orgId || (!canLoadAthleteActivity && !canLoadCampaignActivity)) {
+      !isAthlete && resolvedOrgId && activeCampaignId && (isCoach || isAdmin);
+    if (!resolvedOrgId || (!canLoadAthleteActivity && !canLoadCampaignActivity)) {
       resetActivity();
       return;
     }
     resetActivity();
     fetchRecentActivity({ mode: "reset" });
   }, [
-    profile?.orgId,
+    resolvedOrgId,
     profile?.uid,
     activeCampaignId,
     resetActivity,
@@ -1200,7 +1206,20 @@ export default function DashboardHome() {
             "Select a campaign to view analytics."
           )}
         </p>
+        {!isAthlete && (
+          <p className="text-xs text-slate-400 mt-1">
+            {isSuperAdmin
+              ? `Selected org: ${resolvedOrgLabel || "none"}`
+              : `Organization: ${resolvedOrgLabel}`}
+          </p>
+        )}
       </div>
+
+      {!isAthlete && isSuperAdmin && !resolvedOrgId && (
+        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
+          Select an organization to load dashboard analytics.
+        </div>
+      )}
 
       {isAthlete && (
         <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
