@@ -338,6 +338,17 @@ service cloud.firestore {
         && canAccessOrg(resource.data.orgId)
         && request.resource.data.diff(resource.data).changedKeys()
           .hasOnly([
+            "name",
+            "displayName",
+            "age",
+            "position",
+            "grade",
+            "jerseyNumber",
+            "goal",
+            "photoURL",
+            "avatar",
+            "bio",
+            "supporterMessage",
             "inviteMessage",
             "donorInviteTemplate",
             "donorInviteTemplates",
