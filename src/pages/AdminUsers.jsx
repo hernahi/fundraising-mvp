@@ -270,6 +270,9 @@ export default function AdminUsers() {
   const availableManagedRoles = role === "coach"
     ? MANAGED_ACCOUNT_ROLES.filter((r) => r !== "admin")
     : MANAGED_ACCOUNT_ROLES;
+  const availableRowRoles = isSuperAdmin
+    ? [...MANAGED_ACCOUNT_ROLES, "super-admin"]
+    : MANAGED_ACCOUNT_ROLES;
 
   async function handleInviteSubmit(e) {
     e.preventDefault();
@@ -503,6 +506,20 @@ export default function AdminUsers() {
     });
   }
 
+  async function handleSetSuperAdmin(targetUser, enabled) {
+    const targetId = String(targetUser?.id || "").trim();
+    if (!isSuperAdmin || !targetId || targetId === currentUser?.uid) return;
+    const prompt = enabled
+      ? `Grant super-admin access to ${targetUser?.email || targetUser?.displayName || targetId}?`
+      : `Remove super-admin access from ${targetUser?.email || targetUser?.displayName || targetId} and return them to admin?`;
+    if (!window.confirm(prompt)) return;
+    await updateDoc(doc(db, "users", targetId), {
+      role: enabled ? "super-admin" : "admin",
+      status: "active",
+      updatedAt: serverTimestamp(),
+    });
+  }
+
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -706,6 +723,18 @@ export default function AdminUsers() {
         </form>
       </div>
 
+      {isSuperAdmin ? (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm space-y-2">
+          <h2 className="text-sm font-semibold text-blue-900">Super Admin Access</h2>
+          <p className="text-xs text-blue-800">
+            Use the Users table below to grant or revoke platform-wide access. This is intentionally limited to existing super-admins.
+          </p>
+          <p className="text-xs text-blue-700">
+            Revoking super-admin returns the user to <span className="font-semibold">admin</span> so they do not lose app access unexpectedly.
+          </p>
+        </div>
+      ) : null}
+
       {isAdmin ? (
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -756,7 +785,8 @@ export default function AdminUsers() {
                   const isSelf = currentUser?.uid === u.id;
                   const isSuperAdminUser = String(u.role || "") === "super-admin";
                   const badge = getStatusBadge(u);
-                  const canEditRole = !isSelf && !isSuperAdminUser;
+                  const canEditRole =
+                    !isSelf && (isSuperAdmin ? true : !isSuperAdminUser);
                   const canDeactivate = !isSelf && !isSuperAdminUser && !u.deletedAt;
                   const canReactivate = !isSelf && !isSuperAdminUser && !!u.deletedAt;
                   return (
@@ -789,9 +819,11 @@ export default function AdminUsers() {
                             onChange={(e) => handleRoleChange(u.id, e.target.value)}
                             className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
                           >
-                            <option value="coach">coach</option>
-                            <option value="athlete">athlete</option>
-                            <option value="admin">admin</option>
+                            {availableRowRoles.map((rowRole) => (
+                              <option key={rowRole} value={rowRole}>
+                                {rowRole}
+                              </option>
+                            ))}
                           </select>
                         ) : (
                           <span className="capitalize text-slate-700">{String(u.role || "n/a")}</span>
@@ -809,6 +841,24 @@ export default function AdminUsers() {
                       </td>
                       <td className="py-2 pr-3">
                         <div className="flex flex-wrap items-center gap-2">
+                          {isSuperAdmin && !isSelf && !isSuperAdminUser ? (
+                            <button
+                              type="button"
+                              onClick={() => handleSetSuperAdmin(u, true)}
+                              className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700"
+                            >
+                              Make Super Admin
+                            </button>
+                          ) : null}
+                          {isSuperAdmin && !isSelf && isSuperAdminUser ? (
+                            <button
+                              type="button"
+                              onClick={() => handleSetSuperAdmin(u, false)}
+                              className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700"
+                            >
+                              Remove Super Admin
+                            </button>
+                          ) : null}
                           {canDeactivate ? (
                             <button
                               type="button"
