@@ -204,6 +204,7 @@ export default function DashboardHome() {
   const [athleteGoalAmount, setAthleteGoalAmount] = useState(0);
   const [athleteContactCount, setAthleteContactCount] = useState(0);
   const [athleteProfileFlags, setAthleteProfileFlags] = useState({
+    hasName: false,
     hasPhoto: false,
     hasBio: false,
     hasPersonalNote: false,
@@ -239,6 +240,11 @@ export default function DashboardHome() {
           athleteData.goal ?? athleteData.personalGoal ?? athleteData.fundraisingGoal ?? 0
         );
         const nextProfileFlags = {
+          hasName: Boolean(
+            String(
+              athleteData.name || athleteData.displayName || profile?.displayName || ""
+            ).trim()
+          ),
           hasPhoto: Boolean(athleteData.photoURL || athleteData.avatar || athleteData.imgUrl),
           hasBio: Boolean(athleteData.bio || athleteData.story || athleteData.description),
           hasPersonalNote: Boolean(
@@ -288,6 +294,7 @@ export default function DashboardHome() {
           setAthleteGoalAmount(0);
           setAthleteContactCount(0);
           setAthleteProfileFlags({
+            hasName: false,
             hasPhoto: false,
             hasBio: false,
             hasPersonalNote: false,
@@ -438,12 +445,14 @@ export default function DashboardHome() {
   const athleteFlowSteps = useMemo(() => {
     if (!isAthlete) return [];
 
-    const profileFieldsCompleteCount = [
-      athleteProfileFlags.hasPhoto,
-      athleteProfileFlags.hasBio,
-      athleteGoalAmount > 0,
-    ].filter(Boolean).length;
-    const profileComplete = profileFieldsCompleteCount === 3;
+    const missingProfileItems = [
+      athleteProfileFlags.hasName ? null : "full name",
+      athleteProfileFlags.hasPhoto ? null : "photo",
+      athleteProfileFlags.hasBio ? null : "bio",
+      athleteGoalAmount > 0 ? null : "personal goal",
+    ].filter(Boolean);
+    const profileFieldsCompleteCount = 4 - missingProfileItems.length;
+    const profileComplete = missingProfileItems.length === 0;
     const profileStarted = profileFieldsCompleteCount > 0;
 
     const contactsComplete = athleteContactCount >= 20;
@@ -457,8 +466,8 @@ export default function DashboardHome() {
         key: "profile",
         label: "1. Create/Modify Profile",
         detail: profileComplete
-          ? "Photo, bio, and personal goal are ready."
-          : `${profileFieldsCompleteCount}/3 profile items complete`,
+          ? "Full name, photo, bio, and personal goal are ready."
+          : `Missing: ${missingProfileItems.join(", ")}`,
         to: profile?.uid ? `/athletes/${profile.uid}` : "/athletes",
         cta: "Open Profile",
         status: getAthleteFlowStatus({

@@ -30,6 +30,12 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
   const isCoach = role === "coach";
   const isAthlete = role === "athlete";
   const canManageOrg = isAdmin || isCoach;
+  const sidebarHeading = isAthlete
+    ? (profile?.teamName || profile?.teamId || "Athlete Team")
+    : (profile?.orgName || profile?.orgId || "Organization");
+  const sidebarSubheading = isAthlete
+    ? (profile?.orgName || profile?.orgId || "")
+    : "";
   const [mainOpen, setMainOpen] = useState(true);
   const [opsOpen, setOpsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
@@ -104,7 +110,10 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="px-6 py-4 border-b">
           <div className="text-lg font-semibold">Fundraising MVP</div>
-          <div className="text-xs text-gray-500">{profile?.orgName || profile?.orgId}</div>
+          <div className="text-xs text-gray-500">{sidebarHeading}</div>
+          {sidebarSubheading ? (
+            <div className="mt-1 text-[11px] text-gray-400">{sidebarSubheading}</div>
+          ) : null}
         </div>
 
         <nav className="mt-4 flex-1 space-y-3 overflow-y-auto px-2 pb-4">

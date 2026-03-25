@@ -97,6 +97,41 @@ export function AuthProvider({ children }) {
             };
           }
 
+          if (String(data?.role || "").toLowerCase() === "athlete") {
+            try {
+              const athleteSnap = await getDoc(doc(db, "athletes", uid));
+              if (athleteSnap.exists()) {
+                const athleteData = athleteSnap.data() || {};
+                const athleteTeamId = String(
+                  nextProfile?.teamId || athleteData?.teamId || ""
+                ).trim();
+                let athleteTeamName = String(
+                  nextProfile?.teamName || athleteData?.teamName || ""
+                ).trim();
+
+                if (athleteTeamId && !athleteTeamName) {
+                  const teamSnap = await getDoc(doc(db, "teams", athleteTeamId));
+                  if (teamSnap.exists()) {
+                    athleteTeamName = String(
+                      teamSnap.data()?.name || teamSnap.data()?.teamName || ""
+                    ).trim();
+                  }
+                }
+
+                nextProfile = {
+                  ...nextProfile,
+                  teamId: athleteTeamId || nextProfile?.teamId || "",
+                  teamName: athleteTeamName || nextProfile?.teamName || athleteTeamId || "",
+                };
+              }
+            } catch (athleteErr) {
+              console.warn(
+                "Athlete team enrichment skipped:",
+                athleteErr?.message || athleteErr
+              );
+            }
+          }
+
           const resolvedOrgId = String(nextProfile?.orgId || "").trim();
           const resolvedTeamId = String(nextProfile?.teamId || "").trim();
           const orgName = String(nextProfile?.orgName || "").trim();
