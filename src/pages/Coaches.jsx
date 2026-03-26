@@ -68,6 +68,39 @@ export default function Coaches() {
     async function load() {
       setLoading(true);
       try {
+        if (isCoach && !isAdmin) {
+          const selfUser = {
+            id: String(profile?.uid || "").trim(),
+            ...profile,
+          };
+          setUsersByUid(selfUser.id ? { [selfUser.id]: selfUser } : {});
+          setCoaches(
+            selfUser.id
+              ? [
+                  {
+                    id: selfUser.id,
+                    uid: selfUser.id,
+                    orgId,
+                    name:
+                      selfUser.displayName ||
+                      selfUser.name ||
+                      selfUser.email ||
+                      "Coach",
+                    email: selfUser.email || "",
+                    teamId: selfUser.teamId || "",
+                    teamIds: Array.isArray(selfUser.teamIds)
+                      ? selfUser.teamIds
+                      : Array.isArray(selfUser.assignedTeamIds)
+                        ? selfUser.assignedTeamIds
+                        : [],
+                    status: selfUser.status || "active",
+                    role: "coach",
+                  },
+                ]
+              : []
+          );
+          setRollups([]);
+        } else {
         const [coachesSnap, coachUsersSnap] = await Promise.all([
           getDocs(query(collection(db, "coaches"), where("orgId", "==", orgId))),
           getDocs(
@@ -191,6 +224,8 @@ export default function Coaches() {
         setUsersByUid(usersMap);
         setCoaches(mergedCoachRows);
         setRollups(rollupsSnap.docs.map((d) => d.data()));
+        }
+
         setCampaigns(
           campaignsSnap.docs.map((d) => ({
             id: d.id,
@@ -211,7 +246,7 @@ export default function Coaches() {
     }
 
     load();
-  }, [orgId, isAdmin, isCoach, JSON.stringify(coachTeamIds)]);
+  }, [orgId, isAdmin, isCoach, profile?.uid, profile?.displayName, profile?.name, profile?.email, profile?.teamId, JSON.stringify(coachTeamIds)]);
 
   const coachTotals = buildCoachTotals({
     rollups,

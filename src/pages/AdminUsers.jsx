@@ -3,6 +3,7 @@ import {
   addDoc,
   collection,
   doc,
+  documentId,
   getDocs,
   onSnapshot,
   orderBy,
@@ -21,6 +22,23 @@ const INVITE_ROLES = ["coach", "athlete", "admin"];
 const INVITE_RESEND_COOLDOWN_MS = 60 * 1000;
 const INVITE_EXPIRY_DAYS = 14;
 const MANAGED_ACCOUNT_ROLES = ["coach", "athlete", "admin"];
+
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
 
 function generateTemporaryPassword(length = 14) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
@@ -111,9 +129,14 @@ export default function AdminUsers() {
   const role = String(profile?.role || "").toLowerCase();
   const isManager = role === "admin" || role === "super-admin" || role === "coach";
   const isAdmin = role === "admin" || role === "super-admin";
+  const isCoach = role === "coach";
   const scopedOrgId = String(
     isSuperAdmin ? activeOrgId || "" : activeOrgId || profile?.orgId || ""
   ).trim();
+  const coachTeamIds = useMemo(
+    () => getCoachScopedTeamIds(profile),
+    [profile?.role, profile?.teamId, JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || [])]
+  );
 
   const [users, setUsers] = useState([]);
   const [invites, setInvites] = useState([]);
@@ -196,23 +219,52 @@ export default function AdminUsers() {
     async function loadTeams() {
       if (!isManager || !scopedOrgId) return;
       try {
-        const snap = await getDocs(
-          query(collection(db, "teams"), where("orgId", "==", scopedOrgId))
-        );
-        const rows = snap.docs
-          .map((d) => ({ id: d.id, ...(d.data() || {}) }))
-          .sort((a, b) =>
-            String(a.name || a.teamName || a.id).localeCompare(
-              String(b.name || b.teamName || b.id)
+        let rows = [];
+        if (isCoach) {
+          if (coachTeamIds.length === 0) {
+            setTeams([]);
+            return;
+          }
+          const chunks = [];
+          for (let i = 0; i < coachTeamIds.length; i += 10) {
+            chunks.push(coachTeamIds.slice(i, i + 10));
+          }
+          const snaps = await Promise.all(
+            chunks.map((chunk) =>
+              getDocs(
+                query(
+                  collection(db, "teams"),
+                  where("orgId", "==", scopedOrgId),
+                  where(documentId(), "in", chunk)
+                )
+              )
             )
           );
+          const dedupe = new Map();
+          snaps.forEach((snap) =>
+            snap.docs.forEach((entry) =>
+              dedupe.set(entry.id, { id: entry.id, ...(entry.data() || {}) })
+            )
+          );
+          rows = Array.from(dedupe.values());
+        } else {
+          const snap = await getDocs(
+            query(collection(db, "teams"), where("orgId", "==", scopedOrgId))
+          );
+          rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+        }
+        rows = rows.sort((a, b) =>
+          String(a.name || a.teamName || a.id).localeCompare(
+            String(b.name || b.teamName || b.id)
+          )
+        );
         setTeams(rows);
       } catch (err) {
         console.error("Failed to load teams for invites:", err);
       }
     }
     loadTeams();
-  }, [isManager, scopedOrgId]);
+  }, [isManager, isCoach, scopedOrgId, JSON.stringify(coachTeamIds)]);
 
   const filteredUsers = useMemo(() => {
     const needle = search.trim().toLowerCase();

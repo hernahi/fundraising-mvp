@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   collection,
   doc,
+  documentId,
   getDoc,
   query,
   where,
@@ -158,6 +159,23 @@ function getAthleteFlowStatus({ complete, started }) {
   };
 }
 
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function DashboardHome() {
   const { profile, activeOrgId, activeOrgName, isSuperAdmin, setActiveOrgId } = useAuth();
   const { activeCampaignId, campaigns } = useCampaign();
@@ -171,6 +189,10 @@ export default function DashboardHome() {
     isSuperAdmin && !isAthlete
       ? activeOrgName || resolvedOrgId || "the selected organization"
       : profile?.orgName || resolvedOrgId || "your organization";
+  const coachTeamIds = useMemo(
+    () => getCoachScopedTeamIds(profile),
+    [profile?.role, profile?.teamId, JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || [])]
+  );
 
   /* ==============================
      Stats (existing)
@@ -693,17 +715,40 @@ export default function DashboardHome() {
       setCoachFlowLoading(true);
       try {
         // Teams scope: coaches see their teams; admins see org teams.
-        const teamsQ =
-          isCoach && profile?.uid
-            ? query(
-                collection(db, "teams"),
-                where("orgId", "==", resolvedOrgId),
-                where("coachId", "==", profile.uid)
+        let teamRows = [];
+        if (isCoach) {
+          if (coachTeamIds.length === 0) {
+            teamRows = [];
+          } else {
+            const chunks = [];
+            for (let i = 0; i < coachTeamIds.length; i += 10) {
+              chunks.push(coachTeamIds.slice(i, i + 10));
+            }
+            const snaps = await Promise.all(
+              chunks.map((chunk) =>
+                getDocs(
+                  query(
+                    collection(db, "teams"),
+                    where("orgId", "==", resolvedOrgId),
+                    where(documentId(), "in", chunk)
+                  )
+                )
               )
-            : query(collection(db, "teams"), where("orgId", "==", resolvedOrgId));
-
-        const teamsSnap = await getDocs(teamsQ);
-        const teamRows = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            );
+            const dedupe = new Map();
+            snaps.forEach((snap) =>
+              snap.docs.forEach((entry) =>
+                dedupe.set(entry.id, { id: entry.id, ...entry.data() })
+              )
+            );
+            teamRows = Array.from(dedupe.values());
+          }
+        } else {
+          const teamsSnap = await getDocs(
+            query(collection(db, "teams"), where("orgId", "==", resolvedOrgId))
+          );
+          teamRows = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        }
         const teamIds = teamRows.map((t) => t.id);
 
         let athleteCount = 0;
@@ -768,7 +813,7 @@ export default function DashboardHome() {
     return () => {
       cancelled = true;
     };
-  }, [resolvedOrgId, profile?.uid, isCoach, isAdmin, campaigns]);
+  }, [resolvedOrgId, profile?.uid, isCoach, isAdmin, campaigns, JSON.stringify(coachTeamIds)]);
 
   const buildDonationsQuery = useCallback(
     (cursorDoc = null) => {

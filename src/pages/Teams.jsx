@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   collection,
   doc,
+  documentId,
   getDoc,
   getDocs,
   orderBy,
@@ -16,6 +17,23 @@ import { useAuth } from "../context/AuthContext";
 
 function classNames(...xs) {
   return xs.filter(Boolean).join(" ");
+}
+
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
 }
 
 async function fetchTeamCounts(orgId, teamId) {
@@ -60,6 +78,10 @@ export default function Teams() {
   const resolvedUid = useMemo(() => {
     return profile?.uid || profile?.id || profile?.userId || null;
   }, [profile]);
+  const coachTeamIds = useMemo(
+    () => getCoachScopedTeamIds(profile),
+    [profile?.role, profile?.teamId, JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || [])]
+  );
   const orgDisplayName = isSuperAdmin
     ? activeOrgName || resolvedOrgId || "-"
     : profile?.orgName || resolvedOrgId || "-";
@@ -82,22 +104,44 @@ export default function Teams() {
           return;
         }
 
-        const teamsRef = collection(db, "teams");
-
-        // Coach scoping: query-level isolation
-        const qParts = [
-          where("orgId", "==", resolvedOrgId),
-          orderBy("createdAt", "desc"),
-        ];
-
-        if (isCoach && resolvedUid) {
-          qParts.unshift(where("coachId", "==", resolvedUid));
+        let rows = [];
+        if (isCoach) {
+          if (coachTeamIds.length === 0) {
+            rows = [];
+          } else {
+            const chunks = [];
+            for (let i = 0; i < coachTeamIds.length; i += 10) {
+              chunks.push(coachTeamIds.slice(i, i + 10));
+            }
+            const snaps = await Promise.all(
+              chunks.map((chunk) =>
+                getDocs(
+                  query(
+                    collection(db, "teams"),
+                    where("orgId", "==", resolvedOrgId),
+                    where(documentId(), "in", chunk)
+                  )
+                )
+              )
+            );
+            const dedupe = new Map();
+            snaps.forEach((snap) =>
+              snap.docs.forEach((entry) =>
+                dedupe.set(entry.id, { id: entry.id, ...entry.data() })
+              )
+            );
+            rows = Array.from(dedupe.values());
+          }
+        } else {
+          const snap = await getDocs(
+            query(
+              collection(db, "teams"),
+              where("orgId", "==", resolvedOrgId),
+              orderBy("createdAt", "desc")
+            )
+          );
+          rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         }
-
-        const q = query(teamsRef, ...qParts);
-
-        const snap = await getDocs(q);
-        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         if (!cancelled) {
           setTeams(rows);
@@ -155,7 +199,7 @@ export default function Teams() {
     return () => {
       cancelled = true;
     };
-  }, [resolvedOrgId, isCoach, resolvedUid]);
+  }, [resolvedOrgId, isCoach, resolvedUid, JSON.stringify(coachTeamIds)]);
 
   const visibleTeams = useMemo(() => {
     const q = (search || "").trim().toLowerCase();

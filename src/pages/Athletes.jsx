@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   collection,
+  documentId,
   query,
   where,
   getDocs,
@@ -53,6 +54,23 @@ function StatusBadge({ status }) {
   );
 }
 
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function Athletes() {
   const { profile, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
 
@@ -76,6 +94,10 @@ export default function Athletes() {
   const orgDisplayName = isSuperAdmin
     ? activeOrgName || resolvedOrgId || "the selected organization"
     : profile?.orgName || resolvedOrgId || "your organization";
+  const coachTeamIds = useMemo(
+    () => getCoachScopedTeamIds(profile),
+    [profile?.role, profile?.teamId, JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || [])]
+  );
 
   // ---------------------------------------------------
   // LOAD ATHLETES + TEAMS
@@ -99,11 +121,62 @@ let teamsQ = query(
 );
 
 if (isCoach && profile.uid) {
-  teamsQ = query(
-    collection(db, "teams"),
-    where("orgId", "==", resolvedOrgId),
-    where("coachId", "==", profile.uid)
+  if (coachTeamIds.length === 0) {
+    setTeams([]);
+    setAthletes([]);
+    setLoading(false);
+    return;
+  }
+  const chunks = [];
+  for (let i = 0; i < coachTeamIds.length; i += 10) {
+    chunks.push(coachTeamIds.slice(i, i + 10));
+  }
+  const snaps = await Promise.all(
+    chunks.map((chunk) =>
+      getDocs(
+        query(
+          collection(db, "teams"),
+          where("orgId", "==", resolvedOrgId),
+          where(documentId(), "in", chunk)
+        )
+      )
+    )
   );
+  const teamRows = [];
+  snaps.forEach((snap) =>
+    snap.docs.forEach((d) => {
+      teamRows.push({ id: d.id, ...d.data() });
+    })
+  );
+  setTeams(teamRows);
+
+  let athleteRows = [];
+  if (teamRows.length === 1) {
+    const athletesQ = query(
+      collection(db, "athletes"),
+      where("orgId", "==", resolvedOrgId),
+      where("teamId", "==", teamRows[0].id)
+    );
+    const snap = await getDocs(athletesQ);
+    athleteRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } else {
+    const validTeamIds = teamRows.map((t) => t.id).slice(0, 10);
+    const athletesQ = query(
+      collection(db, "athletes"),
+      where("orgId", "==", resolvedOrgId),
+      where("teamId", "in", validTeamIds)
+    );
+    const snap = await getDocs(athletesQ);
+    athleteRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
+
+  setAthletes(athleteRows);
+  if (teamRows.length > 0) {
+    setTeamFilter(teamRows[0].id);
+    setAssignTeamId(teamRows[0].id);
+  }
+  setLoading(false);
+  return;
 }
 
 const teamsSnap = await getDocs(teamsQ);
@@ -169,7 +242,7 @@ if (isCoach && teamRows.length > 0) {
     }
 
     loadData();
-  }, [resolvedOrgId, isAdmin, isCoach, isSuperAdmin, profile?.uid]);
+  }, [resolvedOrgId, isAdmin, isCoach, isSuperAdmin, profile?.uid, JSON.stringify(coachTeamIds)]);
 
   // ---------------------------------------------------
   // FILTERED ATHLETES
