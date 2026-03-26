@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "./AuthContext";
 
@@ -20,6 +20,39 @@ function getCoachScopedTeamIds(profile) {
   const single = String(profile.teamId || "").trim();
   if (single) normalized.push(single);
   return Array.from(new Set(normalized));
+}
+
+async function fetchCoachCampaignsByTeamIds(orgId, teamIds) {
+  const uniqueTeamIds = Array.from(
+    new Set((teamIds || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (!orgId || uniqueTeamIds.length === 0) return [];
+
+  const snaps = await Promise.all(
+    uniqueTeamIds.map(async (teamId) => {
+      try {
+        return await getDocs(
+          query(
+            collection(db, "campaigns"),
+            where("orgId", "==", orgId),
+            where("teamId", "==", teamId)
+          )
+        );
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const merged = new Map();
+  snaps.forEach((snap) => {
+    if (!snap) return;
+    snap.docs.forEach((entry) => {
+      merged.set(entry.id, { id: entry.id, ...entry.data() });
+    });
+  });
+
+  return Array.from(merged.values());
 }
 
 export function CampaignProvider({ children }) {
@@ -62,48 +95,67 @@ export function CampaignProvider({ children }) {
       return undefined;
     }
 
-    let q;
-    if (isCoach && coachTeamIds.length === 1) {
-      q = query(
-        collection(db, "campaigns"),
-        where("orgId", "==", resolvedOrgId),
-        where("teamId", "==", coachTeamIds[0])
-      );
-    } else if (isCoach && coachTeamIds.length > 1) {
-      const scopedTeamIds = coachTeamIds.slice(0, 10);
-      q = query(
-        collection(db, "campaigns"),
-        where("orgId", "==", resolvedOrgId),
-        where("teamId", "in", scopedTeamIds)
-      );
-    } else {
-      q = query(
-        collection(db, "campaigns"),
-        where("orgId", "==", resolvedOrgId)
-      );
+    if (isCoach) {
+      let cancelled = false;
+
+      (async () => {
+        try {
+          const scopedList = await fetchCoachCampaignsByTeamIds(
+            resolvedOrgId,
+            coachTeamIds
+          );
+          scopedList.sort((left, right) => {
+            const leftTime =
+              left.createdAt?.toDate?.()?.getTime?.() ||
+              (left.createdAt?.seconds ? left.createdAt.seconds * 1000 : 0);
+            const rightTime =
+              right.createdAt?.toDate?.()?.getTime?.() ||
+              (right.createdAt?.seconds ? right.createdAt.seconds * 1000 : 0);
+            return rightTime - leftTime;
+          });
+
+          if (cancelled) return;
+          setCampaigns(scopedList);
+
+          const hasSelectedCampaign = scopedList.some((c) => c.id === activeCampaignId);
+          if (!hasSelectedCampaign && scopedList.length > 0) {
+            const newest = scopedList[0];
+            setActiveCampaignId(newest.id);
+            localStorage.setItem("activeCampaignId", newest.id);
+          } else if (!hasSelectedCampaign && scopedList.length === 0) {
+            setActiveCampaignId(null);
+            localStorage.removeItem("activeCampaignId");
+          }
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
     }
+
+    const q = query(
+      collection(db, "campaigns"),
+      where("orgId", "==", resolvedOrgId)
+    );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      const scopedList =
-        isCoach && coachTeamIds.length > 0
-          ? list.filter((c) => coachTeamIds.includes(String(c.teamId || "").trim()))
-          : isCoach
-            ? []
-            : list;
 
-      setCampaigns(scopedList);
+      setCampaigns(list);
 
       // If no active campaign chosen, auto-select newest
-      const hasSelectedCampaign = scopedList.some((c) => c.id === activeCampaignId);
-      if (!hasSelectedCampaign && scopedList.length > 0) {
-        const newest = scopedList[0];
+      const hasSelectedCampaign = list.some((c) => c.id === activeCampaignId);
+      if (!hasSelectedCampaign && list.length > 0) {
+        const newest = list[0];
         setActiveCampaignId(newest.id);
         localStorage.setItem("activeCampaignId", newest.id);
-      } else if (!hasSelectedCampaign && scopedList.length === 0) {
+      } else if (!hasSelectedCampaign && list.length === 0) {
         setActiveCampaignId(null);
         localStorage.removeItem("activeCampaignId");
       }
