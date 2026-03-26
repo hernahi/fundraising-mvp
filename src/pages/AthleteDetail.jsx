@@ -512,6 +512,13 @@ export default function AthleteDetail() {
                       size: 96,
                     })
                   )}
+                  onError={(e) => {
+                    e.currentTarget.src = avatarFallback({
+                      label: team?.name || athlete?.teamName || "Team",
+                      type: "team",
+                      size: 96,
+                    });
+                  }}
                   alt={team?.name || athlete?.teamName || "Team"}
                   className="h-14 w-14 rounded-full border object-cover bg-white shrink-0"
                 />

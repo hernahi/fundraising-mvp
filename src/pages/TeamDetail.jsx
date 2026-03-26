@@ -163,9 +163,9 @@ export default function TeamDetail() {
           }
         }
 
-        if (!resolvedCoachUser && (isAdmin || isCoach) && orgId) {
-          try {
-            const usersSnap = await getDocs(
+	        if (!resolvedCoachUser && (isAdmin || isCoach) && orgId) {
+	          try {
+	            const usersSnap = await getDocs(
               query(
                 collection(db, "users"),
                 where("orgId", "==", orgId),
@@ -174,18 +174,24 @@ export default function TeamDetail() {
             );
             const matchedCoach = usersSnap.docs
               .map((entry) => ({ id: entry.id, ...entry.data() }))
-              .find((entry) => {
-                const singleTeamId = String(entry.teamId || "").trim();
-                const multiTeamIds = Array.isArray(entry.teamIds)
-                  ? entry.teamIds
-                  : Array.isArray(entry.assignedTeamIds)
-                    ? entry.assignedTeamIds
-                    : [];
-                return (
-                  singleTeamId === id ||
-                  multiTeamIds.map((teamId) => String(teamId || "").trim()).includes(id)
-                );
-              });
+	              .find((entry) => {
+	                const singleTeamId = String(entry.teamId || "").trim();
+	                const teamName = String(teamData.name || "").trim();
+	                const multiTeamIds = Array.isArray(entry.teamIds)
+	                  ? entry.teamIds
+	                  : Array.isArray(entry.assignedTeamIds)
+	                    ? entry.assignedTeamIds
+	                    : [];
+	                const normalizedMultiTeamIds = multiTeamIds
+	                  .map((teamId) => String(teamId || "").trim())
+	                  .filter(Boolean);
+	                return (
+	                  singleTeamId === id ||
+	                  singleTeamId === teamName ||
+	                  normalizedMultiTeamIds.includes(id) ||
+	                  normalizedMultiTeamIds.includes(teamName)
+	                );
+	              });
             if (matchedCoach) {
               resolvedCoachUser = matchedCoach;
             }
@@ -365,15 +371,22 @@ export default function TeamDetail() {
       )}
 
       {/* TEAM AVATAR */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
-          <img
-            src={safeImageURL(
-            team.avatar || team.photoURL || team.imgUrl || team.logo,
-            avatarFallback({ label: team.name || "Team", type: "team", size: 192 })
-          )}
-          alt="Team Avatar"
-          className="w-20 h-20 rounded-full border object-cover bg-white shadow"
-        />
+	      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
+	          <img
+	            src={safeImageURL(
+	            team.avatar || team.photoURL || team.imgUrl || team.logo,
+	            avatarFallback({ label: team.name || "Team", type: "team", size: 192 })
+	          )}
+	          onError={(e) => {
+	            e.currentTarget.src = avatarFallback({
+	              label: team.name || "Team",
+	              type: "team",
+	              size: 192,
+	            });
+	          }}
+	          alt="Team Avatar"
+	          className="w-20 h-20 rounded-full border object-cover bg-white shadow"
+	        />
         <div>
           <p className="text-gray-600">{team.description || "No team description added yet."}</p>
           <div className="mt-2 text-sm text-slate-600">

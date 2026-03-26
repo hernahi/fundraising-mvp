@@ -1,6 +1,15 @@
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase/config";
 
+function withTimeout(promise, timeoutMs = 20000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Team image upload timed out.")), timeoutMs);
+    }),
+  ]);
+}
+
 export async function uploadTeamImage(file, teamId) {
   if (!file) return null;
 
@@ -11,6 +20,6 @@ export async function uploadTeamImage(file, teamId) {
   const path = `teams/${teamId}/avatar-${Date.now()}-${safeName}`;
   const storageRef = ref(storage, path);
 
-  await uploadBytes(storageRef, file);
-  return getDownloadURL(storageRef);
+  await withTimeout(uploadBytes(storageRef, file));
+  return await withTimeout(getDownloadURL(storageRef));
 }
