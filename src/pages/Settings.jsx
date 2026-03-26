@@ -374,6 +374,14 @@ export default function Settings() {
             <p className="text-xs text-slate-400 mt-1">
               Signed in as <span className="font-medium">{role}</span>
             </p>
+            {isOrgAdmin && (user?.uid || profile?.uid) ? (
+              <p className="text-xs text-slate-400 mt-1">
+                Auth UID:{" "}
+                <span className="font-mono text-slate-500">
+                  {user?.uid || profile?.uid}
+                </span>
+              </p>
+            ) : null}
           </div>
         </div>
 
