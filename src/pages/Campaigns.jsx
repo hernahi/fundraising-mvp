@@ -22,6 +22,39 @@ function getCoachScopedTeamIds(profile) {
   return Array.from(new Set(normalized));
 }
 
+async function fetchCoachCampaignsByTeamIds(orgId, teamIds) {
+  const uniqueTeamIds = Array.from(
+    new Set((teamIds || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (!orgId || uniqueTeamIds.length === 0) return [];
+
+  const snaps = await Promise.all(
+    uniqueTeamIds.map(async (teamId) => {
+      try {
+        return await getDocs(
+          query(
+            collection(db, "campaigns"),
+            where("orgId", "==", orgId),
+            where("teamId", "==", teamId)
+          )
+        );
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const merged = new Map();
+  snaps.forEach((snap) => {
+    if (!snap) return;
+    snap.docs.forEach((entry) => {
+      merged.set(entry.id, { id: entry.id, ...entry.data() });
+    });
+  });
+
+  return Array.from(merged.values());
+}
+
 export default function Campaigns() {
   const { user, profile, loading, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
   const [campaigns, setCampaigns] = useState([]);
@@ -55,33 +88,10 @@ export default function Campaigns() {
             setCampaigns([]);
             return;
           }
-
-          const chunkedTeamIds = [];
-          for (let i = 0; i < coachTeamIds.length; i += 10) {
-            chunkedTeamIds.push(coachTeamIds.slice(i, i + 10));
-          }
-
-          const snaps = await Promise.all(
-            chunkedTeamIds.map((chunk) =>
-              getDocs(
-                query(
-                  collection(db, "campaigns"),
-                  where("orgId", "==", resolvedOrgId),
-                  chunk.length === 1
-                    ? where("teamId", "==", chunk[0])
-                    : where("teamId", "in", chunk)
-                )
-              )
-            )
+          campaignRows = await fetchCoachCampaignsByTeamIds(
+            resolvedOrgId,
+            coachTeamIds
           );
-
-          const merged = new Map();
-          snaps.forEach((snap) => {
-            snap.docs.forEach((entry) => {
-              merged.set(entry.id, { id: entry.id, ...entry.data() });
-            });
-          });
-          campaignRows = Array.from(merged.values());
         } else {
           const snap = await getDocs(
             query(collection(db, "campaigns"), where("orgId", "==", resolvedOrgId))
@@ -101,7 +111,7 @@ export default function Campaigns() {
 
         setCampaigns(campaignRows);
       } catch (err) {
-        console.error("Error loading campaigns:", err);
+        console.error("Failed to load campaigns:", err);
       } finally {
         setLoadingCampaigns(false);
       }

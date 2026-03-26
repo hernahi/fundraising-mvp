@@ -22,6 +22,7 @@ export default function CoachDetail() {
   const { profile, activeOrgId, isSuperAdmin, loading: authLoading } = useAuth();
   const orgId = isSuperAdmin ? activeOrgId || "" : profile?.orgId || "";
   const isAdmin = ["admin", "super-admin"].includes(profile?.role);
+  const isCoach = String(profile?.role || "").toLowerCase() === "coach";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -38,12 +39,55 @@ export default function CoachDetail() {
     teamName: "",
   });
 
+  function getCoachScopedTeamIds(currentProfile) {
+    if (!currentProfile) return [];
+    const role = String(currentProfile.role || "").toLowerCase();
+    if (role !== "coach") return [];
+    const fromArray = Array.isArray(currentProfile.teamIds)
+      ? currentProfile.teamIds
+      : Array.isArray(currentProfile.assignedTeamIds)
+        ? currentProfile.assignedTeamIds
+        : [];
+    const normalized = fromArray
+      .map((teamId) => String(teamId || "").trim())
+      .filter(Boolean);
+    const single = String(currentProfile.teamId || "").trim();
+    if (single) normalized.push(single);
+    return Array.from(new Set(normalized));
+  }
+
+  async function fetchTeamsByIds(ids) {
+    const uniqueIds = Array.from(
+      new Set((ids || []).map((teamId) => String(teamId || "").trim()).filter(Boolean))
+    );
+    if (uniqueIds.length === 0) return [];
+
+    const rows = await Promise.all(
+      uniqueIds.map(async (teamId) => {
+        try {
+          const snap = await getDoc(doc(db, "teams", teamId));
+          return snap.exists() ? { id: snap.id, ...(snap.data() || {}) } : null;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    return rows.filter(Boolean);
+  }
+
   useEffect(() => {
     if (authLoading || !orgId || !id) return;
 
     async function load() {
       setLoading(true);
       try {
+        if (isCoach && !isAdmin && id !== String(profile?.uid || "").trim()) {
+          setNoAccess(true);
+          setCoach(null);
+          return;
+        }
+
         const [coachSnap, userSnap] = await Promise.all([
           getDoc(doc(db, "coaches", id)),
           getDoc(doc(db, "users", id)),
@@ -87,9 +131,14 @@ export default function CoachDetail() {
         };
 
         const coachUid = resolvedCoach.uid || resolvedCoach.id;
+        const scopedTeamIds = isCoach && !isAdmin
+          ? getCoachScopedTeamIds(profile)
+          : [];
 
         const [teamSnap, athletesSnap] = await Promise.all([
-          getDocs(query(collection(db, "teams"), where("orgId", "==", orgId))),
+          isCoach && !isAdmin
+            ? Promise.resolve(await fetchTeamsByIds(scopedTeamIds))
+            : getDocs(query(collection(db, "teams"), where("orgId", "==", orgId))),
           resolvedCoach.teamId
             ? getDocs(
                 query(
@@ -101,7 +150,9 @@ export default function CoachDetail() {
             : Promise.resolve({ size: 0 }),
         ]);
 
-        const nextTeams = teamSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const nextTeams = Array.isArray(teamSnap)
+          ? teamSnap
+          : teamSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setTeamOptions(nextTeams);
         setAthleteCount(athletesSnap.size || 0);
 
@@ -130,7 +181,7 @@ export default function CoachDetail() {
     }
 
     load();
-  }, [authLoading, id, orgId]);
+  }, [authLoading, id, orgId, isCoach, isAdmin, profile]);
 
   const coachStatus = useMemo(() => {
     return String(user?.status || "active").toLowerCase();
