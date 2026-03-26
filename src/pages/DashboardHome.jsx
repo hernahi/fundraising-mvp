@@ -302,7 +302,12 @@ export default function DashboardHome() {
               athleteData.name || athleteData.displayName || profile?.displayName || ""
             ).trim()
           ),
-          hasPhoto: Boolean(athleteData.photoURL || athleteData.avatar || athleteData.imgUrl),
+          hasPhoto: Boolean(
+            athleteData.photoURL ||
+              athleteData.avatar ||
+              athleteData.imgUrl ||
+              profile?.photoURL
+          ),
           hasBio: Boolean(athleteData.bio || athleteData.story || athleteData.description),
           hasPersonalNote: Boolean(
             String(athleteData.inviteMessage || athleteData.supporterMessage || "").trim()
