@@ -53,6 +53,7 @@ export default function AthleteDetail() {
   const role = (profile?.role || "").toLowerCase();
   const isSelf =
     role === "athlete" && profile?.uid === athleteId;
+  const isCoach = role === "coach";
   const canEditProfile = isSelf || role === "admin" || role === "super-admin" || role === "coach";
   const canAssignCampaign =
     role === "admin" || role === "super-admin" || role === "coach";
@@ -84,10 +85,21 @@ export default function AthleteDetail() {
 
     const loadCampaigns = async () => {
       try {
-        const campaignQuery = query(
-          collection(db, "campaigns"),
-          where("orgId", "==", profile.orgId)
-        );
+        const athleteTeamId = String(athlete?.teamId || "").trim();
+        if (isCoach && !athleteTeamId) {
+          setCampaigns([]);
+          return;
+        }
+        const campaignQuery = isCoach
+          ? query(
+              collection(db, "campaigns"),
+              where("orgId", "==", profile.orgId),
+              where("teamId", "==", athleteTeamId)
+            )
+          : query(
+              collection(db, "campaigns"),
+              where("orgId", "==", profile.orgId)
+            );
         const snap = await getDocs(campaignQuery);
         setCampaigns(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
@@ -96,7 +108,7 @@ export default function AthleteDetail() {
     };
 
     loadCampaigns();
-  }, [canAssignCampaign, profile?.orgId]);
+  }, [athlete?.teamId, canAssignCampaign, isCoach, profile?.orgId]);
 
   useEffect(() => {
     setAssignCampaignId(athlete?.campaignId || "");

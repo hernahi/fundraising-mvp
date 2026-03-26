@@ -5,6 +5,7 @@ import {
   collection,
   getDocs,
   query,
+  Timestamp,
   serverTimestamp,
   where,
 } from "firebase/firestore";
@@ -21,7 +22,8 @@ export default function AthleteOnboardingPanel({
   showLegacyLink = false,
   onSent = null,
 }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const INVITE_EXPIRY_DAYS = 14;
 
   const [emailListText, setEmailListText] = useState("");
   const [campaignId, setCampaignId] = useState(defaultCampaignId || "");
@@ -39,7 +41,18 @@ export default function AthleteOnboardingPanel({
 
     async function loadCampaigns() {
       try {
-        const q = query(collection(db, "campaigns"), where("orgId", "==", orgId));
+        const isCoach = String(profile?.role || "").toLowerCase() === "coach";
+        if (isCoach && !teamId) {
+          setCampaigns([]);
+          return;
+        }
+        const q = isCoach
+          ? query(
+              collection(db, "campaigns"),
+              where("orgId", "==", orgId),
+              where("teamId", "==", teamId)
+            )
+          : query(collection(db, "campaigns"), where("orgId", "==", orgId));
         const snap = await getDocs(q);
         setCampaigns(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
@@ -48,7 +61,7 @@ export default function AthleteOnboardingPanel({
     }
 
     loadCampaigns();
-  }, [orgId]);
+  }, [orgId, profile?.role, teamId]);
 
   const helperText = useMemo(() => {
     if (teamId && campaignId) return "Invites will include both team and campaign context.";
@@ -99,6 +112,9 @@ export default function AthleteOnboardingPanel({
             teamId: teamId || null,
             campaignId: campaignId || null,
             status: "pending",
+            expiresAt: Timestamp.fromDate(
+              new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+            ),
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
             createdByUid: user?.uid || null,
@@ -108,6 +124,7 @@ export default function AthleteOnboardingPanel({
             toEmail: email,
             inviteId: inviteRef.id,
             appUrl,
+            mode: "initial",
           });
 
           sent.push(email);

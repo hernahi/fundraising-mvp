@@ -89,7 +89,9 @@ export default function CoachDetail() {
         }
 
         const [coachSnap, userSnap] = await Promise.all([
-          getDoc(doc(db, "coaches", id)),
+          isCoach && !isAdmin
+            ? Promise.resolve({ exists: () => false })
+            : getDoc(doc(db, "coaches", id)),
           getDoc(doc(db, "users", id)),
         ]);
 
