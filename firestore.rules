@@ -118,6 +118,16 @@ service cloud.firestore {
         && coachHasTeam(teamId);
     }
 
+    function canCoachManageCampaignData(data) {
+      return isSignedIn()
+        && isCoach()
+        && data.orgId is string
+        && data.teamId is string
+        && data.teamId != ""
+        && userOrgId() == data.orgId
+        && coachHasTeam(data.teamId);
+    }
+
     function canCoachReadByCampaign(orgId, campaignId) {
       return isSignedIn()
         && isCoach()
@@ -414,19 +424,32 @@ service cloud.firestore {
             )
           ));
 
-      // ✅ Only admins & super-admins may write
+      // ✅ Admins/super-admins may write; coaches may manage campaigns for assigned teams
       allow create: if isSignedIn()
-        && (isOrgAdmin() || isSuperAdmin())
-        && canAccessOrg(request.resource.data.orgId);
+        && (
+          ((isOrgAdmin() || isSuperAdmin()) && canAccessOrg(request.resource.data.orgId))
+          || canCoachManageCampaignData(request.resource.data)
+        );
 
       allow update: if isSignedIn()
-        && (isOrgAdmin() || isSuperAdmin())
-        && canAccessOrg(resource.data.orgId)
+        && (
+          (
+            (isOrgAdmin() || isSuperAdmin())
+            && canAccessOrg(resource.data.orgId)
+          )
+          || (
+            canCoachManageCampaignData(resource.data)
+            && canCoachManageCampaignData(request.resource.data)
+            && request.resource.data.orgId == resource.data.orgId
+          )
+        )
         && orgIdUnchanged();
 
       allow delete: if isSignedIn()
-        && (isOrgAdmin() || isSuperAdmin())
-        && canAccessOrg(resource.data.orgId);
+        && (
+          ((isOrgAdmin() || isSuperAdmin()) && canAccessOrg(resource.data.orgId))
+          || canCoachManageCampaignData(resource.data)
+        );
     }
 
     match /campaigns/{campaignId}/comments/{commentId} {

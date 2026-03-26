@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 
 import DashboardHome from "./pages/DashboardHome";
 import Campaigns from "./pages/Campaigns";
+import AddCampaign from "./pages/AddCampaign";
 import CampaignDetail from "./pages/CampaignDetail";
 import CampaignOverview from "./pages/CampaignOverview";
 import EditCampaign from "./pages/EditCampaign";
@@ -64,6 +65,7 @@ export default function App() {
 
       {/* Campaigns */}
       <Route path="campaigns" element={<Campaigns />} />
+      <Route path="campaigns/new" element={<AddCampaign />} />
       <Route path="campaigns/:campaignId" element={<CampaignDetail />} />
       <Route path="campaigns/:campaignId/edit" element={<EditCampaign />} />
       <Route
