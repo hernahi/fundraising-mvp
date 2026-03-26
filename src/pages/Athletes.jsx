@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   collection,
-  documentId,
   query,
   where,
   getDocs,
@@ -71,6 +70,26 @@ function getCoachScopedTeamIds(profile) {
   return Array.from(new Set(normalized));
 }
 
+async function fetchTeamsByIds(ids) {
+  const uniqueIds = Array.from(
+    new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (uniqueIds.length === 0) return [];
+
+  const teamRows = await Promise.all(
+    uniqueIds.map(async (teamId) => {
+      try {
+        const snap = await getDoc(doc(db, "teams", teamId));
+        return snap.exists() ? { id: snap.id, ...(snap.data() || {}) } : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return teamRows.filter(Boolean);
+}
+
 export default function Athletes() {
   const { profile, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
 
@@ -112,14 +131,6 @@ export default function Athletes() {
       try {
         setLoading(true);
 
-// -----------------------------
-// LOAD TEAMS FIRST
-// -----------------------------
-let teamsQ = query(
-  collection(db, "teams"),
-  where("orgId", "==", resolvedOrgId)
-);
-
 if (isCoach && profile.uid) {
   if (coachTeamIds.length === 0) {
     setTeams([]);
@@ -127,26 +138,8 @@ if (isCoach && profile.uid) {
     setLoading(false);
     return;
   }
-  const chunks = [];
-  for (let i = 0; i < coachTeamIds.length; i += 10) {
-    chunks.push(coachTeamIds.slice(i, i + 10));
-  }
-  const snaps = await Promise.all(
-    chunks.map((chunk) =>
-      getDocs(
-        query(
-          collection(db, "teams"),
-          where("orgId", "==", resolvedOrgId),
-          where(documentId(), "in", chunk)
-        )
-      )
-    )
-  );
-  const teamRows = [];
-  snaps.forEach((snap) =>
-    snap.docs.forEach((d) => {
-      teamRows.push({ id: d.id, ...d.data() });
-    })
+  const teamRows = (await fetchTeamsByIds(coachTeamIds)).filter(
+    (team) => String(team?.orgId || "").trim() === resolvedOrgId
   );
   setTeams(teamRows);
 
@@ -179,7 +172,12 @@ if (isCoach && profile.uid) {
   return;
 }
 
-const teamsSnap = await getDocs(teamsQ);
+const teamsSnap = await getDocs(
+  query(
+    collection(db, "teams"),
+    where("orgId", "==", resolvedOrgId)
+  )
+);
 const teamRows = teamsSnap.docs.map((d) => ({
   id: d.id,
   ...d.data(),

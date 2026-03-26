@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, documentId, query, where, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import { buildCoachTotals } from "../utils/coachAttribution";
@@ -33,6 +33,26 @@ function getCoachScopedTeamIds(profile) {
   const single = String(profile.teamId || "").trim();
   if (single) normalized.push(single);
   return Array.from(new Set(normalized));
+}
+
+async function fetchTeamsByIds(ids) {
+  const uniqueIds = Array.from(
+    new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (uniqueIds.length === 0) return [];
+
+  const teamRows = await Promise.all(
+    uniqueIds.map(async (teamId) => {
+      try {
+        const snap = await getDoc(doc(db, "teams", teamId));
+        return snap.exists() ? { id: snap.id, ...(snap.data() || {}) } : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return teamRows.filter(Boolean);
 }
 
 export default function Coaches() {
@@ -68,13 +88,19 @@ export default function Coaches() {
     async function load() {
       setLoading(true);
       try {
+        let nextUsersByUid = {};
+        let nextCoaches = [];
+        let nextRollups = [];
+        let nextCampaigns = [];
+        let nextTeams = [];
+
         if (isCoach && !isAdmin) {
           const selfUser = {
             id: String(profile?.uid || "").trim(),
             ...profile,
           };
-          setUsersByUid(selfUser.id ? { [selfUser.id]: selfUser } : {});
-          setCoaches(
+          nextUsersByUid = selfUser.id ? { [selfUser.id]: selfUser } : {};
+          nextCoaches =
             selfUser.id
               ? [
                   {
@@ -97,147 +123,88 @@ export default function Coaches() {
                     role: "coach",
                   },
                 ]
-              : []
-          );
-          setRollups([]);
+              : [];
+          nextTeams = await fetchTeamsByIds(coachTeamIds);
         } else {
-        const [coachesSnap, coachUsersSnap] = await Promise.all([
-          getDocs(query(collection(db, "coaches"), where("orgId", "==", orgId))),
-          getDocs(
-            query(
-              collection(db, "users"),
-              where("orgId", "==", orgId),
-              where("role", "==", "coach")
-            )
-          ),
-        ]);
-
-        const coachRowsFromDocs = coachesSnap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
-        const usersMap = coachUsersSnap.docs.reduce((acc, entry) => {
-          acc[entry.id] = entry.data() || {};
-          return acc;
-        }, {});
-
-        const [rollupsSnap, campaignsSnap, teamsSnap] = await Promise.all([
-          isAdmin
-            ? getDocs(
-                query(collection(db, "donation_rollups"), where("orgId", "==", orgId))
+          const [coachesSnap, coachUsersSnap, rollupsSnap, campaignsSnap, teamsSnap] = await Promise.all([
+            getDocs(query(collection(db, "coaches"), where("orgId", "==", orgId))),
+            getDocs(
+              query(
+                collection(db, "users"),
+                where("orgId", "==", orgId),
+                where("role", "==", "coach")
               )
-            : Promise.resolve({ docs: [] }),
-          (async () => {
-            if (!isCoach) {
-              return getDocs(
-                query(collection(db, "campaigns"), where("orgId", "==", orgId))
-              );
-            }
-            if (coachTeamIds.length === 0) return { docs: [] };
-            const chunks = [];
-            for (let i = 0; i < coachTeamIds.length; i += 10) {
-              chunks.push(coachTeamIds.slice(i, i + 10));
-            }
-            const snaps = await Promise.all(
-              chunks.map((chunk) => {
-                const teamConstraint =
-                  chunk.length === 1
-                    ? where("teamId", "==", chunk[0])
-                    : where("teamId", "in", chunk);
-                return getDocs(
-                  query(
-                    collection(db, "campaigns"),
-                    where("orgId", "==", orgId),
-                    teamConstraint
-                  )
-                );
-              })
-            );
-            const dedupe = new Map();
-            snaps.forEach((snap) =>
-              snap.docs.forEach((entry) => dedupe.set(entry.id, entry))
-            );
-            return { docs: Array.from(dedupe.values()) };
-          })(),
-          (async () => {
-            if (!isCoach) {
-              return getDocs(query(collection(db, "teams"), where("orgId", "==", orgId)));
-            }
-            if (coachTeamIds.length === 0) return { docs: [] };
-            const chunks = [];
-            for (let i = 0; i < coachTeamIds.length; i += 10) {
-              chunks.push(coachTeamIds.slice(i, i + 10));
-            }
-            const snaps = await Promise.all(
-              chunks.map((chunk) =>
-                getDocs(
-                  query(
-                    collection(db, "teams"),
-                    where("orgId", "==", orgId),
-                    where(documentId(), "in", chunk)
-                  )
+            ),
+            isAdmin
+              ? getDocs(
+                  query(collection(db, "donation_rollups"), where("orgId", "==", orgId))
                 )
-              )
-            );
-            const dedupe = new Map();
-            snaps.forEach((snap) =>
-              snap.docs.forEach((entry) => dedupe.set(entry.id, entry))
-            );
-            return { docs: Array.from(dedupe.values()) };
-          })(),
-        ]);
+              : Promise.resolve({ docs: [] }),
+            getDocs(query(collection(db, "campaigns"), where("orgId", "==", orgId))),
+            getDocs(query(collection(db, "teams"), where("orgId", "==", orgId))),
+          ]);
 
-        const coachesByUid = new Map();
-        coachRowsFromDocs.forEach((coachRow) => {
-          const key = String(coachRow.uid || coachRow.id || "").trim();
-          if (key) coachesByUid.set(key, coachRow);
-        });
+          const coachRowsFromDocs = coachesSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }));
+          const usersMap = coachUsersSnap.docs.reduce((acc, entry) => {
+            acc[entry.id] = entry.data() || {};
+            return acc;
+          }, {});
 
-        const mergedCoachRows = [...coachRowsFromDocs];
-        coachUsersSnap.docs.forEach((entry) => {
-          const uid = entry.id;
-          const userData = entry.data() || {};
-          if (coachesByUid.has(uid)) return;
-          mergedCoachRows.push({
-            id: uid,
-            uid,
-            orgId,
-            name:
-              userData.displayName ||
-              userData.name ||
-              userData.email ||
-              "Coach",
-            email: userData.email || "",
-            teamId: userData.teamId || "",
-            teamIds: Array.isArray(userData.teamIds)
-              ? userData.teamIds
-              : Array.isArray(userData.assignedTeamIds)
-                ? userData.assignedTeamIds
-                : [],
-            status: userData.status || "active",
-            role: userData.role || "coach",
-            createdAt: userData.createdAt || null,
-            _fromUsersOnly: true,
+          const coachesByUid = new Map();
+          coachRowsFromDocs.forEach((coachRow) => {
+            const key = String(coachRow.uid || coachRow.id || "").trim();
+            if (key) coachesByUid.set(key, coachRow);
           });
-        });
 
-        setUsersByUid(usersMap);
-        setCoaches(mergedCoachRows);
-        setRollups(rollupsSnap.docs.map((d) => d.data()));
+          const mergedCoachRows = [...coachRowsFromDocs];
+          coachUsersSnap.docs.forEach((entry) => {
+            const uid = entry.id;
+            const userData = entry.data() || {};
+            if (coachesByUid.has(uid)) return;
+            mergedCoachRows.push({
+              id: uid,
+              uid,
+              orgId,
+              name:
+                userData.displayName ||
+                userData.name ||
+                userData.email ||
+                "Coach",
+              email: userData.email || "",
+              teamId: userData.teamId || "",
+              teamIds: Array.isArray(userData.teamIds)
+                ? userData.teamIds
+                : Array.isArray(userData.assignedTeamIds)
+                  ? userData.assignedTeamIds
+                  : [],
+              status: userData.status || "active",
+              role: userData.role || "coach",
+              createdAt: userData.createdAt || null,
+              _fromUsersOnly: true,
+            });
+          });
+
+          nextUsersByUid = usersMap;
+          nextCoaches = mergedCoachRows;
+          nextRollups = rollupsSnap.docs.map((d) => d.data());
+          nextCampaigns = campaignsSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }));
+          nextTeams = teamsSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }));
         }
 
-        setCampaigns(
-          campaignsSnap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        );
-        setTeams(
-          teamsSnap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        );
+        setUsersByUid(nextUsersByUid);
+        setCoaches(nextCoaches);
+        setRollups(nextRollups);
+        setCampaigns(nextCampaigns);
+        setTeams(nextTeams);
       } catch (err) {
         console.error("Failed to load coaches page data:", err);
       } finally {

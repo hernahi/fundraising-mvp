@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import {
   collection,
   doc,
-  documentId,
   getDoc,
   getDocs,
   orderBy,
@@ -34,6 +33,26 @@ function getCoachScopedTeamIds(profile) {
   const single = String(profile.teamId || "").trim();
   if (single) normalized.push(single);
   return Array.from(new Set(normalized));
+}
+
+async function fetchTeamsByIds(ids) {
+  const uniqueIds = Array.from(
+    new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (uniqueIds.length === 0) return [];
+
+  const teamRows = await Promise.all(
+    uniqueIds.map(async (teamId) => {
+      try {
+        const snap = await getDoc(doc(db, "teams", teamId));
+        return snap.exists() ? { id: snap.id, ...(snap.data() || {}) } : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return teamRows.filter(Boolean);
 }
 
 async function fetchTeamCounts(orgId, teamId) {
@@ -106,32 +125,9 @@ export default function Teams() {
 
         let rows = [];
         if (isCoach) {
-          if (coachTeamIds.length === 0) {
-            rows = [];
-          } else {
-            const chunks = [];
-            for (let i = 0; i < coachTeamIds.length; i += 10) {
-              chunks.push(coachTeamIds.slice(i, i + 10));
-            }
-            const snaps = await Promise.all(
-              chunks.map((chunk) =>
-                getDocs(
-                  query(
-                    collection(db, "teams"),
-                    where("orgId", "==", resolvedOrgId),
-                    where(documentId(), "in", chunk)
-                  )
-                )
-              )
-            );
-            const dedupe = new Map();
-            snaps.forEach((snap) =>
-              snap.docs.forEach((entry) =>
-                dedupe.set(entry.id, { id: entry.id, ...entry.data() })
-              )
-            );
-            rows = Array.from(dedupe.values());
-          }
+          rows = (await fetchTeamsByIds(coachTeamIds)).filter(
+            (team) => String(team?.orgId || "").trim() === resolvedOrgId
+          );
         } else {
           const snap = await getDocs(
             query(

@@ -3,7 +3,7 @@ import {
   addDoc,
   collection,
   doc,
-  documentId,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -38,6 +38,26 @@ function getCoachScopedTeamIds(profile) {
   const single = String(profile.teamId || "").trim();
   if (single) normalized.push(single);
   return Array.from(new Set(normalized));
+}
+
+async function fetchTeamsByIds(ids) {
+  const uniqueIds = Array.from(
+    new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (uniqueIds.length === 0) return [];
+
+  const teamRows = await Promise.all(
+    uniqueIds.map(async (teamId) => {
+      try {
+        const snap = await getDoc(doc(db, "teams", teamId));
+        return snap.exists() ? { id: snap.id, ...(snap.data() || {}) } : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return teamRows.filter(Boolean);
 }
 
 function generateTemporaryPassword(length = 14) {
@@ -225,28 +245,9 @@ export default function AdminUsers() {
             setTeams([]);
             return;
           }
-          const chunks = [];
-          for (let i = 0; i < coachTeamIds.length; i += 10) {
-            chunks.push(coachTeamIds.slice(i, i + 10));
-          }
-          const snaps = await Promise.all(
-            chunks.map((chunk) =>
-              getDocs(
-                query(
-                  collection(db, "teams"),
-                  where("orgId", "==", scopedOrgId),
-                  where(documentId(), "in", chunk)
-                )
-              )
-            )
+          rows = (await fetchTeamsByIds(coachTeamIds)).filter(
+            (team) => String(team?.orgId || "").trim() === scopedOrgId
           );
-          const dedupe = new Map();
-          snaps.forEach((snap) =>
-            snap.docs.forEach((entry) =>
-              dedupe.set(entry.id, { id: entry.id, ...(entry.data() || {}) })
-            )
-          );
-          rows = Array.from(dedupe.values());
         } else {
           const snap = await getDocs(
             query(collection(db, "teams"), where("orgId", "==", scopedOrgId))
@@ -296,6 +297,12 @@ export default function AdminUsers() {
     }
     return map;
   }, [teams]);
+
+  const resolveTeamName = (teamId) => {
+    const normalizedId = String(teamId || "").trim();
+    if (!normalizedId) return "";
+    return teamNameById.get(normalizedId) || normalizedId;
+  };
 
   const getUserTeamLabel = (userRow) => {
     const singleTeamId = String(userRow?.teamId || "").trim();

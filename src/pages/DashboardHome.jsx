@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import {
   collection,
   doc,
-  documentId,
   getDoc,
   query,
   where,
@@ -79,6 +78,25 @@ async function fetchDocsByIds({ collectionName, ids }) {
   }
 
   return results;
+}
+
+async function fetchTeamsByIds(ids) {
+  if (!ids?.length) return [];
+
+  const uniqueIds = Array.from(
+    new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  const rows = await Promise.all(
+    uniqueIds.map(async (teamId) => {
+      try {
+        const snap = await getDoc(doc(db, "teams", teamId));
+        return snap.exists() ? { id: snap.id, ...(snap.data() || {}) } : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+  return rows.filter(Boolean);
 }
 
 /* ==============================
@@ -717,32 +735,9 @@ export default function DashboardHome() {
         // Teams scope: coaches see their teams; admins see org teams.
         let teamRows = [];
         if (isCoach) {
-          if (coachTeamIds.length === 0) {
-            teamRows = [];
-          } else {
-            const chunks = [];
-            for (let i = 0; i < coachTeamIds.length; i += 10) {
-              chunks.push(coachTeamIds.slice(i, i + 10));
-            }
-            const snaps = await Promise.all(
-              chunks.map((chunk) =>
-                getDocs(
-                  query(
-                    collection(db, "teams"),
-                    where("orgId", "==", resolvedOrgId),
-                    where(documentId(), "in", chunk)
-                  )
-                )
-              )
-            );
-            const dedupe = new Map();
-            snaps.forEach((snap) =>
-              snap.docs.forEach((entry) =>
-                dedupe.set(entry.id, { id: entry.id, ...entry.data() })
-              )
-            );
-            teamRows = Array.from(dedupe.values());
-          }
+          teamRows = (await fetchTeamsByIds(coachTeamIds)).filter(
+            (team) => String(team?.orgId || "").trim() === resolvedOrgId
+          );
         } else {
           const teamsSnap = await getDocs(
             query(collection(db, "teams"), where("orgId", "==", resolvedOrgId))

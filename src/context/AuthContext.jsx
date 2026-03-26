@@ -9,7 +9,7 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail,
 } from "firebase/auth";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
@@ -82,7 +82,7 @@ export function AuthProvider({ children }) {
             photoURL: String(data?.photoURL || authPhotoURL || "").trim(),
           };
 
-          if (String(data?.role || "").toLowerCase() === "coach" && data?.orgId) {
+          if (String(data?.role || "").toLowerCase() === "coach") {
             const explicitTeamIds = Array.isArray(data.teamIds)
               ? data.teamIds
               : Array.isArray(data.assignedTeamIds)
@@ -90,27 +90,9 @@ export function AuthProvider({ children }) {
                 : [];
             const singleTeamId = String(data.teamId || "").trim();
 
-            let derivedTeamIds = [];
-            try {
-              const teamsSnap = await getDocs(
-                query(
-                  collection(db, "teams"),
-                  where("orgId", "==", data.orgId),
-                  where("coachId", "==", uid)
-                )
-              );
-              derivedTeamIds = teamsSnap.docs.map((entry) => entry.id);
-            } catch (deriveErr) {
-              // Do not block login if coach team enrichment fails.
-              console.warn(
-                "Coach team enrichment skipped:",
-                deriveErr?.message || deriveErr
-              );
-            }
-
             const mergedTeamIds = Array.from(
               new Set(
-                [...explicitTeamIds, ...derivedTeamIds, singleTeamId]
+                [...explicitTeamIds, singleTeamId]
                   .map((id) => String(id || "").trim())
                   .filter(Boolean)
               )
