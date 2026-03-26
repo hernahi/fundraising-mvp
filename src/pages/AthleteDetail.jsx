@@ -49,6 +49,7 @@ export default function AthleteDetail() {
   const [campaigns, setCampaigns] = useState([]);
   const [assignCampaignId, setAssignCampaignId] = useState("");
   const [savingCampaign, setSavingCampaign] = useState(false);
+  const [team, setTeam] = useState(null);
 
   const role = (profile?.role || "").toLowerCase();
   const isSelf =
@@ -113,6 +114,33 @@ export default function AthleteDetail() {
   useEffect(() => {
     setAssignCampaignId(athlete?.campaignId || "");
   }, [athlete?.campaignId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTeam() {
+      const teamId = String(athlete?.teamId || "").trim();
+      if (!teamId) {
+        if (!cancelled) setTeam(null);
+        return;
+      }
+
+      try {
+        const teamSnap = await getDoc(doc(db, "teams", teamId));
+        if (!cancelled) {
+          setTeam(teamSnap.exists() ? { id: teamSnap.id, ...teamSnap.data() } : null);
+        }
+      } catch (err) {
+        console.error("Failed to load athlete team:", err);
+        if (!cancelled) setTeam(null);
+      }
+    }
+
+    loadTeam();
+    return () => {
+      cancelled = true;
+    };
+  }, [athlete?.teamId]);
 
   useEffect(() => {
     if (!profile?.orgId || !athleteId) {
@@ -468,15 +496,36 @@ export default function AthleteDetail() {
 	            </div>
 	          </div>
 
-	          <div>
-	            <h3 className="font-semibold text-gray-700 mb-1">Team</h3>
-            <Link
-              to={`/teams/${athlete.teamId}`}
-              className="text-blue-600 hover:underline"
-            >
-              View Team
-            </Link>
-          </div>
+		          <div>
+		            <h3 className="font-semibold text-gray-700 mb-1">Team</h3>
+            {athlete?.teamId ? (
+              <Link
+                to={`/teams/${athlete.teamId}`}
+                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 hover:bg-slate-100"
+              >
+                <img
+                  src={safeImageURL(
+                    team?.avatar || team?.photoURL || team?.imgUrl || team?.logo,
+                    avatarFallback({
+                      label: team?.name || athlete?.teamName || "Team",
+                      type: "team",
+                      size: 96,
+                    })
+                  )}
+                  alt={team?.name || athlete?.teamName || "Team"}
+                  className="h-14 w-14 rounded-full border object-cover bg-white shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-medium text-slate-800">
+                    {team?.name || athlete?.teamName || athlete?.teamId}
+                  </div>
+                  <div className="text-sm text-blue-600">View Team</div>
+                </div>
+              </Link>
+            ) : (
+              <p className="text-gray-500">No team assigned</p>
+            )}
+	          </div>
 
           <div>
             <h3 className="font-semibold text-gray-700 mb-1">Assigned Campaign</h3>
