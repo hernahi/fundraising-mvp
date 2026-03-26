@@ -153,14 +153,19 @@ if (isCoach && profile.uid) {
     const snap = await getDocs(athletesQ);
     athleteRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } else {
-    const validTeamIds = teamRows.map((t) => t.id).slice(0, 10);
-    const athletesQ = query(
-      collection(db, "athletes"),
-      where("orgId", "==", resolvedOrgId),
-      where("teamId", "in", validTeamIds)
-    );
-    const snap = await getDocs(athletesQ);
-    athleteRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const validTeamIds = teamRows
+      .map((t) => String(t?.id || "").trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    if (validTeamIds.length > 0) {
+      const athletesQ = query(
+        collection(db, "athletes"),
+        where("orgId", "==", resolvedOrgId),
+        where("teamId", "in", validTeamIds)
+      );
+      const snap = await getDocs(athletesQ);
+      athleteRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
   }
 
   setAthletes(athleteRows);
