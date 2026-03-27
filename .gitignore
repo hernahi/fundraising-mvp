@@ -18,6 +18,11 @@ dist-ssr
 # Firebase Admin / service accounts (DO NOT COMMIT)
 serviceAccountKey.json
 scripts/serviceAccountKey.json
+secret_keys_and_notes/
+stripe_test_key.txt
+stripe_test_webhook_secret.txt
+stripe_webhook_secret_bad.txt
+cors.json
 
 # Editor directories and files
 .vscode/*
