@@ -39,6 +39,8 @@ export default function Login() {
     campaignGoal: "",
   });
   const [bootstrapResult, setBootstrapResult] = useState(null);
+  const selfBootstrapEnabled =
+    String(import.meta.env.VITE_ENABLE_SELF_BOOTSTRAP || "").trim().toLowerCase() === "true";
 
   useEffect(() => {
     if (!loading && user && !profile && redirectTo?.startsWith("/accept-invite")) {
@@ -287,7 +289,7 @@ export default function Login() {
                 <br />
                 Auth Email: <span className="font-mono">{user?.email || "unknown"}</span>
               </div>
-              {!redirectTo?.startsWith("/accept-invite") ? (
+              {!redirectTo?.startsWith("/accept-invite") && selfBootstrapEnabled ? (
                 <div className="mt-3">
                   <button
                     type="button"
@@ -301,7 +303,7 @@ export default function Login() {
             </div>
           )}
 
-          {hasAccountWithoutProfile && showBootstrap && !redirectTo?.startsWith("/accept-invite") ? (
+          {hasAccountWithoutProfile && showBootstrap && selfBootstrapEnabled && !redirectTo?.startsWith("/accept-invite") ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="mb-2 text-xs text-slate-600">
                 Solo workspace setup: this creates your organization, first team, and optional starter campaign.
