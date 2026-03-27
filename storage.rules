@@ -1,0 +1,120 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return isSignedIn()
+        ? firestore.get(/databases/(default)/documents/users/$(request.auth.uid))
+        : null;
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && userDoc() != null && userDoc().data != null;
+    }
+
+    function userRole() {
+      return hasUserDoc() ? userDoc().data.role : null;
+    }
+
+    function userOrgId() {
+      return hasUserDoc() ? userDoc().data.orgId : null;
+    }
+
+    function isSuperAdmin() {
+      return userRole() == "super-admin";
+    }
+
+    function isOrgAdmin() {
+      return userRole() == "admin";
+    }
+
+    function isCoach() {
+      return userRole() == "coach";
+    }
+
+    function isAthlete() {
+      return userRole() == "athlete";
+    }
+
+    function canAccessOrg(orgId) {
+      return isSignedIn() && (
+        (hasUserDoc() && userOrgId() == orgId) ||
+        isSuperAdmin()
+      );
+    }
+
+    function teamDoc(teamId) {
+      return firestore.get(/databases/(default)/documents/teams/$(teamId));
+    }
+
+    function athleteDoc(athleteId) {
+      return firestore.get(/databases/(default)/documents/athletes/$(athleteId));
+    }
+
+    function coachHasTeam(teamId) {
+      return isSignedIn()
+        && isCoach()
+        && hasUserDoc()
+        && teamId is string
+        && teamId != ""
+        && (
+          (("teamId" in userDoc().data) && userDoc().data.teamId == teamId) ||
+          (("teamIds" in userDoc().data)
+            && userDoc().data.teamIds is list
+            && userDoc().data.teamIds.hasAny([teamId])) ||
+          (("assignedTeamIds" in userDoc().data)
+            && userDoc().data.assignedTeamIds is list
+            && userDoc().data.assignedTeamIds.hasAny([teamId])) ||
+          (
+            teamDoc(teamId).data != null &&
+            teamDoc(teamId).data.orgId == userOrgId() &&
+            teamDoc(teamId).data.coachId == request.auth.uid
+          )
+        );
+    }
+
+    function canWriteTeamImage(teamId) {
+      return isSignedIn()
+        && teamDoc(teamId).data != null
+        && (
+          ((isOrgAdmin() || isSuperAdmin()) && canAccessOrg(teamDoc(teamId).data.orgId))
+          || (
+            isCoach()
+            && userOrgId() == teamDoc(teamId).data.orgId
+            && coachHasTeam(teamId)
+          )
+        );
+    }
+
+    function canWriteAthleteImage(athleteId) {
+      return isSignedIn()
+        && athleteDoc(athleteId).data != null
+        && (
+          (isAthlete() && request.auth.uid == athleteId)
+          || ((isOrgAdmin() || isSuperAdmin()) && canAccessOrg(athleteDoc(athleteId).data.orgId))
+          || (
+            isCoach()
+            && userOrgId() == athleteDoc(athleteId).data.orgId
+            && coachHasTeam(athleteDoc(athleteId).data.teamId)
+          )
+        );
+    }
+
+    match /teams/{teamId}/{fileName=**} {
+      allow read: if true;
+      allow write: if canWriteTeamImage(teamId);
+    }
+
+    match /athletes/{athleteId}/{fileName=**} {
+      allow read: if true;
+      allow write: if canWriteAthleteImage(athleteId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
