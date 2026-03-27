@@ -65,8 +65,18 @@ export default function AssignCoachToTeamModal({ teamId, orgId, currentCoachId =
     if (!teamId) return;
     setSaving(true);
     try {
+      const selectedCoachRecord = coaches.find((coach) => coach.id === coachIdOrNull) || null;
+      const nextCoachName = coachIdOrNull
+        ? String(
+            selectedCoachRecord?.displayName ||
+              selectedCoachRecord?.name ||
+              selectedCoachRecord?.email ||
+              coachIdOrNull
+          ).trim()
+        : "";
       await updateDoc(doc(db, "teams", teamId), {
         coachId: coachIdOrNull,
+        coachName: nextCoachName,
         updatedAt: serverTimestamp(),
       });
 

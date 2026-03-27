@@ -520,7 +520,7 @@ export default function AthleteDetail() {
                     });
                   }}
                   alt={team?.name || athlete?.teamName || "Team"}
-                  className="h-14 w-14 rounded-full border object-cover bg-white shrink-0"
+                  className="h-14 w-14 rounded-full border bg-white p-1 object-contain shrink-0"
                 />
                 <div className="min-w-0">
                   <div className="font-medium text-slate-800">

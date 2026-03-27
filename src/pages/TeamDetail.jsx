@@ -156,7 +156,7 @@ export default function TeamDetail() {
             ? { id: coachSnap.id, ...coachSnap.data() }
             : null;
 
-        if (!resolvedCoachUser && !teamData.coachId) {
+        if (!resolvedCoachUser) {
           const fallbackCoachName = String(teamData.coachName || teamData.coach || "").trim();
           if (fallbackCoachName) {
             resolvedCoachUser = { id: "", displayName: fallbackCoachName };
@@ -371,7 +371,7 @@ export default function TeamDetail() {
       )}
 
       {/* TEAM AVATAR */}
-	      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
+	        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
 	          <img
 	            src={safeImageURL(
 	            team.avatar || team.photoURL || team.imgUrl || team.logo,
@@ -385,7 +385,7 @@ export default function TeamDetail() {
 	            });
 	          }}
 	          alt="Team Avatar"
-	          className="w-20 h-20 rounded-full border object-cover bg-white shadow"
+	          className="w-20 h-20 rounded-full border bg-white p-1 object-contain shadow"
 	        />
         <div>
           <p className="text-gray-600">{team.description || "No team description added yet."}</p>
