@@ -233,8 +233,8 @@ export default function Teams() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="max-w-2xl">
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Teams</h1>
           <p className="text-sm text-gray-500">
             {isSuperAdmin ? (
@@ -256,17 +256,17 @@ export default function Teams() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap xl:justify-end xl:items-center">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search teams (name, code, coach)…"
-            className="w-full sm:w-72 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-yellow-200"
+            className="w-full min-w-0 xl:w-72 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-yellow-200 sm:col-span-2 xl:col-span-1"
           />
           <select
             value={assignmentFilter}
             onChange={(e) => setAssignmentFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            className="w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
           >
             <option value="all">All teams</option>
             <option value="assigned">Coach assigned</option>
@@ -275,7 +275,7 @@ export default function Teams() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            className="w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
           >
             <option value="name">Sort: Name</option>
             <option value="athletes">Sort: Athletes</option>
@@ -285,7 +285,7 @@ export default function Teams() {
           {isAdmin && (
             <Link
               to="/teams/new"
-              className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 shadow-sm"
+              className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 shadow-sm sm:col-span-2 xl:col-span-1"
             >
               + New Team
             </Link>

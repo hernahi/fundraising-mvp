@@ -1749,6 +1749,11 @@ exports.bootstrapSoloWorkspace = onCall(async (request) => {
     throw new HttpsError("not-found", "Authentication user not found");
   }
 
+  const bootstrapCoachName =
+    String(authUser.displayName || "").trim() ||
+    String(authUser.email || "").trim().toLowerCase() ||
+    uid;
+
   const now = admin.firestore.FieldValue.serverTimestamp();
   const orgRef = db.collection("organizations").doc();
   const teamRef = db.collection("teams").doc();
@@ -1818,6 +1823,7 @@ exports.bootstrapSoloWorkspace = onCall(async (request) => {
       orgId: orgRef.id,
       name: teamName,
       coachId: uid,
+      coachName: bootstrapCoachName,
       createdByUid: uid,
       createdAt: now,
       updatedAt: now,
