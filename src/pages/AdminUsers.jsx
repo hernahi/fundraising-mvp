@@ -145,7 +145,7 @@ function canResendInvite(invite) {
 }
 
 export default function AdminUsers() {
-  const { user: currentUser, profile, isSuperAdmin, activeOrgId } = useAuth();
+  const { user: currentUser, profile, isSuperAdmin, activeOrgId, activeOrgName } = useAuth();
   const role = String(profile?.role || "").toLowerCase();
   const isManager = role === "admin" || role === "super-admin" || role === "coach";
   const isAdmin = role === "admin" || role === "super-admin";
@@ -157,6 +157,9 @@ export default function AdminUsers() {
     () => getCoachScopedTeamIds(profile),
     [profile?.role, profile?.teamId, JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || [])]
   );
+  const orgDisplayLabel = isSuperAdmin
+    ? activeOrgName || scopedOrgId || "none selected"
+    : profile?.orgName || scopedOrgId || "none selected";
 
   const [users, setUsers] = useState([]);
   const [invites, setInvites] = useState([]);
@@ -589,7 +592,7 @@ export default function AdminUsers() {
           </p>
         </div>
         <span className="text-xs rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
-          Org: {profile?.orgName || scopedOrgId || "none selected"}
+          Org: {orgDisplayLabel}
         </span>
       </div>
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
+import { httpsCallable } from "firebase/functions";
 import {
   collection,
   doc,
@@ -11,7 +12,7 @@ import {
   getDocs,
   startAfter,
 } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { db, functions } from "../firebase/config";
 
 import { useAuth } from "../context/AuthContext";
 import { useCampaign } from "../context/CampaignContext";
@@ -222,6 +223,7 @@ export default function DashboardHome() {
     fundsRaised: 0,
   });
   const [superAdminOverviewLoading, setSuperAdminOverviewLoading] = useState(false);
+  const [superAdminOverviewReloadKey, setSuperAdminOverviewReloadKey] = useState(0);
   const [superAdminOverview, setSuperAdminOverview] = useState({
     organizations: [],
     totals: {
@@ -232,6 +234,13 @@ export default function DashboardHome() {
       coachCount: 0,
     },
   });
+  const [workspaceForm, setWorkspaceForm] = useState({
+    orgName: "",
+    teamName: "",
+  });
+  const [workspaceCreateLoading, setWorkspaceCreateLoading] = useState(false);
+  const [workspaceCreateStatus, setWorkspaceCreateStatus] = useState("");
+  const [createdWorkspace, setCreatedWorkspace] = useState(null);
 
   /* ==============================
      Recent Activity (stable)
@@ -634,7 +643,41 @@ export default function DashboardHome() {
     return () => {
       cancelled = true;
     };
-  }, [isSuperAdmin, isAthlete, resolvedOrgId]);
+  }, [isSuperAdmin, isAthlete, resolvedOrgId, superAdminOverviewReloadKey]);
+
+  async function handleCreateOrganizationWorkspace(event) {
+    event.preventDefault();
+    setWorkspaceCreateStatus("");
+    setWorkspaceCreateLoading(true);
+    try {
+      const createOrganizationWorkspace = httpsCallable(
+        functions,
+        "createOrganizationWorkspace"
+      );
+      const result = await createOrganizationWorkspace({
+        orgName: workspaceForm.orgName,
+        teamName: workspaceForm.teamName,
+      });
+      const payload = result?.data || {};
+      const nextWorkspace = {
+        orgId: String(payload.orgId || "").trim(),
+        orgName: String(payload.orgName || workspaceForm.orgName || "").trim(),
+        teamId: String(payload.teamId || "").trim(),
+        teamName: String(payload.teamName || workspaceForm.teamName || "").trim(),
+      };
+      setCreatedWorkspace(nextWorkspace);
+      setWorkspaceForm({ orgName: "", teamName: "" });
+      setWorkspaceCreateStatus("Organization workspace created.");
+      setSuperAdminOverviewReloadKey((value) => value + 1);
+    } catch (err) {
+      console.error("Create organization workspace failed:", err);
+      setWorkspaceCreateStatus(
+        String(err?.message || "").trim() || "Failed to create organization workspace."
+      );
+    } finally {
+      setWorkspaceCreateLoading(false);
+    }
+  }
 
   const athleteFlowSteps = useMemo(() => {
     if (!isAthlete) return [];
@@ -1405,13 +1448,98 @@ export default function DashboardHome() {
         )}
       </div>
 
-      {!isAthlete && isSuperAdmin && !resolvedOrgId && (
-        <div className="mb-6 space-y-6">
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-            All Organizations is a neutral super-admin state. Use this dashboard to compare org health, then pick an organization from the top selector when you want to do scoped maintenance.
+	      {!isAthlete && isSuperAdmin && !resolvedOrgId && (
+	        <div className="mb-6 space-y-6">
+	          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+	            All Organizations is a neutral super-admin state. Use this dashboard to compare org health, then pick an organization from the top selector when you want to do scoped maintenance.
+	          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">New Customer Setup</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Create the organization record and the first team here. After that, continue into
+                  the org to invite the admin, coach, and athletes. Coaches will then land on their
+                  guided onboarding flow.
+                </p>
+              </div>
+            </div>
+            <form
+              onSubmit={handleCreateOrganizationWorkspace}
+              className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-5"
+            >
+              <input
+                type="text"
+                required
+                value={workspaceForm.orgName}
+                onChange={(e) =>
+                  setWorkspaceForm((prev) => ({ ...prev, orgName: e.target.value }))
+                }
+                placeholder="Organization name"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 md:col-span-2"
+              />
+              <input
+                type="text"
+                value={workspaceForm.teamName}
+                onChange={(e) =>
+                  setWorkspaceForm((prev) => ({ ...prev, teamName: e.target.value }))
+                }
+                placeholder="First team name (recommended)"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 md:col-span-2"
+              />
+              <button
+                type="submit"
+                disabled={workspaceCreateLoading}
+                className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {workspaceCreateLoading ? "Creating..." : "Create Workspace"}
+              </button>
+            </form>
+            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p className="text-xs text-slate-500">
+                {workspaceCreateStatus ||
+                  "Recommended order: create workspace, invite the org admin or coach, then hand off campaign and athlete onboarding."}
+              </p>
+              {createdWorkspace?.orgId ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveOrgId(createdWorkspace.orgId)}
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Select New Org
+                  </button>
+                  <Link
+                    to="/admin/users"
+                    onClick={() => setActiveOrgId(createdWorkspace.orgId)}
+                    className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
+                  >
+                    Invite Staff / Athletes
+                  </Link>
+                  {createdWorkspace.teamId ? (
+                    <Link
+                      to={`/teams/${createdWorkspace.teamId}`}
+                      onClick={() => setActiveOrgId(createdWorkspace.orgId)}
+                      className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Open First Team
+                    </Link>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            {createdWorkspace?.orgId ? (
+              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+                Created <span className="font-semibold">{createdWorkspace.orgName}</span>
+                {createdWorkspace.teamName
+                  ? ` with first team ${createdWorkspace.teamName}.`
+                  : "."}
+              </div>
+            ) : null}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+	          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
             <AnalyticsCard
               title="Organizations"
               value={superAdminOverviewLoading ? "..." : superAdminOverview.totals.orgCount}

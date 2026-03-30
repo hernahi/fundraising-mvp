@@ -1697,6 +1697,101 @@ exports.grantExistingUserAccess = onCall(async (request) => {
 });
 
 /* ============================================================
+   SUPER-ADMIN ORGANIZATION WORKSPACE CREATOR
+   - Creates org with production defaults
+   - Optionally creates first team
+   - Keeps invite/admin flows as the next step
+   ============================================================ */
+exports.createOrganizationWorkspace = onCall(async (request) => {
+  const actor = await assertAdmin(request);
+  if (String(actor.role || "").toLowerCase() !== "super-admin") {
+    throw new HttpsError("permission-denied", "Super-admin access required");
+  }
+
+  const orgName = String(request.data?.orgName || "").trim();
+  const teamName = String(request.data?.teamName || "").trim();
+
+  if (!orgName || orgName.length < 2) {
+    throw new HttpsError("invalid-argument", "Organization name is required");
+  }
+  if (orgName.length > 120 || teamName.length > 120) {
+    throw new HttpsError("invalid-argument", "Names must be 120 characters or less");
+  }
+
+  const db = admin.firestore();
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const orgRef = db.collection("organizations").doc();
+  const teamRef = teamName ? db.collection("teams").doc() : null;
+  const normalizedOrgName = orgName.replace(/\s+/g, " ").trim();
+  const normalizedTeamName = teamName.replace(/\s+/g, " ").trim();
+
+  const batch = db.batch();
+
+  batch.set(
+    orgRef,
+    {
+      name: normalizedOrgName,
+      createdByUid: request.auth.uid,
+      createdAt: now,
+      updatedAt: now,
+      status: "active",
+      donorInviteTemplate: DEFAULT_DONOR_INVITE_TEMPLATE,
+      donorInviteTemplates: {
+        week1a: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week1b: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week2: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week3: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week4: DEFAULT_DONOR_INVITE_TEMPLATE,
+        week5: DEFAULT_DONOR_INVITE_TEMPLATE,
+        lateIntro: DEFAULT_LATE_CONTACT_TEMPLATE,
+      },
+      donorInviteSubjects: {
+        ...DRIP_SUBJECTS,
+      },
+      dripGlobalEnabled: true,
+      reporting: {
+        excludeEndedCampaigns: true,
+        sendWhenNoActiveCampaigns: false,
+      },
+    },
+    { merge: true }
+  );
+
+  if (teamRef) {
+    batch.set(
+      teamRef,
+      {
+        orgId: orgRef.id,
+        name: normalizedTeamName,
+        coachId: "",
+        coachName: "",
+        createdByUid: request.auth.uid,
+        createdAt: now,
+        updatedAt: now,
+        payoutStatus: "accruing",
+      },
+      { merge: true }
+    );
+  }
+
+  await batch.commit();
+
+  logger.info("createOrganizationWorkspace: success", {
+    actorUid: request.auth.uid,
+    orgId: orgRef.id,
+    teamId: teamRef ? teamRef.id : null,
+  });
+
+  return {
+    ok: true,
+    orgId: orgRef.id,
+    orgName: normalizedOrgName,
+    teamId: teamRef ? teamRef.id : null,
+    teamName: normalizedTeamName || "",
+  };
+});
+
+/* ============================================================
    SOLO WORKSPACE BOOTSTRAP (AUTH USER, NO PROFILE YET)
    - Creates org + owner user + team (+ optional campaign)
    - Keeps existing invite/admin flows untouched

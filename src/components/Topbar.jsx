@@ -44,7 +44,7 @@ export default function Topbar({ onOpenMobileMenu = () => {} }) {
     };
 
     loadOrgs();
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, activeOrgId]);
 
   useEffect(() => {
     function handleClickOutside(event) {
