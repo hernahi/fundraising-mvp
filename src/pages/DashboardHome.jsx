@@ -255,6 +255,7 @@ export default function DashboardHome() {
   const [coachFlow, setCoachFlow] = useState({
     teamCount: 0,
     athleteCount: 0,
+    acceptedInviteCount: 0,
     assignedCampaignCount: 0,
     contactCount: 0,
     primaryTeamId: "",
@@ -490,99 +491,6 @@ export default function DashboardHome() {
     return campaigns?.find((c) => c.id === activeCampaignId) || null;
   }, [isAthlete, athleteCampaign, campaigns, activeCampaignId]);
 
-  const organizationNextSteps = useMemo(() => {
-    if (isAthlete || !resolvedOrgId || (!isCoach && !isAdmin)) return [];
-
-    const invitePath =
-      coachFlow.teamCount === 1 && coachFlow.primaryTeamId
-        ? `/coach/invite?teamId=${encodeURIComponent(
-            coachFlow.primaryTeamId
-          )}&teamName=${encodeURIComponent(coachFlow.primaryTeamName || "")}`
-        : "/teams";
-
-    return [
-      {
-        key: "team",
-        label: "1. Confirm team workspace",
-        detail:
-          coachFlow.teamCount > 0
-            ? `${coachFlow.teamCount} team${coachFlow.teamCount === 1 ? "" : "s"} ready${
-                coachFlow.primaryTeamName ? `, including ${coachFlow.primaryTeamName}` : ""
-              }.`
-            : "Create the first team before inviting athletes or assigning a campaign.",
-        to: "/teams",
-        cta: coachFlow.teamCount > 0 ? "Review Teams" : "Create Team",
-        status: getAthleteFlowStatus({
-          complete: coachFlow.teamCount > 0,
-          started: false,
-        }),
-      },
-      {
-        key: "campaign",
-        label: "2. Verify campaign assignment",
-        detail:
-          coachFlow.assignedCampaignCount > 0
-            ? activeCampaign?.name
-              ? `Selected campaign ${activeCampaign.name} is available for this organization.`
-              : `${coachFlow.assignedCampaignCount} campaign${
-                  coachFlow.assignedCampaignCount === 1 ? "" : "s"
-                } available for assignment.`
-            : "Create or assign the first campaign so athlete invites can carry campaign context.",
-        to: "/campaigns",
-        cta: coachFlow.assignedCampaignCount > 0 ? "Review Campaigns" : "Create Campaign",
-        status: getAthleteFlowStatus({
-          complete: coachFlow.assignedCampaignCount > 0,
-          started: coachFlow.teamCount > 0,
-        }),
-      },
-      {
-        key: "athletes",
-        label: "3. Invite the first athlete group",
-        detail:
-          coachFlow.athleteCount > 0
-            ? `${coachFlow.athleteCount} athlete${
-                coachFlow.athleteCount === 1 ? "" : "s"
-              } already connected to this organization.`
-            : coachFlow.teamCount > 0
-              ? "Send onboarding invites to athletes now that the team workspace is ready."
-              : "The invite flow unlocks once the first team exists.",
-        to: invitePath,
-        cta:
-          coachFlow.teamCount === 1 && coachFlow.primaryTeamId
-            ? "Invite Athletes"
-            : "Open Teams",
-        status: getAthleteFlowStatus({
-          complete: coachFlow.athleteCount > 0,
-          started: coachFlow.teamCount > 0,
-        }),
-      },
-      {
-        key: "verify",
-        label: "4. Review donor-facing setup",
-        detail: activeCampaign?.id
-          ? "Open the live campaign page, verify branding, and confirm the share link looks right."
-          : "Choose a campaign first, then verify the donor-facing page and share link.",
-        to: activeCampaign?.id ? `/campaigns/${activeCampaign.id}` : "/campaigns",
-        cta: activeCampaign?.id ? "Open Campaign Detail" : "Choose Campaign",
-        status: getAthleteFlowStatus({
-          complete: Boolean(activeCampaign?.id),
-          started: coachFlow.assignedCampaignCount > 0,
-        }),
-      },
-    ];
-  }, [
-    isAthlete,
-    resolvedOrgId,
-    isCoach,
-    isAdmin,
-    coachFlow.teamCount,
-    coachFlow.primaryTeamId,
-    coachFlow.primaryTeamName,
-    coachFlow.assignedCampaignCount,
-    coachFlow.athleteCount,
-    activeCampaign?.id,
-    activeCampaign?.name,
-  ]);
 
   /* ==============================
      C4 — Campaign Goal Progress
@@ -942,6 +850,24 @@ export default function DashboardHome() {
         });
         const assignedCampaignCount = scopedCampaigns.length;
 
+        let acceptedInviteCount = 0;
+        try {
+          if (isAdmin) {
+            const invitesSnap = await getDocs(
+              query(collection(db, "invites"), where("orgId", "==", resolvedOrgId))
+            );
+            acceptedInviteCount = invitesSnap.docs.filter((docSnap) => {
+              const invite = docSnap.data() || {};
+              if (String(invite.role || "").toLowerCase() !== "athlete") return false;
+              if (String(invite.status || "").toLowerCase() !== "accepted") return false;
+              if (!teamIds.length) return true;
+              return teamIds.includes(String(invite.teamId || "").trim());
+            }).length;
+          }
+        } catch (inviteErr) {
+          console.warn("Coach flow invite count skipped:", inviteErr?.message || inviteErr);
+        }
+
         let contactCount = 0;
         try {
           if (isCoach) {
@@ -974,6 +900,7 @@ export default function DashboardHome() {
           setCoachFlow({
             teamCount: teamRows.length,
             athleteCount,
+            acceptedInviteCount,
             assignedCampaignCount,
             contactCount,
             primaryTeamId: String(teamRows[0]?.id || "").trim(),
@@ -1853,13 +1780,21 @@ export default function DashboardHome() {
 
 	          {coachFlowLoading ? (
 	            <div className="px-4 py-4 text-sm text-slate-500">Loading onboarding status...</div>
-	          ) : (
-	            <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+		          ) : (
+		            <>
+		            <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
 		              {[
 		                {
 		                  key: "team",
 	                  label: "1. Create Team",
-	                  detail: `${coachFlow.teamCount} team${coachFlow.teamCount === 1 ? "" : "s"}`,
+	                  detail:
+	                    coachFlow.teamCount > 0
+	                      ? `${coachFlow.teamCount} team${coachFlow.teamCount === 1 ? "" : "s"}${
+	                          coachFlow.primaryTeamName
+	                            ? `, including ${coachFlow.primaryTeamName}`
+	                            : ""
+	                        }`
+	                      : "Create the first team workspace",
 	                  to: "/teams",
 	                  cta: "Open Teams",
 	                  status: getAthleteFlowStatus({
@@ -1870,10 +1805,18 @@ export default function DashboardHome() {
 		                {
 		                  key: "invite",
 		                  label: "2. Invite Athletes",
-		                  detail: `${coachFlow.athleteCount} athlete${coachFlow.athleteCount === 1 ? "" : "s"}`,
+		                  detail: isAdmin
+	                    ? `${coachFlow.athleteCount} athlete${
+	                        coachFlow.athleteCount === 1 ? "" : "s"
+	                      } • ${coachFlow.acceptedInviteCount} accepted invite${
+	                        coachFlow.acceptedInviteCount === 1 ? "" : "s"
+	                      }`
+	                    : `${coachFlow.athleteCount} athlete${
+	                        coachFlow.athleteCount === 1 ? "" : "s"
+	                      }`,
 		                  to:
-                        coachFlow.teamCount === 1 && coachFlow.primaryTeamId
-                          ? `/coach/invite?teamId=${encodeURIComponent(
+	                        coachFlow.teamCount === 1 && coachFlow.primaryTeamId
+	                          ? `/coach/invite?teamId=${encodeURIComponent(
                               coachFlow.primaryTeamId
                             )}&teamName=${encodeURIComponent(
                               coachFlow.primaryTeamName || ""
@@ -1888,29 +1831,45 @@ export default function DashboardHome() {
 		                    started: coachFlow.teamCount > 0,
 	                  }),
 	                },
-	                {
-	                  key: "campaign",
-	                  label: "3. Assign Campaign",
-	                  detail: `${coachFlow.assignedCampaignCount} campaign${coachFlow.assignedCampaignCount === 1 ? "" : "s"}`,
-	                  to: "/campaigns",
-	                  cta: "Open Campaigns",
-	                  status: getAthleteFlowStatus({
+		                {
+		                  key: "campaign",
+		                  label: "3. Assign Campaign",
+		                  detail:
+	                    coachFlow.assignedCampaignCount > 0
+	                      ? activeCampaign?.name
+	                        ? `${coachFlow.assignedCampaignCount} campaign${
+	                            coachFlow.assignedCampaignCount === 1 ? "" : "s"
+	                          } • selected: ${activeCampaign.name}`
+	                        : `${coachFlow.assignedCampaignCount} campaign${
+	                            coachFlow.assignedCampaignCount === 1 ? "" : "s"
+	                          }`
+	                      : "Create or assign the first campaign",
+		                  to: "/campaigns",
+		                  cta: "Open Campaigns",
+		                  status: getAthleteFlowStatus({
 	                    complete: coachFlow.assignedCampaignCount > 0,
 	                    started: coachFlow.teamCount > 0 || coachFlow.athleteCount > 0,
 	                  }),
 	                },
-	                {
-	                  key: "messages",
-	                  label: "4. Launch Messages",
-	                  detail: `${coachFlow.contactCount} contact${coachFlow.contactCount === 1 ? "" : "s"}`,
-	                  to: "/messages",
-	                  cta: "Open Messages",
-	                  status: getAthleteFlowStatus({
+		                {
+		                  key: "messages",
+		                  label: "4. Launch Messages",
+		                  detail:
+	                    coachFlow.contactCount > 0
+	                      ? `${coachFlow.contactCount} contact${
+	                          coachFlow.contactCount === 1 ? "" : "s"
+	                        } ready for outreach`
+	                      : activeCampaign?.id
+	                        ? "Open messages, then verify the donor-facing campaign page"
+	                        : "Build contact readiness before launch",
+		                  to: "/messages",
+		                  cta: "Open Messages",
+		                  status: getAthleteFlowStatus({
 	                    complete: coachFlow.contactCount >= 20,
 	                    started: coachFlow.contactCount > 0,
 	                  }),
 	                },
-	              ].map((step) => (
+		              ].map((step) => (
 	                <div
 	                  key={step.key}
 	                  className="rounded-lg border border-slate-200 p-3 flex flex-col gap-2 bg-slate-50/40"
@@ -1935,49 +1894,25 @@ export default function DashboardHome() {
                   </Link>
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {!isAthlete && (isCoach || isAdmin) && resolvedOrgId && organizationNextSteps.length > 0 && (
-        <div className="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="px-4 py-3 border-b border-slate-200">
-            <h2 className="text-sm font-semibold text-slate-900">Next Steps For This Organization</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Use this checklist to complete the first handoff and verify the organization is ready
-              for live use.
-            </p>
-          </div>
-          <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            {organizationNextSteps.map((step) => (
-              <div
-                key={step.key}
-                className="rounded-lg border border-slate-200 p-3 flex flex-col gap-2 bg-slate-50/40"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-medium text-slate-800">{step.label}</div>
-                  <span
-                    className={[
-                      "text-[11px] px-2 py-1 rounded-full font-semibold",
-                      step.status.className,
-                    ].join(" ")}
-                  >
-                    {step.status.label}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-600">{step.detail}</div>
-                <Link
-                  to={step.to}
-                  className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                >
-                  {step.cta}
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+		            </div>
+			            {activeCampaign?.id ? (
+			              <div className="border-t border-slate-200 px-4 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+		                <p className="text-xs text-slate-500">
+		                  Final verification: open the campaign detail page to confirm branding, share
+		                  link, and donor-facing content before handoff.
+		                </p>
+		                <Link
+		                  to={`/campaigns/${activeCampaign.id}`}
+		                  className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+		                >
+		                  Open Campaign Detail
+		                </Link>
+		              </div>
+			            ) : null}
+		            </>
+	          )}
+	        </div>
+	      )}
 
       {!showCampaignAnalytics && (isCoach || isAdmin) && (resolvedOrgId || !isSuperAdmin) && (
         <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
