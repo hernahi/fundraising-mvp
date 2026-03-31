@@ -782,56 +782,63 @@ export default function DashboardHome() {
     async function loadCoachFlow() {
       setCoachFlowLoading(true);
       try {
-        // Teams scope: coaches see their teams; admins see org teams.
         let teamRows = [];
-        if (isCoach) {
-          teamRows = (await fetchTeamsByIds(coachTeamIds)).filter(
-            (team) => String(team?.orgId || "").trim() === resolvedOrgId
-          );
-        } else {
-          const teamsSnap = await getDocs(
-            query(collection(db, "teams"), where("orgId", "==", resolvedOrgId))
-          );
-          teamRows = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        try {
+          // Teams scope: coaches see their teams; admins see org teams.
+          if (isCoach) {
+            teamRows = (await fetchTeamsByIds(coachTeamIds)).filter(
+              (team) => String(team?.orgId || "").trim() === resolvedOrgId
+            );
+          } else {
+            const teamsSnap = await getDocs(
+              query(collection(db, "teams"), where("orgId", "==", resolvedOrgId))
+            );
+            teamRows = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          }
+        } catch (teamErr) {
+          console.warn("Coach flow team count skipped:", teamErr?.message || teamErr);
         }
         const teamIds = teamRows.map((t) => t.id);
 
         let athleteCount = 0;
         let athleteRows = [];
-        if (teamIds.length === 1) {
-          const athletesSnap = await getDocs(
-            query(
-              collection(db, "athletes"),
-              where("orgId", "==", resolvedOrgId),
-              where("teamId", "==", teamIds[0])
-            )
-          );
-          athleteCount = athletesSnap.size;
-          athleteRows = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
-        } else if (teamIds.length > 1 && teamIds.length <= 10) {
-          const athletesSnap = await getDocs(
-            query(
-              collection(db, "athletes"),
-              where("orgId", "==", resolvedOrgId),
-              where("teamId", "in", teamIds)
-            )
-          );
-          athleteCount = athletesSnap.size;
-          athleteRows = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
-        } else if (teamIds.length > 10 || isAdmin) {
-          const athletesSnap = await getDocs(
-            query(collection(db, "athletes"), where("orgId", "==", resolvedOrgId))
-          );
-          const allAthletes = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
-          athleteCount = isCoach
-            ? allAthletes.filter((entry) => teamIds.includes(entry?.teamId)).length
-            : athletesSnap.size;
-          athleteRows = isCoach
-            ? allAthletes.filter((entry) => teamIds.includes(entry?.teamId))
-            : allAthletes;
+        try {
+          if (teamIds.length === 1) {
+            const athletesSnap = await getDocs(
+              query(
+                collection(db, "athletes"),
+                where("orgId", "==", resolvedOrgId),
+                where("teamId", "==", teamIds[0])
+              )
+            );
+            athleteCount = athletesSnap.size;
+            athleteRows = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+          } else if (teamIds.length > 1 && teamIds.length <= 10) {
+            const athletesSnap = await getDocs(
+              query(
+                collection(db, "athletes"),
+                where("orgId", "==", resolvedOrgId),
+                where("teamId", "in", teamIds)
+              )
+            );
+            athleteCount = athletesSnap.size;
+            athleteRows = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+          } else if (teamIds.length > 10 || isAdmin) {
+            const athletesSnap = await getDocs(
+              query(collection(db, "athletes"), where("orgId", "==", resolvedOrgId))
+            );
+            const allAthletes = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+            athleteCount = isCoach
+              ? allAthletes.filter((entry) => teamIds.includes(entry?.teamId)).length
+              : athletesSnap.size;
+            athleteRows = isCoach
+              ? allAthletes.filter((entry) => teamIds.includes(entry?.teamId))
+              : allAthletes;
+          }
+        } catch (athleteErr) {
+          console.warn("Coach flow athlete count skipped:", athleteErr?.message || athleteErr);
         }
 
-        // Use in-memory campaigns from context to avoid extra indexed queries.
         const scopedCampaigns = (campaigns || []).filter((c) => {
           if (!c) return false;
           const directTeam = c.teamId && teamIds.includes(c.teamId);
@@ -842,27 +849,31 @@ export default function DashboardHome() {
         const assignedCampaignCount = scopedCampaigns.length;
 
         let contactCount = 0;
-        if (isCoach) {
-          const contactSnaps = await Promise.all(
-            athleteRows.map((athlete) =>
-              getDocs(
-                query(
-                  collection(db, "athlete_contacts"),
-                  where("orgId", "==", resolvedOrgId),
-                  where("athleteId", "==", athlete.id)
-                )
-              ).catch(() => ({ size: 0 }))
-            )
-          );
-          contactCount = contactSnaps.reduce(
-            (sum, snap) => sum + Number(snap?.size || 0),
-            0
-          );
-        } else {
-          const contactsSnap = await getDocs(
-            query(collection(db, "athlete_contacts"), where("orgId", "==", resolvedOrgId))
-          );
-          contactCount = contactsSnap.size;
+        try {
+          if (isCoach) {
+            const contactSnaps = await Promise.all(
+              athleteRows.map((athlete) =>
+                getDocs(
+                  query(
+                    collection(db, "athlete_contacts"),
+                    where("orgId", "==", resolvedOrgId),
+                    where("athleteId", "==", athlete.id)
+                  )
+                ).catch(() => ({ size: 0 }))
+              )
+            );
+            contactCount = contactSnaps.reduce(
+              (sum, snap) => sum + Number(snap?.size || 0),
+              0
+            );
+          } else {
+            const contactsSnap = await getDocs(
+              query(collection(db, "athlete_contacts"), where("orgId", "==", resolvedOrgId))
+            );
+            contactCount = contactsSnap.size;
+          }
+        } catch (contactErr) {
+          console.warn("Coach flow contact count skipped:", contactErr?.message || contactErr);
         }
 
         if (!cancelled) {
