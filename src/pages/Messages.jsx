@@ -153,6 +153,9 @@ export default function Messages() {
 
   const [athleteRecord, setAthleteRecord] = useState(null);
   const [sendLoading, setSendLoading] = useState(false);
+  const [customSubject, setCustomSubject] = useState("");
+  const [customBody, setCustomBody] = useState("");
+  const [customSendLoading, setCustomSendLoading] = useState(false);
   const [dedupeLoading, setDedupeLoading] = useState(false);
   const [orgAthletes, setOrgAthletes] = useState([]);
   const [testAthleteId, setTestAthleteId] = useState("");
@@ -479,6 +482,33 @@ export default function Messages() {
     selectedContactIds.length > 0
       ? eligibleContacts.filter((c) => selectedContactIds.includes(c.id))
       : eligibleContacts;
+
+  const selectedRecipientSummary = useMemo(() => {
+    if (selectedContactIds.length > 0) {
+      return `${selectedRecipients.length} selected recipient${selectedRecipients.length === 1 ? "" : "s"}`;
+    }
+    return `${selectedRecipients.length} eligible recipient${selectedRecipients.length === 1 ? "" : "s"} (all)`;
+  }, [selectedContactIds.length, selectedRecipients.length]);
+
+  const customSenderLabel = useMemo(() => {
+    const athleteName = String(
+      athleteRecord?.name || athleteRecord?.displayName || profile?.displayName || "Your athlete"
+    ).trim();
+    const teamName = String(athleteRecord?.teamName || profile?.teamName || "").trim();
+    if (athleteName && teamName) {
+      return `${athleteName} via ${teamName}`;
+    }
+    if (athleteName) {
+      return `${athleteName} via Fundraising MVP`;
+    }
+    return "Fundraising MVP";
+  }, [
+    athleteRecord?.displayName,
+    athleteRecord?.name,
+    athleteRecord?.teamName,
+    profile?.displayName,
+    profile?.teamName,
+  ]);
 
   const correctedDraftContacts = useMemo(
     () =>
@@ -1053,6 +1083,54 @@ export default function Messages() {
       alert(err?.message || "Failed to send messages. Please try again.");
     } finally {
       setSendLoading(false);
+    }
+  };
+
+  const sendCustomMessage = async () => {
+    if (!isAthlete) {
+      return;
+    }
+
+    if (selectedRecipients.length === 0) {
+      alert("No eligible contacts to send.");
+      return;
+    }
+
+    if (!customSubject.trim()) {
+      alert("Add a subject before sending.");
+      return;
+    }
+
+    if (!customBody.trim()) {
+      alert("Add a message before sending.");
+      return;
+    }
+
+    const contactIds = selectedRecipients.map((contact) => contact.id);
+
+    try {
+      setCustomSendLoading(true);
+      const fn = httpsCallable(functions, "sendAthleteCustomMessage");
+      const response = await fn({
+        athleteId,
+        campaignId: athleteRecord?.campaignId || null,
+        contactIds,
+        subject: customSubject.trim(),
+        body: customBody.trim(),
+      });
+
+      const sent = Number(response?.data?.sent || 0);
+      const failed = Number(response?.data?.failed || 0);
+      if (sent > 0 && failed > 0) {
+        alert(`Custom message sent to ${sent} recipient(s). ${failed} failed.`);
+      } else if (sent > 0) {
+        alert(`Custom message sent to ${sent} recipient(s).`);
+      }
+    } catch (err) {
+      console.error("Failed to send custom message:", err);
+      alert(err?.message || "Failed to send your custom message. Please try again.");
+    } finally {
+      setCustomSendLoading(false);
     }
   };
 
@@ -1906,6 +1984,91 @@ export default function Messages() {
                     >
                       {savingPersonalNote ? "Saving..." : "Save Personal Note"}
                     </button>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-4">
+                    <div className="flex flex-col gap-1">
+                      <h3 className="text-sm font-semibold text-slate-800">
+                        Send One-Off Custom Message
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Use this for a personal update outside the regular drip. Pick one recipient, several, or leave the contact list unselected to send to all eligible contacts.
+                      </p>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                        <div className="font-semibold text-slate-700">
+                          Sending as
+                        </div>
+                        <p className="mt-1">
+                          {customSenderLabel}
+                        </p>
+                        <p className="mt-2 text-slate-500">
+                          Delivered from the platform's authenticated no-reply email to protect deliverability.
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                        <div className="font-semibold text-slate-700">
+                          Recipients
+                        </div>
+                        <p className="mt-1">{selectedRecipientSummary}</p>
+                        <p className="mt-2 text-slate-500">
+                          Check contacts above to target a single person or a smaller group.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="text-xs uppercase tracking-wide text-slate-400">
+                        Subject
+                      </label>
+                      <input
+                        type="text"
+                        value={customSubject}
+                        onChange={(e) => setCustomSubject(e.target.value)}
+                        maxLength={140}
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                        placeholder="Quick update from me"
+                      />
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="text-xs uppercase tracking-wide text-slate-400">
+                        Message
+                      </label>
+                      <textarea
+                        value={customBody}
+                        onChange={(e) => setCustomBody(e.target.value)}
+                        rows={6}
+                        maxLength={5000}
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                        placeholder="Write a short personal update. You can optionally use {{recipientFirstName}} for a friendlier greeting."
+                      />
+                      <p className="mt-2 text-xs text-slate-500">
+                        Keep it short and personal. Plain-language emails generally perform better than heavily formatted messages.
+                      </p>
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs text-slate-500">
+                        This sends immediately to {selectedRecipientSummary.toLowerCase()}.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={sendCustomMessage}
+                        disabled={
+                          customSendLoading ||
+                          !customSubject.trim() ||
+                          !customBody.trim() ||
+                          selectedRecipients.length === 0
+                        }
+                        className="w-full sm:w-auto rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                      >
+                        {customSendLoading ? "Sending..." : "Send Custom Message"}
+                      </button>
+                    </div>
                   </div>
                 </>
               ) : (

@@ -834,6 +834,132 @@ async function sendDripToContacts({
   };
 }
 
+async function sendCustomMessageToContacts({
+  db,
+  orgId,
+  campaignId = null,
+  athleteId,
+  contacts,
+  subject,
+  bodyText,
+  senderLabel,
+}) {
+  const validContacts = (contacts || []).filter((contact) => {
+    const email = String(contact?.email || "").trim();
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const isSuppressed = contact?.status === "bounced" || contact?.status === "complained";
+    return isValidEmail && !isSuppressed;
+  });
+
+  if (!validContacts.length) {
+    throw new Error("No valid recipient emails found.");
+  }
+
+  const { client, domain } = getMailgunClient();
+  const displaySender = String(senderLabel || "Fundraising MVP").trim() || "Fundraising MVP";
+  const from = `${displaySender} <no-reply@${domain}>`;
+  const footerText = `${displaySender} sent this message through Fundraising MVP.`;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  const sends = validContacts.map((contact) => {
+    const personalizedText = applyRecipientPlaceholders(bodyText, contact);
+    const personalizedHtml = renderTransactionalShell({
+      subject,
+      bodyText: personalizedText,
+      footerText,
+    });
+    return client.messages.create(domain, {
+      from,
+      to: [contact.email],
+      subject,
+      text: personalizedText,
+      html: personalizedHtml,
+      "v:contactId": contact.id,
+      "v:athleteId": athleteId,
+      "v:campaignId": campaignId || "",
+      "v:orgId": orgId,
+      "v:messageKind": "athlete_custom",
+    });
+  });
+
+  const results = await Promise.allSettled(sends);
+  const sentContacts = [];
+  const failedRecipients = [];
+
+  results.forEach((result, index) => {
+    const contact = validContacts[index];
+    if (result.status === "fulfilled") {
+      sentContacts.push(contact);
+      return;
+    }
+    failedRecipients.push({
+      email: contact?.email || "",
+      reason: result.reason?.message || "send failed",
+    });
+  });
+
+  if (!sentContacts.length) {
+    throw new Error("All selected recipients failed to send.");
+  }
+
+  const batch = db.batch();
+  sentContacts.forEach((contact) => {
+    const contactRef = db.collection("athlete_contacts").doc(contact.id);
+    batch.set(
+      contactRef,
+      {
+        lastSentAt: now,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    const messageRef = db.collection("messages").doc();
+    batch.set(messageRef, {
+      orgId,
+      athleteId,
+      campaignId: campaignId || null,
+      contactId: contact.id,
+      to: contact.email,
+      toName: contact.name || "",
+      subject,
+      body: applyRecipientPlaceholders(bodyText, contact),
+      channel: "email",
+      phase: "custom",
+      kind: "athlete_custom",
+      isAutomated: false,
+      createdAt: now,
+    });
+  });
+
+  await batch.commit();
+
+  if (failedRecipients.length > 0) {
+    logger.warn("sendCustomMessageToContacts: partial send failure", {
+      campaignId,
+      athleteId,
+      failedCount: failedRecipients.length,
+      failedRecipients: failedRecipients.map((entry) => entry.email),
+    });
+  }
+
+  logOutboundEmailAudit({
+    source: "direct_mailgun",
+    kind: "athlete_custom",
+    recipientCount: sentContacts.length,
+    orgId,
+    campaignId,
+    athleteId,
+    templateVersion: "custom-manual-v1",
+    subject,
+  });
+
+  return {
+    sentCount: sentContacts.length,
+    failedCount: failedRecipients.length,
+  };
+}
+
 function getMailgunEventPayload(reqBody) {
   if (!reqBody) return null;
   if (reqBody["event-data"]) return reqBody["event-data"];
@@ -2336,6 +2462,168 @@ exports.sendAthleteDripMessage = onCall(
       sent: sendResult.sentCount,
       failed: sendResult.failedCount,
       requested: contactIds.length,
+    };
+  }
+);
+
+exports.sendAthleteCustomMessage = onCall(
+  {
+    secrets: ["MAILGUN_API_KEY"],
+    timeoutSeconds: 60,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Login required");
+    }
+
+    const profile = await getUserProfile(request.auth.uid);
+    if (!profile) {
+      throw new HttpsError("permission-denied", "User profile not found");
+    }
+
+    if (!["athlete", "coach", "admin", "super-admin"].includes(profile.role)) {
+      throw new HttpsError("permission-denied", "Not allowed to send messages");
+    }
+
+    const { athleteId, contactIds, subject, body, campaignId = null } = request.data || {};
+
+    if (!athleteId || !Array.isArray(contactIds)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "athleteId and contactIds are required"
+      );
+    }
+
+    if (profile.role === "athlete" && request.auth.uid !== athleteId) {
+      throw new HttpsError("permission-denied", "Athletes can only send for themselves");
+    }
+
+    if (contactIds.length === 0) {
+      throw new HttpsError("invalid-argument", "No contacts selected");
+    }
+
+    if (contactIds.length > 200) {
+      throw new HttpsError("invalid-argument", "Too many contacts in one send");
+    }
+
+    const messageSubject = String(subject || "").trim();
+    const messageBody = String(body || "").trim();
+
+    if (!messageSubject) {
+      throw new HttpsError("invalid-argument", "A subject is required");
+    }
+
+    if (!messageBody) {
+      throw new HttpsError("invalid-argument", "A message is required");
+    }
+
+    if (messageSubject.length > 140) {
+      throw new HttpsError("invalid-argument", "Subject is too long");
+    }
+
+    if (messageBody.length > 5000) {
+      throw new HttpsError("invalid-argument", "Message is too long");
+    }
+
+    const db = admin.firestore();
+    const athleteSnap = await db.collection("athletes").doc(athleteId).get();
+
+    if (!athleteSnap.exists) {
+      throw new HttpsError("not-found", "Athlete not found");
+    }
+
+    const athlete = athleteSnap.data() || {};
+    if (!athlete.orgId) {
+      throw new HttpsError("failed-precondition", "Athlete org is missing");
+    }
+
+    if (profile.role !== "super-admin" && athlete.orgId !== profile.orgId) {
+      throw new HttpsError("permission-denied", "Org mismatch");
+    }
+
+    let campaign = {};
+    let resolvedCampaignId = null;
+    if (campaignId) {
+      const campaignSnap = await db.collection("campaigns").doc(campaignId).get();
+      if (!campaignSnap.exists) {
+        throw new HttpsError("not-found", "Campaign not found");
+      }
+      campaign = campaignSnap.data() || {};
+      if (campaign.orgId !== athlete.orgId) {
+        throw new HttpsError("permission-denied", "Campaign org mismatch");
+      }
+      resolvedCampaignId = campaignId;
+    } else if (athlete.campaignId) {
+      resolvedCampaignId = String(athlete.campaignId || "").trim() || null;
+      if (resolvedCampaignId) {
+        const campaignSnap = await db.collection("campaigns").doc(resolvedCampaignId).get();
+        campaign = campaignSnap.exists ? campaignSnap.data() || {} : {};
+      }
+    }
+
+    const contactRefs = contactIds.map((id) => db.collection("athlete_contacts").doc(id));
+    const contactSnaps = await db.getAll(...contactRefs);
+
+    const eligibleContacts = [];
+    contactSnaps.forEach((snap) => {
+      if (!snap.exists) return;
+      const data = snap.data() || {};
+      if (data.orgId !== athlete.orgId || data.athleteId !== athleteId) return;
+      if (data.status === "donated") return;
+      if (data.status === "bounced" || data.status === "complained") return;
+      eligibleContacts.push({ id: snap.id, ...data });
+    });
+
+    if (eligibleContacts.length === 0) {
+      throw new HttpsError("failed-precondition", "No eligible contacts to send");
+    }
+
+    const athleteName = String(athlete.name || athlete.displayName || "Athlete").trim() || "Athlete";
+    const teamName = await resolveTeamName(db, { athlete, campaign });
+    const senderLabel = teamName && teamName !== "our team"
+      ? `${athleteName} via ${teamName}`
+      : `${athleteName} via Fundraising MVP`;
+
+    let sendResult;
+    try {
+      sendResult = await sendCustomMessageToContacts({
+        db,
+        orgId: athlete.orgId,
+        campaignId: resolvedCampaignId,
+        athleteId,
+        contacts: eligibleContacts,
+        subject: messageSubject,
+        bodyText: messageBody,
+        senderLabel,
+      });
+    } catch (err) {
+      logger.error("sendAthleteCustomMessage: send failed", {
+        athleteId,
+        campaignId: resolvedCampaignId,
+        uid: request.auth.uid,
+        message: err?.message,
+        stack: err?.stack,
+      });
+      throw new HttpsError(
+        "internal",
+        err?.message || "Failed to send selected messages"
+      );
+    }
+
+    logger.info("sendAthleteCustomMessage: sent", {
+      count: sendResult.sentCount,
+      failedCount: sendResult.failedCount,
+      athleteId,
+      campaignId: resolvedCampaignId,
+      uid: request.auth.uid,
+    });
+
+    return {
+      ok: true,
+      sent: sendResult.sentCount,
+      failed: sendResult.failedCount,
+      requested: contactIds.length,
+      senderLabel,
     };
   }
 );
