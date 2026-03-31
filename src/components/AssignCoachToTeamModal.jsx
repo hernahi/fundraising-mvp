@@ -24,6 +24,15 @@ export default function AssignCoachToTeamModal({ teamId, orgId, currentCoachId =
   const [selectedCoach, setSelectedCoach] = useState(currentCoachId || "");
   const [saving, setSaving] = useState(false);
 
+  const getAssignableLabel = (entry) => {
+    const base = String(
+      entry?.displayName || entry?.name || entry?.email || entry?.id || ""
+    ).trim();
+    const role = String(entry?.role || "").toLowerCase();
+    if (!base) return "";
+    return role === "admin" ? `${base} (admin)` : base;
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -31,11 +40,18 @@ export default function AssignCoachToTeamModal({ teamId, orgId, currentCoachId =
       try {
         setLoading(true);
         const ref = collection(db, "users");
-        const q = query(ref, where("role", "==", "coach"), where("orgId", "==", orgId));
+        const q = query(ref, where("orgId", "==", orgId));
         const snap = await getDocs(q);
 
         if (!cancelled) {
-          setCoaches(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          const assignableRows = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((entry) => {
+              const role = String(entry?.role || "").toLowerCase();
+              return role === "coach" || role === "admin";
+            })
+            .sort((a, b) => getAssignableLabel(a).localeCompare(getAssignableLabel(b)));
+          setCoaches(assignableRows);
         }
       } catch (err) {
         console.error("Failed to load coaches:", err);
@@ -58,7 +74,7 @@ export default function AssignCoachToTeamModal({ teamId, orgId, currentCoachId =
 
   const selectedLabel = useMemo(() => {
     const c = coaches.find((x) => x.id === selectedCoach);
-    return c ? (c.displayName || c.email || c.id) : "";
+    return c ? getAssignableLabel(c) : "";
   }, [coaches, selectedCoach]);
 
   const saveCoachId = async (coachIdOrNull) => {
@@ -74,10 +90,10 @@ export default function AssignCoachToTeamModal({ teamId, orgId, currentCoachId =
               coachIdOrNull
           ).trim()
         : "";
-      await updateDoc(doc(db, "teams", teamId), {
-        coachId: coachIdOrNull,
-        coachName: nextCoachName,
-        updatedAt: serverTimestamp(),
+	      await updateDoc(doc(db, "teams", teamId), {
+	        coachId: coachIdOrNull,
+	        coachName: nextCoachName,
+	        updatedAt: serverTimestamp(),
       });
 
       notify(coachIdOrNull ? `Coach assigned: ${selectedLabel || "selected coach"}` : "Coach unassigned", "success");
@@ -106,27 +122,30 @@ export default function AssignCoachToTeamModal({ teamId, orgId, currentCoachId =
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
-        <h2 className="text-xl font-bold text-slate-800 mb-4">Assign Coach to Team</h2>
+	        <h2 className="text-xl font-bold text-slate-800 mb-4">Assign Team Staff</h2>
 
         {loading ? (
           <ListLoadingSpinner />
         ) : (
           <>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Select a Coach</label>
+	            <label className="block text-sm font-medium text-slate-700 mb-2">Select a Coach or Admin</label>
+	            <p className="mb-2 text-xs text-slate-500">
+	              Admins appear with an <span className="font-medium">(admin)</span> label and are used as a team-facing fallback only.
+	            </p>
 
-            <select
-              className="w-full border rounded-lg p-2"
+	            <select
+	              className="w-full border rounded-lg p-2"
               value={selectedCoach}
               onChange={(e) => setSelectedCoach(e.target.value)}
-              disabled={saving}
-            >
-              <option value="">-- Select Coach --</option>
-              {coaches.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.displayName || c.email || c.id}
-                </option>
-              ))}
-            </select>
+	              disabled={saving}
+	            >
+	              <option value="">-- Select Coach or Admin --</option>
+	              {coaches.map((c) => (
+	                <option key={c.id} value={c.id}>
+	                  {getAssignableLabel(c)}
+	                </option>
+	              ))}
+	            </select>
 
             <div className="flex justify-end gap-3 mt-6">
               <button
