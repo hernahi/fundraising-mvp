@@ -163,18 +163,19 @@ export default function TeamDetail() {
           }
         }
 
-	        if (!resolvedCoachUser && (isAdmin || isCoach) && orgId) {
-	          try {
-	            const usersSnap = await getDocs(
-              query(
-                collection(db, "users"),
-                where("orgId", "==", orgId),
-                where("role", "==", "coach")
-              )
-            );
-            const matchedCoach = usersSnap.docs
-              .map((entry) => ({ id: entry.id, ...entry.data() }))
-	              .find((entry) => {
+		        if (!resolvedCoachUser && (isAdmin || isCoach) && orgId) {
+		          try {
+		            const usersSnap = await getDocs(
+	              query(
+	                collection(db, "users"),
+	                ...(isSuperAdmin
+	                  ? [where("role", "==", "coach")]
+	                  : [where("orgId", "==", orgId), where("role", "==", "coach")])
+	              )
+	            );
+	            const matchedCoach = usersSnap.docs
+	              .map((entry) => ({ id: entry.id, ...entry.data() }))
+		              .find((entry) => {
 	                const singleTeamId = String(entry.teamId || "").trim();
 	                const teamName = String(teamData.name || "").trim();
 	                const multiTeamIds = Array.isArray(entry.teamIds)

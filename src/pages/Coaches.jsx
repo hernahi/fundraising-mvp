@@ -55,6 +55,20 @@ async function fetchTeamsByIds(ids) {
   return teamRows.filter(Boolean);
 }
 
+function getNormalizedUserTeamIds(entry) {
+  const fromArray = Array.isArray(entry?.teamIds)
+    ? entry.teamIds
+    : Array.isArray(entry?.assignedTeamIds)
+      ? entry.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(entry?.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function Coaches() {
   const { profile, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -126,7 +140,14 @@ export default function Coaches() {
               : [];
           nextTeams = await fetchTeamsByIds(coachTeamIds);
         } else {
-          const [coachesSnap, coachUsersSnap, rollupsSnap, campaignsSnap, teamsSnap] = await Promise.all([
+          const [
+            coachesSnap,
+            coachUsersSnap,
+            allCoachUsersSnap,
+            rollupsSnap,
+            campaignsSnap,
+            teamsSnap,
+          ] = await Promise.all([
             getDocs(query(collection(db, "coaches"), where("orgId", "==", orgId))),
             getDocs(
               query(
@@ -135,6 +156,9 @@ export default function Coaches() {
                 where("role", "==", "coach")
               )
             ),
+            isSuperAdmin
+              ? getDocs(query(collection(db, "users"), where("role", "==", "coach")))
+              : Promise.resolve({ docs: [] }),
             isAdmin
               ? getDocs(
                   query(collection(db, "donation_rollups"), where("orgId", "==", orgId))
@@ -148,10 +172,37 @@ export default function Coaches() {
             id: d.id,
             ...d.data(),
           }));
+          const nextTeamsLocal = teamsSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }));
+          const scopedTeamIds = new Set(
+            nextTeamsLocal.map((team) => String(team.id || "").trim()).filter(Boolean)
+          );
+          const teamCoachIds = new Set(
+            nextTeamsLocal
+              .map((team) => String(team.coachId || "").trim())
+              .filter(Boolean)
+          );
           const usersMap = coachUsersSnap.docs.reduce((acc, entry) => {
             acc[entry.id] = entry.data() || {};
             return acc;
           }, {});
+          if (isSuperAdmin) {
+            allCoachUsersSnap.docs.forEach((entry) => {
+              const userData = entry.data() || {};
+              const userTeamIds = getNormalizedUserTeamIds(userData);
+              const matchesScopedTeam = userTeamIds.some((teamId) => scopedTeamIds.has(teamId));
+              const linkedByCoachId = teamCoachIds.has(entry.id);
+              if (
+                String(userData.orgId || "").trim() === orgId ||
+                matchesScopedTeam ||
+                linkedByCoachId
+              ) {
+                usersMap[entry.id] = userData;
+              }
+            });
+          }
 
           const coachesByUid = new Map();
           coachRowsFromDocs.forEach((coachRow) => {
@@ -160,9 +211,7 @@ export default function Coaches() {
           });
 
           const mergedCoachRows = [...coachRowsFromDocs];
-          coachUsersSnap.docs.forEach((entry) => {
-            const uid = entry.id;
-            const userData = entry.data() || {};
+          Object.entries(usersMap).forEach(([uid, userData]) => {
             if (coachesByUid.has(uid)) return;
             mergedCoachRows.push({
               id: uid,
@@ -177,9 +226,9 @@ export default function Coaches() {
               teamId: userData.teamId || "",
               teamIds: Array.isArray(userData.teamIds)
                 ? userData.teamIds
-                : Array.isArray(userData.assignedTeamIds)
-                  ? userData.assignedTeamIds
-                  : [],
+                  : Array.isArray(userData.assignedTeamIds)
+                    ? userData.assignedTeamIds
+                    : [],
               status: userData.status || "active",
               role: userData.role || "coach",
               createdAt: userData.createdAt || null,
@@ -194,10 +243,7 @@ export default function Coaches() {
             id: d.id,
             ...d.data(),
           }));
-          nextTeams = teamsSnap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }));
+          nextTeams = nextTeamsLocal;
         }
 
         setUsersByUid(nextUsersByUid);
