@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import {
   addDoc,
   collection,
+  doc,
+  getDoc,
   getDocs,
   query,
   Timestamp,
@@ -33,8 +35,10 @@ export default function AthleteOnboardingPanel({
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
-  const resolvedOrgName = String(orgName || profile?.orgName || "").trim();
-  const resolvedTeamName = String(teamName || "").trim();
+  const [resolvedOrgName, setResolvedOrgName] = useState(
+    String(orgName || profile?.orgName || "").trim()
+  );
+  const [resolvedTeamName, setResolvedTeamName] = useState(String(teamName || "").trim());
 
   function withTimeout(promise, timeoutMs, message) {
     return Promise.race([
@@ -62,6 +66,45 @@ export default function AthleteOnboardingPanel({
   useEffect(() => {
     setCampaignId(defaultCampaignId || "");
   }, [defaultCampaignId]);
+
+  useEffect(() => {
+    setResolvedOrgName(String(orgName || profile?.orgName || "").trim());
+  }, [orgName, profile?.orgName]);
+
+  useEffect(() => {
+    setResolvedTeamName(String(teamName || "").trim());
+  }, [teamName]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveScopeNames() {
+      try {
+        if (orgId && !String(orgName || "").trim() && !String(profile?.orgName || "").trim()) {
+          const orgSnap = await getDoc(doc(db, "organizations", orgId));
+          if (!cancelled && orgSnap.exists()) {
+            setResolvedOrgName(String(orgSnap.data()?.name || orgId).trim());
+          }
+        }
+
+        if (teamId && !String(teamName || "").trim()) {
+          const teamSnap = await getDoc(doc(db, "teams", teamId));
+          if (!cancelled && teamSnap.exists()) {
+            setResolvedTeamName(
+              String(teamSnap.data()?.name || teamSnap.data()?.teamName || teamId).trim()
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("Invite scope name resolution skipped:", err?.message || err);
+      }
+    }
+
+    resolveScopeNames();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, orgName, profile?.orgName, teamId, teamName]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -158,6 +201,32 @@ export default function AthleteOnboardingPanel({
     try {
       const appUrl = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin;
       const sendInviteEmail = httpsCallable(functions, "sendInviteEmail");
+      let inviteOrgName = resolvedOrgName || orgId;
+      let inviteTeamName = resolvedTeamName || "";
+
+      if (!inviteOrgName && orgId) {
+        try {
+          const orgSnap = await getDoc(doc(db, "organizations", orgId));
+          if (orgSnap.exists()) {
+            inviteOrgName = String(orgSnap.data()?.name || orgId).trim();
+          }
+        } catch (err) {
+          console.warn("Invite org name resolution skipped:", err?.message || err);
+        }
+      }
+
+      if (teamId && !inviteTeamName) {
+        try {
+          const teamSnap = await getDoc(doc(db, "teams", teamId));
+          if (teamSnap.exists()) {
+            inviteTeamName = String(
+              teamSnap.data()?.name || teamSnap.data()?.teamName || teamId
+            ).trim();
+          }
+        } catch (err) {
+          console.warn("Invite team name resolution skipped:", err?.message || err);
+        }
+      }
 
       for (const email of emails) {
         if (!email.includes("@")) {
@@ -170,9 +239,9 @@ export default function AthleteOnboardingPanel({
             email,
             role: "athlete",
             orgId,
-            orgName: resolvedOrgName || orgId,
+            orgName: inviteOrgName || orgId,
             teamId: teamId || null,
-            teamName: resolvedTeamName || "",
+            teamName: inviteTeamName || "",
             campaignId: campaignId || null,
             status: "pending",
             expiresAt: Timestamp.fromDate(
