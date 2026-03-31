@@ -2631,6 +2631,170 @@ exports.sendAthleteCustomMessage = onCall(
   }
 );
 
+exports.sendAthleteDripPhaseNow = onCall(
+  {
+    secrets: ["MAILGUN_API_KEY"],
+    timeoutSeconds: 60,
+  },
+  async (request) => {
+    const profile = await assertAdmin(request);
+    const { athleteId, phase } = request.data || {};
+
+    if (!athleteId || typeof athleteId !== "string") {
+      throw new HttpsError("invalid-argument", "athleteId is required");
+    }
+
+    const phaseKey = String(phase || "").trim();
+    const phaseConfig = DRIP_PHASES.find((entry) => entry.key === phaseKey);
+    if (!phaseConfig) {
+      throw new HttpsError("invalid-argument", "A valid drip phase is required");
+    }
+
+    const payload = await buildDripRenderPayload({
+      profile,
+      athleteId,
+      phase: phaseKey,
+    });
+
+    const db = admin.firestore();
+    const contactsSnap = await db
+      .collection("athlete_contacts")
+      .where("orgId", "==", payload.orgId)
+      .where("athleteId", "==", athleteId)
+      .get();
+
+    const contacts = contactsSnap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter(
+        (contact) =>
+          contact.status !== "donated" &&
+          contact.status !== "bounced" &&
+          contact.status !== "complained"
+      );
+
+    if (!contacts.length) {
+      throw new HttpsError("failed-precondition", "No eligible contacts to send");
+    }
+
+    let sendResult;
+    try {
+      sendResult = await sendDripToContacts({
+        db,
+        orgId: payload.orgId,
+        campaignId: payload.campaignId,
+        athleteId,
+        contacts,
+        templateText: payload.bodyText,
+        subject: payload.subject,
+        phase: phaseKey,
+        isAutomated: false,
+      });
+    } catch (err) {
+      logger.error("sendAthleteDripPhaseNow: send failed", {
+        athleteId,
+        campaignId: payload.campaignId,
+        phase: phaseKey,
+        uid: request.auth.uid,
+        message: err?.message,
+        stack: err?.stack,
+      });
+      throw new HttpsError(
+        "internal",
+        err?.message || "Failed to send selected drip phase"
+      );
+    }
+
+    const currentIndex = DRIP_PHASES.findIndex((entry) => entry.key === phaseKey);
+    const nextPhase = currentIndex >= 0 ? DRIP_PHASES[currentIndex + 1] || null : null;
+
+    await db
+      .collection("athletes")
+      .doc(athleteId)
+      .set(
+        {
+          drip: {
+            nextPhase: nextPhase ? nextPhase.key : null,
+            nextSendAt: null,
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    logger.info("sendAthleteDripPhaseNow: sent", {
+      athleteId,
+      campaignId: payload.campaignId,
+      phase: phaseKey,
+      nextPhase: nextPhase?.key || null,
+      sentCount: sendResult.sentCount,
+      failedCount: sendResult.failedCount,
+      uid: request.auth.uid,
+    });
+
+    return {
+      ok: true,
+      athleteId,
+      campaignId: payload.campaignId,
+      phase: phaseKey,
+      nextPhase: nextPhase?.key || null,
+      sent: sendResult.sentCount,
+      failed: sendResult.failedCount,
+      teamName: payload.teamName,
+      athleteName: payload.athleteName,
+    };
+  }
+);
+
+exports.resetAthleteDripState = onCall(async (request) => {
+  const profile = await assertAdmin(request);
+  const { athleteId } = request.data || {};
+
+  if (!athleteId || typeof athleteId !== "string") {
+    throw new HttpsError("invalid-argument", "athleteId is required");
+  }
+
+  const db = admin.firestore();
+  const athleteSnap = await db.collection("athletes").doc(athleteId).get();
+  if (!athleteSnap.exists) {
+    throw new HttpsError("not-found", "Athlete not found");
+  }
+
+  const athlete = athleteSnap.data() || {};
+  if (!athlete.orgId) {
+    throw new HttpsError("failed-precondition", "Athlete org is missing");
+  }
+  if (profile.role !== "super-admin" && athlete.orgId !== profile.orgId) {
+    throw new HttpsError("permission-denied", "Org mismatch");
+  }
+
+  await db
+    .collection("athletes")
+    .doc(athleteId)
+    .set(
+      {
+        drip: {
+          lastPhaseSent: null,
+          lastSentAt: null,
+          nextPhase: null,
+          nextSendAt: null,
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+  logger.info("resetAthleteDripState: reset", {
+    athleteId,
+    orgId: athlete.orgId,
+    uid: request.auth.uid,
+  });
+
+  return {
+    ok: true,
+    athleteId,
+  };
+});
+
 /* ============================================================
    MAILGUN EVENT WEBHOOK
    - Handles delivered/failed/bounced/complained events

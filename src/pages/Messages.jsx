@@ -164,6 +164,8 @@ export default function Messages() {
   const [testRecipientName, setTestRecipientName] = useState("");
   const [testPreviewLoading, setTestPreviewLoading] = useState(false);
   const [testSendLoading, setTestSendLoading] = useState(false);
+  const [testAdvanceLoading, setTestAdvanceLoading] = useState(false);
+  const [testResetLoading, setTestResetLoading] = useState(false);
   const [testPreviewData, setTestPreviewData] = useState(null);
   const [testStatus, setTestStatus] = useState("");
 
@@ -1037,6 +1039,59 @@ export default function Messages() {
     }
   };
 
+  const runAdvancePhaseNow = async () => {
+    if (!testAthleteId) {
+      setTestStatus("Choose an athlete first.");
+      return;
+    }
+
+    try {
+      setTestAdvanceLoading(true);
+      setTestStatus("");
+      const fn = httpsCallable(functions, "sendAthleteDripPhaseNow");
+      const response = await fn({
+        athleteId: testAthleteId,
+        phase: testPhase,
+      });
+      const data = response?.data || {};
+      const sent = Number(data.sent || 0);
+      const failed = Number(data.failed || 0);
+      const nextPhaseLabel = data.nextPhase
+        ? PHASE_LABELS[data.nextPhase] || data.nextPhase
+        : "complete";
+      setTestStatus(
+        `Sent ${PHASE_LABELS[testPhase] || testPhase} to ${sent} contact(s). ${failed > 0 ? `${failed} failed. ` : ""}Next phase: ${nextPhaseLabel}.`
+      );
+    } catch (err) {
+      console.error("Failed to send drip phase now:", err);
+      setTestStatus(err?.message || "Failed to send the selected drip phase.");
+    } finally {
+      setTestAdvanceLoading(false);
+    }
+  };
+
+  const runResetDripState = async () => {
+    if (!testAthleteId) {
+      setTestStatus("Choose an athlete first.");
+      return;
+    }
+
+    try {
+      setTestResetLoading(true);
+      setTestStatus("");
+      const fn = httpsCallable(functions, "resetAthleteDripState");
+      await fn({
+        athleteId: testAthleteId,
+      });
+      setTestStatus("Athlete drip state reset. You can replay phases for testing.");
+    } catch (err) {
+      console.error("Failed to reset athlete drip state:", err);
+      setTestStatus(err?.message || "Failed to reset athlete drip state.");
+    } finally {
+      setTestResetLoading(false);
+    }
+  };
+
   const sendDrip = async (templateKey) => {
     if (!athleteRecord?.campaignId) {
       alert("No campaign assigned to this athlete yet.");
@@ -1373,6 +1428,40 @@ export default function Messages() {
                 >
                   {testSendLoading ? "Sending Test..." : "Send Test Email"}
                 </button>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Accelerated Drip Testing
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    Use this to simulate the multi-week drip in minutes. It sends the selected phase to the athlete&apos;s real eligible contacts immediately, then updates drip state so you can move to the next phase manually.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={runAdvancePhaseNow}
+                    disabled={testAdvanceLoading}
+                    className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-amber-100 disabled:opacity-60"
+                  >
+                    {testAdvanceLoading ? "Sending Phase..." : "Send Selected Phase Now"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={runResetDripState}
+                    disabled={testResetLoading}
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {testResetLoading ? "Resetting..." : "Reset Athlete Drip State"}
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-500">
+                  Recommended test order: reset state, send `Week 1 (First)`, then step through each later phase one by one. When testing is done, leave the production schedule unchanged.
+                </p>
               </div>
 
               {testStatus ? (
