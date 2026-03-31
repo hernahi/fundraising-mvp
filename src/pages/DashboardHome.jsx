@@ -462,7 +462,26 @@ export default function DashboardHome() {
           );
           totalAthletes = campaignAthletesSnap.size;
         } catch (err) {
-          // Fallback when campaignAthletes is unavailable/missing for legacy data.
+          totalAthletes = 0;
+        }
+
+        if (!totalAthletes) {
+          try {
+            const athletesSnap = await getDocs(
+              query(
+                collection(db, "athletes"),
+                where("orgId", "==", resolvedOrgId),
+                where("campaignId", "==", resolvedCampaignId)
+              )
+            );
+            totalAthletes = athletesSnap.size;
+          } catch (err) {
+            totalAthletes = 0;
+          }
+        }
+
+        if (!totalAthletes) {
+          // Fallback when campaign membership is unavailable/missing for legacy data.
           totalAthletes = athleteIdsFromDonations.size;
         }
       }
@@ -1300,6 +1319,21 @@ export default function DashboardHome() {
         }
 
         if (athleteIds.length === 0) {
+          try {
+            const athletesSnap = await getDocs(
+              query(
+                collection(db, "athletes"),
+                where("orgId", "==", resolvedOrgId),
+                where("campaignId", "==", resolvedCampaignId)
+              )
+            );
+            athleteIds = athletesSnap.docs.map((d) => d.id).filter(Boolean);
+          } catch {
+            athleteIds = [];
+          }
+        }
+
+        if (athleteIds.length === 0) {
           athleteIds = Array.from(athleteRaised.keys());
         }
 
@@ -1311,9 +1345,15 @@ export default function DashboardHome() {
 
         const contactsSnap = await getDocs(
           query(collection(db, "athlete_contacts"), where("orgId", "==", resolvedOrgId))
-        );
+        ).catch((err) => {
+          const message = String(err?.message || "").toLowerCase();
+          if (message.includes("missing or insufficient permissions")) {
+            return null;
+          }
+          throw err;
+        });
         const contactCounts = new Map();
-        contactsSnap.forEach((d) => {
+        contactsSnap?.forEach((d) => {
           const athleteId = d.data()?.athleteId;
           if (!athleteId) return;
           contactCounts.set(athleteId, (contactCounts.get(athleteId) || 0) + 1);
