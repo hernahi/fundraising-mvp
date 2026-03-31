@@ -169,30 +169,35 @@ export default function TeamDetail() {
 	              query(
 	                collection(db, "users"),
 	                ...(isSuperAdmin
-	                  ? [where("role", "==", "coach")]
-	                  : [where("orgId", "==", orgId), where("role", "==", "coach")])
+	                  ? []
+	                  : [where("orgId", "==", orgId)])
 	              )
 	            );
 	            const matchedCoach = usersSnap.docs
 	              .map((entry) => ({ id: entry.id, ...entry.data() }))
 		              .find((entry) => {
-	                const singleTeamId = String(entry.teamId || "").trim();
-	                const teamName = String(teamData.name || "").trim();
-	                const multiTeamIds = Array.isArray(entry.teamIds)
-	                  ? entry.teamIds
-	                  : Array.isArray(entry.assignedTeamIds)
+		                const role = String(entry.role || "").toLowerCase();
+		                if (!["coach", "admin"].includes(role)) return false;
+		                const singleTeamId = String(entry.teamId || "").trim();
+		                const teamName = String(teamData.name || "").trim();
+		                const multiTeamIds = Array.isArray(entry.teamIds)
+		                  ? entry.teamIds
+		                  : Array.isArray(entry.assignedTeamIds)
 	                    ? entry.assignedTeamIds
 	                    : [];
 	                const normalizedMultiTeamIds = multiTeamIds
 	                  .map((teamId) => String(teamId || "").trim())
 	                  .filter(Boolean);
-	                return (
-	                  singleTeamId === id ||
-	                  singleTeamId === teamName ||
-	                  normalizedMultiTeamIds.includes(id) ||
-	                  normalizedMultiTeamIds.includes(teamName)
-	                );
-	              });
+		                return (
+		                  String(entry.orgId || "").trim() === orgId ||
+		                  isSuperAdmin
+		                ) && (
+		                  singleTeamId === id ||
+		                  singleTeamId === teamName ||
+		                  normalizedMultiTeamIds.includes(id) ||
+		                  normalizedMultiTeamIds.includes(teamName)
+		                );
+		              });
             if (matchedCoach) {
               resolvedCoachUser = matchedCoach;
             }
@@ -392,12 +397,19 @@ export default function TeamDetail() {
 	        />
         <div>
           <p className="text-gray-600">{team.description || "No team description added yet."}</p>
-          <div className="mt-2 text-sm text-slate-600">
-            <span className="font-medium">Coach:</span>{" "}
-            {coachUser ? (coachUser.displayName || coachUser.email || coachUser.id) : <span className="text-slate-400">None assigned</span>}
-          </div>
-        </div>
-      </div>
+	          <div className="mt-2 text-sm text-slate-600">
+	            <span className="font-medium">Coach:</span>{" "}
+	            {coachUser ? (
+	              <>
+	                {coachUser.displayName || coachUser.email || coachUser.id}
+	                {String(coachUser.role || "").toLowerCase() === "admin" ? " (admin)" : ""}
+	              </>
+	            ) : (
+	              <span className="text-slate-400">None assigned</span>
+	            )}
+	          </div>
+	        </div>
+	      </div>
 
       {/* TEAM CONTACT & NOTES */}
       <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">

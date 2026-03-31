@@ -71,6 +71,20 @@ async function fetchTeamCounts(orgId, teamId) {
   return { athletes: a.data().count || 0, campaigns: c.data().count || 0 };
 }
 
+function getNormalizedAssignedTeamIds(entry) {
+  const fromArray = Array.isArray(entry?.teamIds)
+    ? entry.teamIds
+    : Array.isArray(entry?.assignedTeamIds)
+      ? entry.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((teamId) => String(teamId || "").trim())
+    .filter(Boolean);
+  const single = String(entry?.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function Teams() {
   const { profile, activeOrgId, activeOrgName } = useAuth();
 
@@ -78,6 +92,7 @@ export default function Teams() {
   const [teams, setTeams] = useState([]);
   const [countsByTeam, setCountsByTeam] = useState({});
   const [coachMap, setCoachMap] = useState({});
+  const [teamStaffMap, setTeamStaffMap] = useState({});
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [assignmentFilter, setAssignmentFilter] = useState("all");
@@ -113,6 +128,7 @@ export default function Teams() {
       setLoading(true);
       setCountsByTeam({});
       setCoachMap({});
+      setTeamStaffMap({});
 
       try {
         if (!resolvedOrgId) {
@@ -168,6 +184,38 @@ export default function Teams() {
           if (!cancelled) setCoachMap(nextCoachMap);
         }
 
+        if (rows.length > 0 && !isCoach) {
+          try {
+            const scopedTeamIds = new Set(
+              rows.map((team) => String(team.id || "").trim()).filter(Boolean)
+            );
+            const usersSnap = await getDocs(
+              query(collection(db, "users"), where("orgId", "==", resolvedOrgId))
+            );
+            const nextTeamStaffMap = {};
+            usersSnap.docs.forEach((entry) => {
+              const userData = entry.data() || {};
+              const role = String(userData.role || "").toLowerCase();
+              if (!["coach", "admin"].includes(role)) return;
+              const assignedTeamIds = getNormalizedAssignedTeamIds(userData);
+              assignedTeamIds.forEach((teamId) => {
+                if (!scopedTeamIds.has(teamId)) return;
+                const nextLabel = String(
+                  userData.displayName || userData.name || userData.email || entry.id
+                ).trim();
+                if (!nextLabel) return;
+                const existing = nextTeamStaffMap[teamId];
+                if (!existing || (existing.role !== "coach" && role === "coach")) {
+                  nextTeamStaffMap[teamId] = { label: nextLabel, role };
+                }
+              });
+            });
+            if (!cancelled) setTeamStaffMap(nextTeamStaffMap);
+          } catch {
+            if (!cancelled) setTeamStaffMap({});
+          }
+        }
+
         // Load counts in background (still within this effect)
         const next = {};
         await Promise.all(
@@ -202,16 +250,20 @@ export default function Teams() {
     let rows = teams;
 
     if (assignmentFilter === "assigned") {
-      rows = rows.filter((t) => !!t.coachId);
+      rows = rows.filter((t) => !!t.coachId || !!teamStaffMap[t.id]?.label);
     } else if (assignmentFilter === "unassigned") {
-      rows = rows.filter((t) => !t.coachId);
+      rows = rows.filter((t) => !t.coachId && !teamStaffMap[t.id]?.label);
     }
 
     if (q) {
       rows = rows.filter((t) => {
         const name = (t.name || "").toLowerCase();
         const code = (t.code || "").toLowerCase();
-        const coachName = (coachMap[t.coachId] || "").toLowerCase();
+        const coachName = String(
+          t.coachId
+            ? coachMap[t.coachId] || t.coachId
+            : teamStaffMap[t.id]?.label || ""
+        ).toLowerCase();
         return name.includes(q) || code.includes(q) || coachName.includes(q);
       });
     }
@@ -229,7 +281,7 @@ export default function Teams() {
       }
       return String(a.name || "").localeCompare(String(b.name || ""));
     });
-  }, [teams, search, assignmentFilter, sortBy, countsByTeam, coachMap]);
+  }, [teams, search, assignmentFilter, sortBy, countsByTeam, coachMap, teamStaffMap]);
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
@@ -366,14 +418,19 @@ export default function Teams() {
                     <span>{counts.campaigns} campaign{counts.campaigns === 1 ? "" : "s"}</span>
                   </div>
 
-                  <div className="mt-2 text-xs text-gray-500">
-                    Coach:{" "}
-                    {t.coachId ? (
-                      <span>{coachMap[t.coachId] || t.coachId}</span>
-                    ) : (
-                      <span className="text-gray-400">None</span>
-                    )}
-                  </div>
+	                  <div className="mt-2 text-xs text-gray-500">
+	                    Coach:{" "}
+	                    {t.coachId ? (
+	                      <span>{coachMap[t.coachId] || t.coachId}</span>
+	                    ) : teamStaffMap[t.id]?.label ? (
+	                      <span>
+	                        {teamStaffMap[t.id].label}
+	                        {teamStaffMap[t.id].role === "admin" ? " (admin)" : ""}
+	                      </span>
+	                    ) : (
+	                      <span className="text-gray-400">None</span>
+	                    )}
+	                  </div>
                 </Link>
               );
             })}
