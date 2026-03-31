@@ -893,7 +893,10 @@ export default function DashboardHome() {
             contactCount = contactsSnap.size;
           }
         } catch (contactErr) {
-          console.warn("Coach flow contact count skipped:", contactErr?.message || contactErr);
+          const contactMessage = String(contactErr?.message || contactErr || "");
+          if (!/Missing or insufficient permissions/i.test(contactMessage)) {
+            console.warn("Coach flow contact count skipped:", contactMessage);
+          }
         }
 
         if (!cancelled) {

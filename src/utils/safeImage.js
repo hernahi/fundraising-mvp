@@ -9,6 +9,12 @@ function safeImageURL(url, fallback = FALLBACK_AVATAR) {
 
   try {
     const parsed = new URL(url, window.location.origin);
+    if (parsed.protocol === "blob:" || parsed.protocol === "file:") {
+      return fallback;
+    }
+    if (!["https:", "http:", "data:"].includes(parsed.protocol)) {
+      return fallback;
+    }
     return parsed.href;
   } catch {
     return fallback;
