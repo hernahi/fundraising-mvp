@@ -795,6 +795,7 @@ export default function DashboardHome() {
         const teamIds = teamRows.map((t) => t.id);
 
         let athleteCount = 0;
+        let athleteRows = [];
         if (teamIds.length === 1) {
           const athletesSnap = await getDocs(
             query(
@@ -804,6 +805,7 @@ export default function DashboardHome() {
             )
           );
           athleteCount = athletesSnap.size;
+          athleteRows = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
         } else if (teamIds.length > 1 && teamIds.length <= 10) {
           const athletesSnap = await getDocs(
             query(
@@ -813,13 +815,18 @@ export default function DashboardHome() {
             )
           );
           athleteCount = athletesSnap.size;
+          athleteRows = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
         } else if (teamIds.length > 10 || isAdmin) {
           const athletesSnap = await getDocs(
             query(collection(db, "athletes"), where("orgId", "==", resolvedOrgId))
           );
+          const allAthletes = athletesSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
           athleteCount = isCoach
-            ? athletesSnap.docs.filter((d) => teamIds.includes(d.data()?.teamId)).length
+            ? allAthletes.filter((entry) => teamIds.includes(entry?.teamId)).length
             : athletesSnap.size;
+          athleteRows = isCoach
+            ? allAthletes.filter((entry) => teamIds.includes(entry?.teamId))
+            : allAthletes;
         }
 
         // Use in-memory campaigns from context to avoid extra indexed queries.
@@ -832,16 +839,36 @@ export default function DashboardHome() {
         });
         const assignedCampaignCount = scopedCampaigns.length;
 
-        const contactsSnap = await getDocs(
-          query(collection(db, "athlete_contacts"), where("orgId", "==", resolvedOrgId))
-        );
+        let contactCount = 0;
+        if (isCoach) {
+          const contactSnaps = await Promise.all(
+            athleteRows.map((athlete) =>
+              getDocs(
+                query(
+                  collection(db, "athlete_contacts"),
+                  where("orgId", "==", resolvedOrgId),
+                  where("athleteId", "==", athlete.id)
+                )
+              ).catch(() => ({ size: 0 }))
+            )
+          );
+          contactCount = contactSnaps.reduce(
+            (sum, snap) => sum + Number(snap?.size || 0),
+            0
+          );
+        } else {
+          const contactsSnap = await getDocs(
+            query(collection(db, "athlete_contacts"), where("orgId", "==", resolvedOrgId))
+          );
+          contactCount = contactsSnap.size;
+        }
 
         if (!cancelled) {
           setCoachFlow({
             teamCount: teamRows.length,
             athleteCount,
             assignedCampaignCount,
-            contactCount: contactsSnap.size,
+            contactCount,
           });
         }
       } catch (err) {

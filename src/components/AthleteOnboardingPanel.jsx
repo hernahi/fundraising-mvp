@@ -32,6 +32,29 @@ export default function AthleteOnboardingPanel({
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
+  function withTimeout(promise, timeoutMs, message) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        window.setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  }
+
+  function isAuthConfigurationError(err) {
+    const text = String(err?.message || err || "").toLowerCase();
+    const code = String(err?.code || "").toLowerCase();
+    return (
+      code.includes("auth/") ||
+      code.includes("functions/unauthenticated") ||
+      text.includes("api key") ||
+      text.includes("securetoken") ||
+      text.includes("identitytoolkit") ||
+      text.includes("permission_denied") ||
+      text.includes("permission denied")
+    );
+  }
+
   useEffect(() => {
     setCampaignId(defaultCampaignId || "");
   }, [defaultCampaignId]);
@@ -41,18 +64,46 @@ export default function AthleteOnboardingPanel({
 
     async function loadCampaigns() {
       try {
+        if (teamId) {
+          const [directSnap, multiTeamSnap] = await Promise.all([
+            getDocs(
+              query(
+                collection(db, "campaigns"),
+                where("orgId", "==", orgId),
+                where("teamId", "==", teamId)
+              )
+            ),
+            getDocs(
+              query(
+                collection(db, "campaigns"),
+                where("orgId", "==", orgId),
+                where("teamIds", "array-contains", teamId)
+              )
+            ),
+          ]);
+          const rowsById = new Map();
+          directSnap.docs.forEach((d) => {
+            rowsById.set(d.id, { id: d.id, ...d.data() });
+          });
+          multiTeamSnap.docs.forEach((d) => {
+            rowsById.set(d.id, { id: d.id, ...d.data() });
+          });
+          const scopedRows = Array.from(rowsById.values()).filter((entry) => {
+            if (String(entry?.orgId || "").trim() !== orgId) return false;
+            const directTeamId = String(entry?.teamId || "").trim();
+            const multiTeamIds = Array.isArray(entry?.teamIds) ? entry.teamIds : [];
+            return directTeamId === teamId || multiTeamIds.includes(teamId);
+          });
+          setCampaigns(scopedRows);
+          return;
+        }
+
         const isCoach = String(profile?.role || "").toLowerCase() === "coach";
-        if (isCoach && !teamId) {
+        if (isCoach) {
           setCampaigns([]);
           return;
         }
-        const q = isCoach
-          ? query(
-              collection(db, "campaigns"),
-              where("orgId", "==", orgId),
-              where("teamId", "==", teamId)
-            )
-          : query(collection(db, "campaigns"), where("orgId", "==", orgId));
+        const q = query(collection(db, "campaigns"), where("orgId", "==", orgId));
         const snap = await getDocs(q);
         setCampaigns(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
@@ -62,6 +113,12 @@ export default function AthleteOnboardingPanel({
 
     loadCampaigns();
   }, [orgId, profile?.role, teamId]);
+
+  useEffect(() => {
+    if (!campaignId) return;
+    if (campaigns.some((campaign) => campaign.id === campaignId)) return;
+    setCampaignId("");
+  }, [campaignId, campaigns]);
 
   const helperText = useMemo(() => {
     if (teamId && campaignId) return "Invites will include both team and campaign context.";
@@ -120,17 +177,27 @@ export default function AthleteOnboardingPanel({
             createdByUid: user?.uid || null,
           });
 
-          await sendInviteEmail({
-            toEmail: email,
-            inviteId: inviteRef.id,
-            appUrl,
-            mode: "initial",
-          });
+          await withTimeout(
+            sendInviteEmail({
+              toEmail: email,
+              inviteId: inviteRef.id,
+              appUrl,
+              mode: "initial",
+            }),
+            15000,
+            "Invite send timed out."
+          );
 
           sent.push(email);
         } catch (err) {
           console.error("Invite failed:", email, err);
           failed.push(email);
+          if (isAuthConfigurationError(err)) {
+            setError(
+              "Invite sending stopped because Firebase auth/API key restrictions blocked the request. Update the web API key restrictions, then retry."
+            );
+            break;
+          }
         }
       }
     } finally {
