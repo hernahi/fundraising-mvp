@@ -422,15 +422,18 @@ function renderTransactionalShell({
 }
 
 async function resolveTeamName(db, { athlete = {}, campaign = {} }) {
+  const teamId = String(athlete.teamId || campaign.teamId || "").trim();
   const explicitTeamName =
     athlete.teamName ||
     campaign.teamName ||
     (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "");
   if (explicitTeamName && String(explicitTeamName).trim()) {
-    return String(explicitTeamName).trim();
+    const normalizedExplicit = String(explicitTeamName).trim();
+    if (!teamId || normalizedExplicit !== teamId) {
+      return normalizedExplicit;
+    }
   }
 
-  const teamId = String(athlete.teamId || campaign.teamId || "").trim();
   if (!teamId) {
     return "our team";
   }

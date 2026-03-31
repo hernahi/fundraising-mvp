@@ -494,7 +494,10 @@ export default function Messages() {
     const athleteName = String(
       athleteRecord?.name || athleteRecord?.displayName || profile?.displayName || "Your athlete"
     ).trim();
-    const teamName = String(athleteRecord?.teamName || profile?.teamName || "").trim();
+    const teamId = String(athleteRecord?.teamId || profile?.teamId || "").trim();
+    const explicitTeamName = String(athleteRecord?.teamName || profile?.teamName || "").trim();
+    const teamName =
+      explicitTeamName && explicitTeamName !== teamId ? explicitTeamName : "";
     if (athleteName && teamName) {
       return `${athleteName} via ${teamName}`;
     }
@@ -505,8 +508,10 @@ export default function Messages() {
   }, [
     athleteRecord?.displayName,
     athleteRecord?.name,
+    athleteRecord?.teamId,
     athleteRecord?.teamName,
     profile?.displayName,
+    profile?.teamId,
     profile?.teamName,
   ]);
 
