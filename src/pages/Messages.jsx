@@ -4,6 +4,7 @@ import { httpsCallable } from "firebase/functions";
 import { Link } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
+import { useCampaign } from "../context/CampaignContext";
 import ListLoadingSpinner from "../components/ListLoadingSpinner";
 import ListEmptyState from "../components/ListEmptyState";
 import AvatarCircle from "../components/AvatarCircle";
@@ -98,12 +99,13 @@ function getCoachScopedTeamIds(profile) {
 }
 
 export default function Messages() {
-  const { profile, loading: authLoading } = useAuth();
+  const { profile, loading: authLoading, isSuperAdmin, activeOrgId } = useAuth();
+  const { activeCampaignId } = useCampaign();
   const role = (profile?.role || "").toLowerCase();
   const isAthlete = role === "athlete";
   const isCoach = role === "coach";
   const isAdmin = role === "admin" || role === "super-admin";
-  const orgId = profile?.orgId || "";
+  const orgId = isSuperAdmin ? activeOrgId || "" : profile?.orgId || "";
   const athleteId = profile?.uid || "";
   const coachTeamIds = useMemo(() => getCoachScopedTeamIds(profile), [
     profile?.role,
@@ -373,14 +375,22 @@ export default function Messages() {
   useEffect(() => {
     if (!isAdmin || !orgId) {
       setOrgAthletes([]);
+      setTestAthleteId("");
       return;
     }
 
     const loadOrgAthletes = async () => {
       try {
-        const snap = await getDocs(
-          query(collection(db, "athletes"), where("orgId", "==", orgId))
-        );
+        const athletesRef = collection(db, "athletes");
+        const scopedQuery = activeCampaignId
+          ? query(
+              athletesRef,
+              where("orgId", "==", orgId),
+              where("campaignId", "==", activeCampaignId)
+            )
+          : query(athletesRef, where("orgId", "==", orgId));
+
+        const snap = await getDocs(scopedQuery);
         const rows = snap.docs
           .map((entry) => ({ id: entry.id, ...entry.data() }))
           .sort((a, b) =>
@@ -389,7 +399,10 @@ export default function Messages() {
             )
           );
         setOrgAthletes(rows);
-        if (!testAthleteId && rows[0]?.id) {
+        const hasSelectedAthlete = rows.some((athlete) => athlete.id === testAthleteId);
+        if (!hasSelectedAthlete) {
+          setTestAthleteId(rows[0]?.id || "");
+        } else if (!testAthleteId && rows[0]?.id) {
           setTestAthleteId(rows[0].id);
         }
       } catch (err) {
@@ -398,7 +411,7 @@ export default function Messages() {
     };
 
     loadOrgAthletes();
-  }, [isAdmin, orgId, testAthleteId]);
+  }, [isAdmin, orgId, activeCampaignId, testAthleteId]);
 
   useEffect(() => {
     if (!isAthlete || !athleteId) return;
