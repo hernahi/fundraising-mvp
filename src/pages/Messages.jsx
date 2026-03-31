@@ -1903,6 +1903,93 @@ export default function Messages() {
               )}
             </div>
 
+            {isAthlete && (
+              <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-lg font-semibold text-slate-800">
+                    Send One-Off Custom Message
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    Use this for a personal update outside the regular drip. Pick one recipient, several, or leave the contact list unselected to send to all eligible contacts.
+                  </p>
+                </div>
+
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                    <div className="font-semibold text-slate-700">
+                      Sending as
+                    </div>
+                    <p className="mt-1">
+                      {customSenderLabel}
+                    </p>
+                    <p className="mt-2 text-slate-500">
+                      Delivered from the platform's authenticated no-reply email to protect deliverability.
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                    <div className="font-semibold text-slate-700">
+                      Recipients
+                    </div>
+                    <p className="mt-1">{selectedRecipientSummary}</p>
+                    <p className="mt-2 text-slate-500">
+                      Check contacts above to target a single person or a smaller group.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Subject
+                  </label>
+                  <input
+                    type="text"
+                    value={customSubject}
+                    onChange={(e) => setCustomSubject(e.target.value)}
+                    maxLength={140}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                    placeholder="Quick update from me"
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Message
+                  </label>
+                  <textarea
+                    value={customBody}
+                    onChange={(e) => setCustomBody(e.target.value)}
+                    rows={6}
+                    maxLength={5000}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                    placeholder="Write a short personal update. You can optionally use {{recipientFirstName}} for a friendlier greeting."
+                  />
+                  <p className="mt-2 text-xs text-slate-500">
+                    Keep it short and personal. Plain-language emails generally perform better than heavily formatted messages.
+                  </p>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-slate-500">
+                    This sends immediately to {selectedRecipientSummary.toLowerCase()}.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={sendCustomMessage}
+                    disabled={
+                      customSendLoading ||
+                      !customSubject.trim() ||
+                      !customBody.trim() ||
+                      selectedRecipients.length === 0
+                    }
+                    className="w-full sm:w-auto rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    {customSendLoading ? "Sending..." : "Send Custom Message"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div id="drip-campaign" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
               <div className="flex flex-col gap-3 md:gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -1991,90 +2078,6 @@ export default function Messages() {
                     </button>
                   </div>
 
-                  <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-4">
-                    <div className="flex flex-col gap-1">
-                      <h3 className="text-sm font-semibold text-slate-800">
-                        Send One-Off Custom Message
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        Use this for a personal update outside the regular drip. Pick one recipient, several, or leave the contact list unselected to send to all eligible contacts.
-                      </p>
-                    </div>
-
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
-                        <div className="font-semibold text-slate-700">
-                          Sending as
-                        </div>
-                        <p className="mt-1">
-                          {customSenderLabel}
-                        </p>
-                        <p className="mt-2 text-slate-500">
-                          Delivered from the platform's authenticated no-reply email to protect deliverability.
-                        </p>
-                      </div>
-
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
-                        <div className="font-semibold text-slate-700">
-                          Recipients
-                        </div>
-                        <p className="mt-1">{selectedRecipientSummary}</p>
-                        <p className="mt-2 text-slate-500">
-                          Check contacts above to target a single person or a smaller group.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <label className="text-xs uppercase tracking-wide text-slate-400">
-                        Subject
-                      </label>
-                      <input
-                        type="text"
-                        value={customSubject}
-                        onChange={(e) => setCustomSubject(e.target.value)}
-                        maxLength={140}
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                        placeholder="Quick update from me"
-                      />
-                    </div>
-
-                    <div className="mt-4">
-                      <label className="text-xs uppercase tracking-wide text-slate-400">
-                        Message
-                      </label>
-                      <textarea
-                        value={customBody}
-                        onChange={(e) => setCustomBody(e.target.value)}
-                        rows={6}
-                        maxLength={5000}
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                        placeholder="Write a short personal update. You can optionally use {{recipientFirstName}} for a friendlier greeting."
-                      />
-                      <p className="mt-2 text-xs text-slate-500">
-                        Keep it short and personal. Plain-language emails generally perform better than heavily formatted messages.
-                      </p>
-                    </div>
-
-                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-xs text-slate-500">
-                        This sends immediately to {selectedRecipientSummary.toLowerCase()}.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={sendCustomMessage}
-                        disabled={
-                          customSendLoading ||
-                          !customSubject.trim() ||
-                          !customBody.trim() ||
-                          selectedRecipients.length === 0
-                        }
-                        className="w-full sm:w-auto rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
-                      >
-                        {customSendLoading ? "Sending..." : "Send Custom Message"}
-                      </button>
-                    </div>
-                  </div>
                 </>
               ) : (
                 <>
