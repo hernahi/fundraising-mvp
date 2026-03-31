@@ -15,8 +15,10 @@ import { useAuth } from "../context/AuthContext";
 
 export default function AthleteOnboardingPanel({
   orgId,
+  orgName = "",
   defaultCampaignId = "",
   teamId = "",
+  teamName = "",
   lockCampaign = false,
   compact = false,
   showLegacyLink = false,
@@ -31,6 +33,8 @@ export default function AthleteOnboardingPanel({
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const resolvedOrgName = String(orgName || profile?.orgName || "").trim();
+  const resolvedTeamName = String(teamName || "").trim();
 
   function withTimeout(promise, timeoutMs, message) {
     return Promise.race([
@@ -166,7 +170,9 @@ export default function AthleteOnboardingPanel({
             email,
             role: "athlete",
             orgId,
+            orgName: resolvedOrgName || orgId,
             teamId: teamId || null,
+            teamName: resolvedTeamName || "",
             campaignId: campaignId || null,
             status: "pending",
             expiresAt: Timestamp.fromDate(
@@ -243,6 +249,13 @@ export default function AthleteOnboardingPanel({
       </div>
 
       <p className="text-xs text-slate-500">{helperText}</p>
+      {(resolvedOrgName || resolvedTeamName) && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <span className="font-medium text-slate-700">Current scope:</span>{" "}
+          {resolvedOrgName ? `Org: ${resolvedOrgName}` : `Org ID: ${orgId}`}
+          {resolvedTeamName ? ` · Team: ${resolvedTeamName}` : ""}
+        </div>
+      )}
       {lockCampaign && campaignId ? (
         <p className="text-xs text-slate-500">
           Campaign context is locked from the previous page.

@@ -332,8 +332,10 @@ export default function TeamDetail() {
           <div className="mt-4">
             <AthleteOnboardingPanel
               orgId={team.orgId}
+              orgName={team.orgName || ""}
               defaultCampaignId={activeCampaign?.id || ""}
               teamId={team.id}
+              teamName={team.name || ""}
               lockCampaign={Boolean(activeCampaign?.id)}
               compact
             />

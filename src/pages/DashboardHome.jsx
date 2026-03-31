@@ -257,6 +257,8 @@ export default function DashboardHome() {
     athleteCount: 0,
     assignedCampaignCount: 0,
     contactCount: 0,
+    primaryTeamId: "",
+    primaryTeamName: "",
   });
   const [insightOpen, setInsightOpen] = useState(false);
   const [insightType, setInsightType] = useState("");
@@ -869,6 +871,8 @@ export default function DashboardHome() {
             athleteCount,
             assignedCampaignCount,
             contactCount,
+            primaryTeamId: String(teamRows[0]?.id || "").trim(),
+            primaryTeamName: String(teamRows[0]?.name || teamRows[0]?.teamName || "").trim(),
           });
         }
       } catch (err) {
@@ -1746,9 +1750,9 @@ export default function DashboardHome() {
 	            <div className="px-4 py-4 text-sm text-slate-500">Loading onboarding status...</div>
 	          ) : (
 	            <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-	              {[
-	                {
-	                  key: "team",
+		              {[
+		                {
+		                  key: "team",
 	                  label: "1. Create Team",
 	                  detail: `${coachFlow.teamCount} team${coachFlow.teamCount === 1 ? "" : "s"}`,
 	                  to: "/teams",
@@ -1758,15 +1762,25 @@ export default function DashboardHome() {
 	                    started: false,
 	                  }),
 	                },
-	                {
-	                  key: "invite",
-	                  label: "2. Invite Athletes",
-	                  detail: `${coachFlow.athleteCount} athlete${coachFlow.athleteCount === 1 ? "" : "s"}`,
-	                  to: "/coach/invite",
-	                  cta: "Onboard Athletes",
-	                  status: getAthleteFlowStatus({
-	                    complete: coachFlow.athleteCount > 0,
-	                    started: coachFlow.teamCount > 0,
+		                {
+		                  key: "invite",
+		                  label: "2. Invite Athletes",
+		                  detail: `${coachFlow.athleteCount} athlete${coachFlow.athleteCount === 1 ? "" : "s"}`,
+		                  to:
+                        coachFlow.teamCount === 1 && coachFlow.primaryTeamId
+                          ? `/coach/invite?teamId=${encodeURIComponent(
+                              coachFlow.primaryTeamId
+                            )}&teamName=${encodeURIComponent(
+                              coachFlow.primaryTeamName || ""
+                            )}`
+                          : "/teams",
+		                  cta:
+                        coachFlow.teamCount === 1 && coachFlow.primaryTeamId
+                          ? "Onboard Athletes"
+                          : "Open Teams",
+		                  status: getAthleteFlowStatus({
+		                    complete: coachFlow.athleteCount > 0,
+		                    started: coachFlow.teamCount > 0,
 	                  }),
 	                },
 	                {

@@ -5,7 +5,7 @@ import AthleteOnboardingPanel from "../components/AthleteOnboardingPanel";
 import { FaArrowLeft } from "react-icons/fa";
 
 export default function CoachInviteAthlete() {
-  const { profile } = useAuth();
+  const { profile, activeOrgId, activeOrgName, isSuperAdmin } = useAuth();
   const [searchParams] = useSearchParams();
 
   const prefillCampaignId = searchParams.get("campaignId") || "";
@@ -43,9 +43,11 @@ export default function CoachInviteAthlete() {
       </div>
 
       <AthleteOnboardingPanel
-        orgId={profile?.orgId || ""}
+        orgId={isSuperAdmin ? activeOrgId || "" : profile?.orgId || ""}
+        orgName={isSuperAdmin ? activeOrgName || "" : profile?.orgName || ""}
         defaultCampaignId={prefillCampaignId}
         teamId={prefillTeamId}
+        teamName={String(searchParams.get("teamName") || "").trim()}
         lockCampaign={lockCampaign}
       />
     </div>
