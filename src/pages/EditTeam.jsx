@@ -3,9 +3,14 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
+  query,
   updateDoc,
+  where,
+  writeBatch,
 } from "firebase/firestore";
 
 import { db } from "../firebase/config";
@@ -101,13 +106,16 @@ export default function EditTeam() {
       setSaving(true);
 
       const ref = doc(db, "teams", teamId);
+      const previousTeamName = String(team?.name || team?.teamName || "").trim();
+      const normalizedTeamName = name.trim().replace(/\s+/g, " ");
       let finalAvatar = String(avatar || "").trim();
       if (avatarFile) {
         finalAvatar = (await uploadTeamImage(avatarFile, teamId)) || finalAvatar;
       }
 
       await updateDoc(ref, {
-        name: name.trim(),
+        name: normalizedTeamName,
+        teamName: normalizedTeamName,
         description: description.trim(),
         address: address.trim(),
         phone: phone.trim(),
@@ -117,6 +125,74 @@ export default function EditTeam() {
         imgUrl: finalAvatar,
         ...(isSuperAdmin && { orgId: orgId.trim() }), // super-admin only
       });
+
+      if (normalizedTeamName && normalizedTeamName !== previousTeamName) {
+        const normalizedOrgId = String(orgId || team?.orgId || activeOrgId || profile?.orgId || "").trim();
+        const queries = [
+          query(
+            collection(db, "athletes"),
+            where("orgId", "==", normalizedOrgId),
+            where("teamId", "==", teamId)
+          ),
+          query(
+            collection(db, "invites"),
+            where("orgId", "==", normalizedOrgId),
+            where("teamId", "==", teamId)
+          ),
+          query(
+            collection(db, "campaigns"),
+            where("orgId", "==", normalizedOrgId),
+            where("teamId", "==", teamId)
+          ),
+          query(
+            collection(db, "users"),
+            where("orgId", "==", normalizedOrgId),
+            where("teamId", "==", teamId)
+          ),
+          query(
+            collection(db, "users"),
+            where("orgId", "==", normalizedOrgId),
+            where("teamIds", "array-contains", teamId)
+          ),
+          query(
+            collection(db, "users"),
+            where("orgId", "==", normalizedOrgId),
+            where("assignedTeamIds", "array-contains", teamId)
+          ),
+        ];
+
+        const snapshots = await Promise.all(
+          queries.map((qRef) =>
+            getDocs(qRef).catch(() => ({ docs: [] }))
+          )
+        );
+
+        const docUpdates = new Map();
+        snapshots.forEach((snap) => {
+          (snap.docs || []).forEach((entry) => {
+            const path = entry.ref.path;
+            const collectionName = entry.ref.parent.id;
+            let update = null;
+
+            if (collectionName === "campaigns") {
+              update = { teamName: normalizedTeamName };
+            } else {
+              update = { teamName: normalizedTeamName };
+            }
+
+            docUpdates.set(path, { ref: entry.ref, update });
+          });
+        });
+
+        const updateEntries = Array.from(docUpdates.values());
+        for (let i = 0; i < updateEntries.length; i += 400) {
+          const batch = writeBatch(db);
+          updateEntries.slice(i, i + 400).forEach(({ ref: nextRef, update }) => {
+            batch.update(nextRef, update);
+          });
+          await batch.commit();
+        }
+      }
 
       navigate(`/teams/${teamId}`);
     } catch (e) {
