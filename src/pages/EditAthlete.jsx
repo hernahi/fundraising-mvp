@@ -82,6 +82,7 @@ export default function EditAthlete() {
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageStatus, setImageStatus] = useState("");
+  const [goalValidationMessage, setGoalValidationMessage] = useState("");
   const [teamOptions, setTeamOptions] = useState([]);
 
   const role = String(profile?.role || "").toLowerCase();
@@ -97,6 +98,29 @@ export default function EditAthlete() {
   const teamDefaultGoalMinimum = Number(selectedTeam?.defaultAthleteGoalMinimum || 0);
   const athleteGoalMinimum = Number(athlete?.goalMinimum || 0);
   const effectiveGoalMinimum = athleteGoalMinimum > 0 ? athleteGoalMinimum : teamDefaultGoalMinimum;
+  const normalizedGoalValue =
+    athlete?.goal === "" || athlete?.goal == null ? null : Number(athlete.goal) || 0;
+  const goalIsBelowMinimum =
+    normalizedGoalValue != null &&
+    effectiveGoalMinimum > 0 &&
+    normalizedGoalValue < effectiveGoalMinimum;
+  const minimumGoalSourceLabel =
+    athleteGoalMinimum > 0
+      ? "the minimum set for you by your coach or admin"
+      : teamDefaultGoalMinimum > 0
+        ? "the minimum set by your coach for this team"
+        : "";
+
+  useEffect(() => {
+    if (!goalIsBelowMinimum) {
+      setGoalValidationMessage("");
+      return;
+    }
+
+    setGoalValidationMessage(
+      `Your personal goal can be increased at any time, but it cannot be lower than $${effectiveGoalMinimum.toLocaleString()} because that is ${minimumGoalSourceLabel}.`
+    );
+  }, [goalIsBelowMinimum, effectiveGoalMinimum, minimumGoalSourceLabel]);
 
   useEffect(() => {
     async function fetchAthlete() {
@@ -229,7 +253,9 @@ export default function EditAthlete() {
         nextEffectiveGoalMinimum > 0 &&
         normalizedGoal < nextEffectiveGoalMinimum
       ) {
-        alert(`Personal goal must be at least $${nextEffectiveGoalMinimum.toLocaleString()}.`);
+        setGoalValidationMessage(
+          `Your personal goal can be increased at any time, but it cannot be lower than $${nextEffectiveGoalMinimum.toLocaleString()}.`
+        );
         setSaving(false);
         return;
       }
@@ -385,9 +411,10 @@ export default function EditAthlete() {
               min={effectiveGoalMinimum > 0 ? effectiveGoalMinimum : 0}
               className="w-full border rounded-lg px-3 py-2"
               value={athlete.goal ?? ""}
-              onChange={(e) =>
-                setAthlete({ ...athlete, goal: e.target.value })
-              }
+              onChange={(e) => {
+                setGoalValidationMessage("");
+                setAthlete({ ...athlete, goal: e.target.value });
+              }}
               placeholder="Ex: 500"
             />
             {effectiveGoalMinimum > 0 ? (
@@ -400,6 +427,9 @@ export default function EditAthlete() {
                 Athletes can choose any positive goal when no minimum is set.
               </p>
             )}
+            {goalValidationMessage ? (
+              <p className="mt-2 text-xs text-amber-700">{goalValidationMessage}</p>
+            ) : null}
           </div>
 
           {canManageAnyAthlete ? (
@@ -544,7 +574,7 @@ export default function EditAthlete() {
           </Link>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || goalIsBelowMinimum}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition disabled:opacity-50"
           >
             <FaSave /> {saving ? "Saving..." : "Save Changes"}
