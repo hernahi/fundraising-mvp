@@ -283,7 +283,6 @@ export default function EditAthlete() {
 
       navigate(`/athletes/${athlete.id}`);
     } catch (err) {
-      console.error("Error updating athlete:", err);
       const code = String(err?.code || "").trim();
       if (
         code === "permission-denied" &&
@@ -292,6 +291,8 @@ export default function EditAthlete() {
         setGoalValidationMessage(
           `Your personal goal can be increased at any time, but it cannot be lower than $${effectiveGoalMinimum.toLocaleString()} because that is ${minimumGoalSourceLabel}.`
         );
+      } else {
+        console.error("Error updating athlete:", err);
       }
     } finally {
       setSaving(false);
