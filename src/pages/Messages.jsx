@@ -1512,7 +1512,16 @@ export default function Messages() {
 
       {(isCoach || isAdmin) && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-6">
-          {isAdmin && (
+          {isAdmin && isSuperAdmin && !orgId ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <h2 className="text-lg font-semibold text-slate-800">
+                Drip Template Testing
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Select a specific organization to use drip testing.
+              </p>
+            </div>
+          ) : isAdmin && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
               <div>
                 <h2 className="text-lg font-semibold text-slate-800">

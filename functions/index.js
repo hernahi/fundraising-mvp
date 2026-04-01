@@ -72,6 +72,8 @@ setGlobalOptions({
 const WEBHOOK_ALERT_WINDOW_MINUTES = 10;
 const WEBHOOK_ALERT_THRESHOLD = 3;
 const WEBHOOK_ALERT_COOLDOWN_MINUTES = 30;
+const PREFERRED_FRONTEND_URL = "https://inetsphere.com";
+const LEGACY_FRONTEND_HOSTS = new Set(["fundraising-mvp.vercel.app"]);
 
 /* ============================================================
    DONATION AMOUNT GUARD
@@ -472,6 +474,30 @@ async function getOrganizationName(db, orgId) {
   }
 }
 
+function normalizeFrontendBaseUrl(rawUrl) {
+  const fallbackUrl = PREFERRED_FRONTEND_URL;
+  const raw = String(rawUrl || "").trim();
+  if (!raw) return fallbackUrl;
+
+  try {
+    const parsed = new URL(raw);
+    const hostname = String(parsed.hostname || "").toLowerCase();
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname.endsWith(".local")
+    ) {
+      return parsed.origin;
+    }
+    if (LEGACY_FRONTEND_HOSTS.has(hostname)) {
+      return fallbackUrl;
+    }
+    return parsed.origin;
+  } catch (_) {
+    return fallbackUrl;
+  }
+}
+
 async function buildDripRenderPayload({ profile, athleteId, phase }) {
   const db = admin.firestore();
   const athleteSnap = await db.collection("athletes").doc(athleteId).get();
@@ -500,7 +526,9 @@ async function buildDripRenderPayload({ profile, athleteId, phase }) {
 
   const campaign = campaignSnap.data() || {};
   const orgData = orgSnap.exists ? orgSnap.data() || {} : {};
-  const baseUrl = (orgData.frontendUrl || process.env.FRONTEND_URL || "").trim();
+  const baseUrl = normalizeFrontendBaseUrl(
+    orgData.frontendUrl || process.env.FRONTEND_URL || ""
+  );
   if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
     throw new HttpsError("failed-precondition", "FRONTEND_URL is not configured");
   }
@@ -2187,11 +2215,10 @@ exports.sendDonorInvite = onCall(
       throw new HttpsError("invalid-argument", "Athlete not assigned to campaign");
     }
 
-    const baseUrl = (() => {
-      const fromEnv = (process.env.FRONTEND_URL || "").trim();
-      const fromHeader = (request?.rawRequest?.headers?.origin || "").trim();
-      return fromEnv || fromHeader;
-    })();
+    const baseUrl = normalizeFrontendBaseUrl(
+      (process.env.FRONTEND_URL || "").trim() ||
+      (request?.rawRequest?.headers?.origin || "").trim()
+    );
 
     if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
       throw new HttpsError("failed-precondition", "FRONTEND_URL is not configured");
@@ -2365,11 +2392,10 @@ exports.sendAthleteDripMessage = onCall(
       throw new HttpsError("invalid-argument", "Athlete not assigned to campaign");
     }
 
-    const baseUrl = (() => {
-      const fromEnv = (process.env.FRONTEND_URL || "").trim();
-      const fromHeader = (request?.rawRequest?.headers?.origin || "").trim();
-      return fromEnv || fromHeader;
-    })();
+    const baseUrl = normalizeFrontendBaseUrl(
+      (process.env.FRONTEND_URL || "").trim() ||
+      (request?.rawRequest?.headers?.origin || "").trim()
+    );
 
     if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
       throw new HttpsError("failed-precondition", "FRONTEND_URL is not configured");
@@ -3018,7 +3044,10 @@ exports.runAthleteDrip = onSchedule(
         continue;
       }
 
-      const donateUrl = `${orgData.frontendUrl || process.env.FRONTEND_URL || ""}/donate/${athlete.campaignId}/athlete/${athleteId}`;
+      const baseUrl = normalizeFrontendBaseUrl(
+        orgData.frontendUrl || process.env.FRONTEND_URL || ""
+      );
+      const donateUrl = `${baseUrl}/donate/${athlete.campaignId}/athlete/${athleteId}`;
       const resolvedTeamName = await resolveTeamName(db, { athlete, campaign });
       const orgTemplates = orgData.donorInviteTemplates || {};
       const athleteTemplates = athlete.donorInviteTemplates || {};
@@ -3660,7 +3689,7 @@ exports.createCheckoutSession = onCall(
         throw new HttpsError("invalid-argument", "Invalid donation amount");
       }
 
-      const baseUrl = (() => {
+      const baseUrl = normalizeFrontendBaseUrl((() => {
         const fromEnv = (process.env.FRONTEND_URL || "").trim();
         const fromOrigin = (request?.rawRequest?.headers?.origin || "").trim();
         const fromReferer = (() => {
@@ -3682,7 +3711,7 @@ exports.createCheckoutSession = onCall(
         );
 
         return nonLocal || candidates[0] || "";
-      })();
+      })());
 
       if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
         throw new HttpsError(
