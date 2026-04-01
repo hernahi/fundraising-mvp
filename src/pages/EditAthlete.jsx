@@ -123,7 +123,7 @@ export default function EditAthlete() {
     setGoalValidationMessage(
       `Your personal goal can be increased at any time, but it cannot be lower than $${effectiveGoalMinimum.toLocaleString()} because that is ${minimumGoalSourceLabel}.`
     );
-  }, [goalIsBelowMinimum, effectiveGoalMinimum, minimumGoalSourceLabel]);
+  }, [goalIsBelowMinimum, effectiveGoalMinimum, minimumGoalSourceLabel, normalizedGoalValue]);
 
   useEffect(() => {
     async function fetchAthlete() {
@@ -462,10 +462,9 @@ export default function EditAthlete() {
               min={effectiveGoalMinimum > 0 ? effectiveGoalMinimum : 0}
               className="w-full border rounded-lg px-3 py-2"
               value={athlete.goal ?? ""}
-              onChange={(e) => {
-                setGoalValidationMessage("");
-                setAthlete({ ...athlete, goal: e.target.value });
-              }}
+              onChange={(e) =>
+                setAthlete({ ...athlete, goal: e.target.value })
+              }
               placeholder="Ex: 500"
             />
             {effectiveGoalMinimum > 0 ? (
