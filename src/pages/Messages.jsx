@@ -160,6 +160,8 @@ export default function Messages() {
   const [customSendLoading, setCustomSendLoading] = useState(false);
   const [dedupeLoading, setDedupeLoading] = useState(false);
   const [orgAthletes, setOrgAthletes] = useState([]);
+  const [orgTesters, setOrgTesters] = useState([]);
+  const [selectedTesterKey, setSelectedTesterKey] = useState("");
   const [testAthleteId, setTestAthleteId] = useState("");
   const [testPhase, setTestPhase] = useState("week1a");
   const [testEmail, setTestEmail] = useState("");
@@ -412,6 +414,74 @@ export default function Messages() {
 
     loadOrgAthletes();
   }, [isAdmin, orgId, activeCampaignId, testAthleteId]);
+
+  useEffect(() => {
+    if (!isAdmin || !orgId) {
+      setOrgTesters([]);
+      setSelectedTesterKey("");
+      return;
+    }
+
+    const loadOrgTesters = async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, "users"), where("orgId", "==", orgId))
+        );
+
+        const rows = snap.docs
+          .map((entry) => ({ id: entry.id, ...entry.data() }))
+          .filter((user) => {
+            const role = String(user.role || "").toLowerCase();
+            return (
+              ["coach", "admin", "super-admin"].includes(role) &&
+              String(user.status || "active").toLowerCase() === "active" &&
+              String(user.email || "").trim()
+            );
+          })
+          .map((user) => ({
+            key: user.id,
+            email: String(user.email || "").trim(),
+            name: String(user.displayName || user.name || user.email || "").trim(),
+            role: String(user.role || "").toLowerCase(),
+          }));
+
+        const merged = new Map(rows.map((user) => [user.email.toLowerCase(), user]));
+
+        if (String(profile?.email || "").trim()) {
+          merged.set(String(profile.email).trim().toLowerCase(), {
+            key: profile?.uid || "current-user",
+            email: String(profile.email).trim(),
+            name: String(profile.displayName || profile.name || profile.email || "").trim(),
+            role: String(profile.role || "").toLowerCase(),
+          });
+        }
+
+        const nextTesters = Array.from(merged.values()).sort((left, right) =>
+          left.name.localeCompare(right.name)
+        );
+
+        setOrgTesters(nextTesters);
+
+        const hasSelectedTester = nextTesters.some((tester) => tester.key === selectedTesterKey);
+        if (!hasSelectedTester) {
+          setSelectedTesterKey("");
+        }
+      } catch (err) {
+        console.error("Failed to load scoped testers:", err);
+      }
+    };
+
+    loadOrgTesters();
+  }, [
+    isAdmin,
+    orgId,
+    selectedTesterKey,
+    profile?.displayName,
+    profile?.email,
+    profile?.name,
+    profile?.role,
+    profile?.uid,
+  ]);
 
   useEffect(() => {
     if (!isAthlete || !athleteId) return;
@@ -1378,6 +1448,31 @@ export default function Messages() {
                     {orgAthletes.map((athlete) => (
                       <option key={athlete.id} value={athlete.id}>
                         {athlete.name || athlete.displayName || athlete.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Suggested Tester
+                  </label>
+                  <select
+                    value={selectedTesterKey}
+                    onChange={(e) => {
+                      const nextKey = e.target.value;
+                      setSelectedTesterKey(nextKey);
+                      const tester = orgTesters.find((entry) => entry.key === nextKey);
+                      if (tester) {
+                        setTestEmail(tester.email);
+                        setTestRecipientName(tester.name);
+                      }
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    <option value="">Select qualified tester</option>
+                    {orgTesters.map((tester) => (
+                      <option key={tester.key} value={tester.key}>
+                        {tester.name} ({tester.role})
                       </option>
                     ))}
                   </select>
