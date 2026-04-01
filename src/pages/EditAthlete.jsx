@@ -84,6 +84,7 @@ export default function EditAthlete() {
   const [imageStatus, setImageStatus] = useState("");
   const [goalValidationMessage, setGoalValidationMessage] = useState("");
   const [teamOptions, setTeamOptions] = useState([]);
+  const [resolvedTeamMinimum, setResolvedTeamMinimum] = useState(0);
 
   const role = String(profile?.role || "").toLowerCase();
   const canManageAnyAthlete = role === "admin" || role === "super-admin" || role === "coach";
@@ -95,7 +96,9 @@ export default function EditAthlete() {
     const normalizedTeamId = String(athlete?.teamId || "").trim();
     return teamOptions.find((team) => team.id === normalizedTeamId) || null;
   }, [athlete?.teamId, teamOptions]);
-  const teamDefaultGoalMinimum = Number(selectedTeam?.defaultAthleteGoalMinimum || 0);
+  const teamDefaultGoalMinimum = Number(
+    selectedTeam?.defaultAthleteGoalMinimum || resolvedTeamMinimum || 0
+  );
   const athleteGoalMinimum = Number(athlete?.goalMinimum || 0);
   const effectiveGoalMinimum = athleteGoalMinimum > 0 ? athleteGoalMinimum : teamDefaultGoalMinimum;
   const normalizedGoalValue =
@@ -199,6 +202,44 @@ export default function EditAthlete() {
 
     loadTeamOptions();
   }, [canAssignTeam, profile?.orgId, role, scopedTeamIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadResolvedTeamMinimum() {
+      const normalizedTeamId = String(athlete?.teamId || "").trim();
+      if (!normalizedTeamId) {
+        if (!cancelled) setResolvedTeamMinimum(0);
+        return;
+      }
+
+      if (selectedTeam) {
+        if (!cancelled) {
+          setResolvedTeamMinimum(Number(selectedTeam.defaultAthleteGoalMinimum || 0));
+        }
+        return;
+      }
+
+      try {
+        const teamSnap = await getDoc(doc(db, "teams", normalizedTeamId));
+        if (!cancelled) {
+          setResolvedTeamMinimum(
+            teamSnap.exists()
+              ? Number(teamSnap.data()?.defaultAthleteGoalMinimum || 0)
+              : 0
+          );
+        }
+      } catch (err) {
+        console.error("Error loading athlete team minimum:", err);
+        if (!cancelled) setResolvedTeamMinimum(0);
+      }
+    }
+
+    loadResolvedTeamMinimum();
+    return () => {
+      cancelled = true;
+    };
+  }, [athlete?.teamId, selectedTeam]);
 
   async function handleImageFileChange(event) {
     const file = event.target.files?.[0];
