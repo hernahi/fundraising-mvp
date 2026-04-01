@@ -130,7 +130,9 @@ export default function Login() {
 
     try {
       await resetPassword(email.trim());
-      setMessage("Password reset email sent. Check your inbox for the recovery link.");
+      setMessage(
+        "If this email is registered with a password-based login, a reset link has been sent. Check your inbox, and look in spam or junk if you do not see it within a few minutes."
+      );
     } catch (err) {
       console.error("Password reset failed:", err);
       setError(err?.message || "We could not send a password reset email.");
