@@ -124,16 +124,16 @@ export default function Login() {
   const handlePasswordReset = async () => {
     clearStatus();
     if (!email.trim()) {
-      setError("Enter your email first, then click reset password.");
+      setError("Enter your email address first, then click Forgot Password?.");
       return;
     }
 
     try {
       await resetPassword(email.trim());
-      setMessage("Password reset email sent.");
+      setMessage("Password reset email sent. Check your inbox for the recovery link.");
     } catch (err) {
       console.error("Password reset failed:", err);
-      setError(err?.message || "Failed to send password reset email.");
+      setError(err?.message || "We could not send a password reset email.");
     }
   };
 
@@ -402,7 +402,7 @@ export default function Login() {
             onClick={handlePasswordReset}
             className="text-slate-600 hover:text-slate-800 underline"
           >
-            Reset Password
+            Forgot Password?
           </button>
           {hasAccountWithoutProfile ? (
             <button
