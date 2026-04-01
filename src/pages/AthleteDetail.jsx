@@ -133,6 +133,11 @@ export default function AthleteDetail() {
         return;
       }
 
+      if (role === "athlete") {
+        if (!cancelled) setResolvedCampaignId("");
+        return;
+      }
+
       if (!athleteId || !resolvedOrgId) {
         if (!cancelled) setResolvedCampaignId("");
         return;
@@ -155,7 +160,10 @@ export default function AthleteDetail() {
           setResolvedCampaignId(pivotCampaignId || "");
         }
       } catch (err) {
-        console.error("Failed to resolve athlete campaign:", err);
+        const code = String(err?.code || "").trim();
+        if (code !== "permission-denied") {
+          console.error("Failed to resolve athlete campaign:", err);
+        }
         if (!cancelled) setResolvedCampaignId("");
       }
     }
@@ -164,7 +172,7 @@ export default function AthleteDetail() {
     return () => {
       cancelled = true;
     };
-  }, [athlete?.campaignId, athleteId, resolvedOrgId]);
+  }, [athlete?.campaignId, athleteId, resolvedOrgId, role]);
 
   useEffect(() => {
     setAssignCampaignId(resolvedCampaignId || "");
