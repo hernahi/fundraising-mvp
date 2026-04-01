@@ -171,6 +171,31 @@ service cloud.firestore {
         );
     }
 
+    function teamDefaultAthleteGoalMinimum(teamId) {
+      return teamId is string
+        && teamId != ""
+        && exists(/databases/$(database)/documents/teams/$(teamId))
+        && ("defaultAthleteGoalMinimum" in get(/databases/$(database)/documents/teams/$(teamId)).data)
+        && get(/databases/$(database)/documents/teams/$(teamId)).data.defaultAthleteGoalMinimum is number
+        ? get(/databases/$(database)/documents/teams/$(teamId)).data.defaultAthleteGoalMinimum
+        : 0;
+    }
+
+    function athleteEffectiveGoalMinimum(resourceData) {
+      return ("goalMinimum" in resourceData) && resourceData.goalMinimum is number
+        ? resourceData.goalMinimum
+        : teamDefaultAthleteGoalMinimum(resourceData.teamId);
+    }
+
+    function athleteGoalMeetsMinimum() {
+      return !("goal" in request.resource.data)
+        || request.resource.data.goal == null
+        || (
+          request.resource.data.goal is number
+          && request.resource.data.goal >= athleteEffectiveGoalMinimum(resource.data)
+        );
+    }
+
     function orgIdUnchanged() {
       return !("orgId" in resource.data) || request.resource.data.orgId == resource.data.orgId;
     }
@@ -350,6 +375,7 @@ service cloud.firestore {
           !("orgId" in resource.data)
           || canAccessOrg(resource.data.orgId)
         )
+        && athleteGoalMeetsMinimum()
         && request.resource.data.diff(resource.data).changedKeys()
           .hasOnly([
             "name",
@@ -554,22 +580,22 @@ service cloud.firestore {
     match /athlete_contacts/{contactId} {
       allow read: if isSignedIn()
         && canAccessOrg(resource.data.orgId)
-        && (isOrgAdmin() || isCoach() || request.auth.uid == resource.data.athleteId);
+        && (isOrgAdmin() || isSuperAdmin() || isCoach() || request.auth.uid == resource.data.athleteId);
 
       allow create: if isSignedIn()
         && request.resource.data.orgId is string
         && canAccessOrg(request.resource.data.orgId)
         && request.resource.data.athleteId is string
-        && (isOrgAdmin() || isCoach() || request.auth.uid == request.resource.data.athleteId);
+        && (isOrgAdmin() || isSuperAdmin() || isCoach() || request.auth.uid == request.resource.data.athleteId);
 
       allow update: if isSignedIn()
         && canAccessOrg(resource.data.orgId)
-        && (isOrgAdmin() || isCoach() || request.auth.uid == resource.data.athleteId)
+        && (isOrgAdmin() || isSuperAdmin() || isCoach() || request.auth.uid == resource.data.athleteId)
         && orgIdUnchanged();
 
       allow delete: if isSignedIn()
         && canAccessOrg(resource.data.orgId)
-        && (isOrgAdmin() || isCoach() || request.auth.uid == resource.data.athleteId);
+        && (isOrgAdmin() || isSuperAdmin() || isCoach() || request.auth.uid == resource.data.athleteId);
     }
 
     /* =========================

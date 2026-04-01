@@ -274,6 +274,9 @@ export default function AthleteDetail() {
   );
   const totalRaisedDollars = (totalRaisedCents / 100).toFixed(2);
   const goalAmount = Number(athlete?.goal || 0);
+  const athleteGoalMinimum = Number(athlete?.goalMinimum || 0);
+  const teamDefaultGoalMinimum = Number(team?.defaultAthleteGoalMinimum || 0);
+  const effectiveGoalMinimum = athleteGoalMinimum > 0 ? athleteGoalMinimum : teamDefaultGoalMinimum;
   const profileCompletionChecks = [
     Boolean(athlete?.photoURL),
     Boolean(athlete?.bio),
@@ -666,14 +669,29 @@ export default function AthleteDetail() {
             </p>
           </div>
 
-	          {goalAmount > 0 && (
-	            <div>
-              <h3 className="font-semibold text-gray-700 mb-1">
-                Recommended Goal
-              </h3>
-	              <p>${goalAmount.toLocaleString()}</p>
-	            </div>
-	          )}
+		          {(goalAmount > 0 || effectiveGoalMinimum > 0) && (
+		            <div>
+		              <h3 className="font-semibold text-gray-700 mb-1">
+		                Goal Settings
+		              </h3>
+		              <div className="space-y-1 text-sm text-slate-700">
+		                <p>
+		                  Personal Goal:{" "}
+		                  {goalAmount > 0 ? `$${goalAmount.toLocaleString()}` : "Not set"}
+		                </p>
+		                {effectiveGoalMinimum > 0 ? (
+		                  <p>
+		                    Minimum Goal: ${effectiveGoalMinimum.toLocaleString()}
+		                    {athleteGoalMinimum > 0
+		                      ? " (athlete override)"
+		                      : teamDefaultGoalMinimum > 0
+		                      ? " (team default)"
+		                      : ""}
+		                  </p>
+		                ) : null}
+		              </div>
+		            </div>
+		          )}
 
 	          <div>
 	            <h3 className="font-semibold text-gray-700 mb-1">Supporter Message</h3>

@@ -47,6 +47,7 @@ function normalizeAthleteForEdit(id, data = {}) {
     grade: data.grade || "",
     jerseyNumber: data.jerseyNumber || data.jerseyNo || "",
     goal: data.goal ?? data.personalGoal ?? "",
+    goalMinimum: data.goalMinimum ?? "",
     photoURL: data.photoURL || data.avatar || data.imgUrl || "",
     bio: data.bio || data.story || data.description || "",
     supporterMessage: data.supporterMessage || data.fundraisingMessage || "",
@@ -89,6 +90,13 @@ export default function EditAthlete() {
   const canEditAthlete = canManageAnyAthlete || canEditSelf;
   const canAssignTeam = role === "admin" || role === "super-admin" || role === "coach";
   const scopedTeamIds = useMemo(() => getScopedTeamIds(profile), [profile]);
+  const selectedTeam = useMemo(() => {
+    const normalizedTeamId = String(athlete?.teamId || "").trim();
+    return teamOptions.find((team) => team.id === normalizedTeamId) || null;
+  }, [athlete?.teamId, teamOptions]);
+  const teamDefaultGoalMinimum = Number(selectedTeam?.defaultAthleteGoalMinimum || 0);
+  const athleteGoalMinimum = Number(athlete?.goalMinimum || 0);
+  const effectiveGoalMinimum = athleteGoalMinimum > 0 ? athleteGoalMinimum : teamDefaultGoalMinimum;
 
   useEffect(() => {
     async function fetchAthlete() {
@@ -209,7 +217,23 @@ export default function EditAthlete() {
     try {
       const ref = doc(db, "athletes", athlete.id);
       const normalizedTeamId = String(athlete.teamId || "").trim();
-      const selectedTeam = teamOptions.find((team) => team.id === normalizedTeamId);
+      const nextSelectedTeam = teamOptions.find((team) => team.id === normalizedTeamId);
+      const nextTeamDefaultGoalMinimum = Number(nextSelectedTeam?.defaultAthleteGoalMinimum || 0);
+      const nextAthleteGoalMinimum = Number(athlete.goalMinimum || 0);
+      const nextEffectiveGoalMinimum =
+        nextAthleteGoalMinimum > 0 ? nextAthleteGoalMinimum : nextTeamDefaultGoalMinimum;
+      const normalizedGoal = athlete.goal === "" ? null : Number(athlete.goal) || 0;
+
+      if (
+        normalizedGoal != null &&
+        nextEffectiveGoalMinimum > 0 &&
+        normalizedGoal < nextEffectiveGoalMinimum
+      ) {
+        alert(`Personal goal must be at least $${nextEffectiveGoalMinimum.toLocaleString()}.`);
+        setSaving(false);
+        return;
+      }
+
       await updateDoc(ref, {
         name: athlete.name || "",
         displayName: athlete.name || "",
@@ -217,14 +241,17 @@ export default function EditAthlete() {
         position: athlete.position || "",
         grade: formatGradeLabel(athlete.grade),
         jerseyNumber: athlete.jerseyNumber || "",
-        goal: athlete.goal === "" ? null : Number(athlete.goal) || 0,
+        goal: normalizedGoal,
+        goalMinimum: canManageAnyAthlete
+          ? (athlete.goalMinimum === "" ? null : Math.max(0, Number(athlete.goalMinimum) || 0))
+          : athlete.goalMinimum ?? null,
         photoURL: athlete.photoURL || "",
         avatar: athlete.photoURL || "",
         bio: athlete.bio || "",
         supporterMessage: athlete.supporterMessage || "",
         teamId: normalizedTeamId || null,
         teamName: normalizedTeamId
-          ? String(selectedTeam?.name || selectedTeam?.teamName || athlete.teamName || normalizedTeamId).trim()
+          ? String(nextSelectedTeam?.name || nextSelectedTeam?.teamName || athlete.teamName || normalizedTeamId).trim()
           : "",
       });
 
@@ -355,7 +382,7 @@ export default function EditAthlete() {
             <label className="block font-medium mb-1">Personal Goal ($)</label>
             <input
               type="number"
-              min="0"
+              min={effectiveGoalMinimum > 0 ? effectiveGoalMinimum : 0}
               className="w-full border rounded-lg px-3 py-2"
               value={athlete.goal ?? ""}
               onChange={(e) =>
@@ -363,7 +390,36 @@ export default function EditAthlete() {
               }
               placeholder="Ex: 500"
             />
+            {effectiveGoalMinimum > 0 ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Minimum allowed goal: ${effectiveGoalMinimum.toLocaleString()}
+                {athleteGoalMinimum > 0 ? " (athlete override)" : teamDefaultGoalMinimum > 0 ? " (team default)" : ""}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">
+                Athletes can choose any positive goal when no minimum is set.
+              </p>
+            )}
           </div>
+
+          {canManageAnyAthlete ? (
+            <div>
+              <label className="block font-medium mb-1">Athlete Minimum Goal Override ($)</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full border rounded-lg px-3 py-2"
+                value={athlete.goalMinimum ?? ""}
+                onChange={(e) =>
+                  setAthlete({ ...athlete, goalMinimum: e.target.value })
+                }
+                placeholder={teamDefaultGoalMinimum > 0 ? `Team default $${teamDefaultGoalMinimum}` : "Optional override"}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Leave blank to inherit the team default. Athletes can raise their personal goal above this amount, but not below it.
+              </p>
+            </div>
+          ) : null}
 
           {canAssignTeam ? (
             <div>

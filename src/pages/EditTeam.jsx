@@ -34,6 +34,7 @@ export default function EditTeam() {
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [defaultAthleteGoalMinimum, setDefaultAthleteGoalMinimum] = useState("");
   const [avatar, setAvatar] = useState("");        // stored URL
   const [avatarPreview, setAvatarPreview] = useState(""); // preview on screen
   const [avatarFile, setAvatarFile] = useState(null);
@@ -63,6 +64,9 @@ export default function EditTeam() {
         setAddress(data.address || "");
         setPhone(data.phone || "");
         setNotes(data.notes || "");
+        setDefaultAthleteGoalMinimum(
+          data.defaultAthleteGoalMinimum == null ? "" : String(data.defaultAthleteGoalMinimum)
+        );
         const resolvedAvatar =
           data.avatar || data.photoURL || data.imgUrl || data.logo || "";
         setAvatar(resolvedAvatar);
@@ -108,6 +112,8 @@ export default function EditTeam() {
       const ref = doc(db, "teams", teamId);
       const previousTeamName = String(team?.name || team?.teamName || "").trim();
       const normalizedTeamName = name.trim().replace(/\s+/g, " ");
+      const normalizedDefaultAthleteGoalMinimum =
+        defaultAthleteGoalMinimum === "" ? null : Math.max(0, Number(defaultAthleteGoalMinimum) || 0);
       let finalAvatar = String(avatar || "").trim();
       if (avatarFile) {
         finalAvatar = (await uploadTeamImage(avatarFile, teamId)) || finalAvatar;
@@ -120,6 +126,7 @@ export default function EditTeam() {
         address: address.trim(),
         phone: phone.trim(),
         notes: notes.trim(),
+        defaultAthleteGoalMinimum: normalizedDefaultAthleteGoalMinimum,
         avatar: finalAvatar,
         photoURL: finalAvatar,
         imgUrl: finalAvatar,
@@ -306,6 +313,23 @@ export default function EditTeam() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-gray-700">
+            Default Athlete Minimum Goal ($)
+          </label>
+          <input
+            type="number"
+            min="0"
+            className="w-full mt-1 p-3 border rounded-lg"
+            value={defaultAthleteGoalMinimum}
+            onChange={(e) => setDefaultAthleteGoalMinimum(e.target.value)}
+            placeholder="Optional minimum, ex: 250"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Athletes on this team can set a higher personal goal, but not lower than this amount unless a staff override says otherwise.
+          </p>
         </div>
 
         {/* ADDRESS (OPTIONAL) */}

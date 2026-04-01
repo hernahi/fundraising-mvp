@@ -412,19 +412,27 @@ export default function TeamDetail() {
 	      </div>
 
       {/* TEAM CONTACT & NOTES */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
-        <h2 className="text-lg font-semibold mb-3">Team Contact & Notes</h2>
+	      <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+	        <h2 className="text-lg font-semibold mb-3">Team Contact & Notes</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+	        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
           <div>
             <div className="text-slate-500">Address</div>
             <div className="text-slate-800">{team.address || "Not provided"}</div>
           </div>
-          <div>
-            <div className="text-slate-500">Phone</div>
-            <div className="text-slate-800">{team.phone || "Not provided"}</div>
-          </div>
-        </div>
+	          <div>
+	            <div className="text-slate-500">Phone</div>
+	            <div className="text-slate-800">{team.phone || "Not provided"}</div>
+	          </div>
+	          <div>
+	            <div className="text-slate-500">Default Athlete Minimum Goal</div>
+	            <div className="text-slate-800">
+	              {team.defaultAthleteGoalMinimum > 0
+	                ? `$${Number(team.defaultAthleteGoalMinimum).toLocaleString()}`
+	                : "Not set"}
+	            </div>
+	          </div>
+	        </div>
 
         <div className="mt-4">
           <div className="text-slate-500 text-sm">Notes</div>
