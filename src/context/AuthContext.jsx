@@ -123,17 +123,21 @@ export function AuthProvider({ children }) {
                 const athleteTeamId = String(
                   nextProfile?.teamId || athleteData?.teamId || ""
                 ).trim();
-                let athleteTeamName = String(
-                  nextProfile?.teamName || athleteData?.teamName || ""
-                ).trim();
+                let athleteTeamName = "";
 
-                if (athleteTeamId && !athleteTeamName) {
+                if (athleteTeamId) {
                   const teamSnap = await getDoc(doc(db, "teams", athleteTeamId));
                   if (teamSnap.exists()) {
                     athleteTeamName = String(
                       teamSnap.data()?.name || teamSnap.data()?.teamName || ""
                     ).trim();
                   }
+                }
+
+                if (!athleteTeamName) {
+                  athleteTeamName = String(
+                    athleteData?.teamName || nextProfile?.teamName || ""
+                  ).trim();
                 }
 
                 nextProfile = {
