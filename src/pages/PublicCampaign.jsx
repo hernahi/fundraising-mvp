@@ -271,34 +271,30 @@ export default function PublicCampaign() {
         return;
       }
 
-      const explicitName = String(
-        campaign.teamName || (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") || ""
-      ).trim();
-      if (explicitName) {
-        setResolvedTeamName(explicitName);
-        return;
-      }
-
       const fallbackTeamId = String(
         campaign.teamId || (Array.isArray(campaign.teamIds) ? campaign.teamIds[0] : "") || ""
       ).trim();
-      if (!fallbackTeamId) {
-        setResolvedTeamName("");
-        return;
+      const explicitName = String(
+        campaign.teamName || (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") || ""
+      ).trim();
+
+      if (fallbackTeamId) {
+        try {
+          const teamSnap = await getDoc(doc(db, "teams", fallbackTeamId));
+          if (teamSnap.exists()) {
+            const teamData = teamSnap.data() || {};
+            const liveTeamName = String(teamData.name || teamData.teamName || "").trim();
+            if (liveTeamName) {
+              setResolvedTeamName(liveTeamName);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to resolve public team name:", err);
+        }
       }
 
-      try {
-        const teamSnap = await getDoc(doc(db, "teams", fallbackTeamId));
-        if (!teamSnap.exists()) {
-          setResolvedTeamName("");
-          return;
-        }
-        const teamData = teamSnap.data() || {};
-        setResolvedTeamName(String(teamData.name || teamData.teamName || "").trim());
-      } catch (err) {
-        console.error("Failed to resolve public team name:", err);
-        setResolvedTeamName("");
-      }
+      setResolvedTeamName(explicitName);
     }
 
     loadResolvedTeamName();
@@ -513,7 +509,7 @@ export default function PublicCampaign() {
               {campaign.imageURL && (
                 <img
                   src={campaign.imageURL}
-                  alt={campaign.teamName || campaign.name || "Team logo"}
+                  alt={displayTeamName || campaign.name || "Team logo"}
                   className="h-12 w-12 rounded-xl object-contain border border-slate-200 bg-white"
                 />
               )}
@@ -863,7 +859,9 @@ export default function PublicCampaign() {
 	                    ? athleteGoalAmount
 	                      ? `${athletePercent ?? 0}% of ${formatCurrency(athleteGoalAmount)}`
 	                      : "No personal goal set yet"
-	                    : campaign.teamNames?.slice(0, 3).join(", ") || displayTeamName || "Open to all"}
+	                    : (Array.isArray(campaign.teamNames) && campaign.teamNames.length > 0
+	                        ? campaign.teamNames.slice(0, 3).join(", ")
+	                        : displayTeamName || "Open to all")}
 	                </div>
 	                {showAthlete && athleteMeta.length > 0 && (
 	                  <div className="public-list-meta" style={{ marginTop: "8px" }}>

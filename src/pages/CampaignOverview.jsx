@@ -21,6 +21,7 @@ export default function CampaignOverview() {
   const [campaign, setCampaign] = useState(null);
   const [donations, setDonations] = useState([]);
   const [athletes, setAthletes] = useState([]);
+  const [resolvedTeamName, setResolvedTeamName] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -60,6 +61,42 @@ export default function CampaignOverview() {
 
     loadAll();
   }, [campaignId]);
+
+  useEffect(() => {
+    async function loadResolvedTeamName() {
+      if (!campaign) {
+        setResolvedTeamName("");
+        return;
+      }
+
+      const fallbackTeamId = String(
+        campaign.teamId || (Array.isArray(campaign.teamIds) ? campaign.teamIds[0] : "") || ""
+      ).trim();
+      const explicitName = String(
+        campaign.teamName || (Array.isArray(campaign.teamNames) ? campaign.teamNames[0] : "") || ""
+      ).trim();
+
+      if (fallbackTeamId) {
+        try {
+          const teamSnap = await getDoc(doc(db, "teams", fallbackTeamId));
+          if (teamSnap.exists()) {
+            const teamData = teamSnap.data() || {};
+            const liveTeamName = String(teamData.name || teamData.teamName || "").trim();
+            if (liveTeamName) {
+              setResolvedTeamName(liveTeamName);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to resolve campaign overview team name:", err);
+        }
+      }
+
+      setResolvedTeamName(explicitName);
+    }
+
+    loadResolvedTeamName();
+  }, [campaign]);
 
   if (loading) return <div style={{ padding: 20 }}>Loading campaign…</div>;
   if (!campaign) return <div style={{ padding: 20 }}>Campaign not found.</div>;
@@ -120,7 +157,7 @@ export default function CampaignOverview() {
         <div style={{ flex: 1 }}>
           <h2 style={{ margin: 0 }}>{campaign.name}</h2>
           <div style={{ color: "#666", marginBottom: "10px" }}>
-            {campaign.teamName || "Team"}
+            {resolvedTeamName || "Team"}
           </div>
 
           {/* Progress */}

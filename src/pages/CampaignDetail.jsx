@@ -230,7 +230,7 @@ useEffect(() => {
 	              <div className="font-medium text-slate-800">Public welcome line</div>
 	              <div className="mt-1">
 	                {campaign.showDefaultWelcomeMessage !== false
-	                  ? `${campaign.teamName || teams[0]?.name || "This team"} family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`
+	                  ? `${teams[0]?.name || campaign.teamName || "This team"} family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`
 	                  : "Off"}
 	              </div>
 	            </div>
