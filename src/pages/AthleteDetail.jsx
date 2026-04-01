@@ -10,6 +10,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -40,7 +41,7 @@ function formatGradeLabel(value) {
 
 export default function AthleteDetail() {
   const { athleteId } = useParams();
-  const { profile } = useAuth();
+  const { profile, isSuperAdmin, activeOrgId } = useAuth();
   const [athlete, setAthlete] = useState(null);
   const [loading, setLoading] = useState(true);
   const [athleteDonations, setAthleteDonations] = useState([]);
@@ -50,6 +51,7 @@ export default function AthleteDetail() {
   const [assignCampaignId, setAssignCampaignId] = useState("");
   const [savingCampaign, setSavingCampaign] = useState(false);
   const [team, setTeam] = useState(null);
+  const [resolvedCampaignId, setResolvedCampaignId] = useState("");
 
   const role = (profile?.role || "").toLowerCase();
   const isSelf =
@@ -58,6 +60,12 @@ export default function AthleteDetail() {
   const canEditProfile = isSelf || role === "admin" || role === "super-admin" || role === "coach";
   const canAssignCampaign =
     role === "admin" || role === "super-admin" || role === "coach";
+  const resolvedOrgId = String(
+    (isSuperAdmin ? activeOrgId : profile?.orgId) ||
+      athlete?.orgId ||
+      team?.orgId ||
+      ""
+  ).trim();
 
   useEffect(() => {
     async function fetchAthlete() {
@@ -79,7 +87,7 @@ export default function AthleteDetail() {
   }, [athleteId]);
 
   useEffect(() => {
-    if (!profile?.orgId || !canAssignCampaign) {
+    if (!resolvedOrgId || !canAssignCampaign) {
       setCampaigns([]);
       return;
     }
@@ -91,29 +99,76 @@ export default function AthleteDetail() {
           setCampaigns([]);
           return;
         }
-        const campaignQuery = isCoach
-          ? query(
-              collection(db, "campaigns"),
-              where("orgId", "==", profile.orgId),
-              where("teamId", "==", athleteTeamId)
-            )
-          : query(
-              collection(db, "campaigns"),
-              where("orgId", "==", profile.orgId)
-            );
-        const snap = await getDocs(campaignQuery);
-        setCampaigns(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const snap = await getDocs(
+          query(collection(db, "campaigns"), where("orgId", "==", resolvedOrgId))
+        );
+        const rows = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((campaign) => {
+            if (!athleteTeamId) return !isCoach;
+            const primaryTeamId = String(campaign.teamId || "").trim();
+            const linkedTeamIds = Array.isArray(campaign.teamIds)
+              ? campaign.teamIds.map((id) => String(id || "").trim()).filter(Boolean)
+              : [];
+            if (primaryTeamId === athleteTeamId) return true;
+            if (linkedTeamIds.includes(athleteTeamId)) return true;
+            return false;
+          });
+        setCampaigns(rows);
       } catch (err) {
         console.error("Failed to load campaigns:", err);
       }
     };
 
     loadCampaigns();
-  }, [athlete?.teamId, canAssignCampaign, isCoach, profile?.orgId]);
+  }, [athlete?.teamId, canAssignCampaign, isCoach, resolvedOrgId]);
 
   useEffect(() => {
-    setAssignCampaignId(athlete?.campaignId || "");
-  }, [athlete?.campaignId]);
+    let cancelled = false;
+
+    async function resolveAssignedCampaignId() {
+      const directCampaignId = String(athlete?.campaignId || "").trim();
+      if (directCampaignId) {
+        if (!cancelled) setResolvedCampaignId(directCampaignId);
+        return;
+      }
+
+      if (!athleteId || !resolvedOrgId) {
+        if (!cancelled) setResolvedCampaignId("");
+        return;
+      }
+
+      try {
+        const pivotSnap = await getDocs(
+          query(
+            collection(db, "campaignAthletes"),
+            where("orgId", "==", resolvedOrgId),
+            where("athleteId", "==", athleteId)
+          )
+        );
+
+        const pivotCampaignId = pivotSnap.docs
+          .map((entry) => String(entry.data()?.campaignId || "").trim())
+          .find(Boolean);
+
+        if (!cancelled) {
+          setResolvedCampaignId(pivotCampaignId || "");
+        }
+      } catch (err) {
+        console.error("Failed to resolve athlete campaign:", err);
+        if (!cancelled) setResolvedCampaignId("");
+      }
+    }
+
+    resolveAssignedCampaignId();
+    return () => {
+      cancelled = true;
+    };
+  }, [athlete?.campaignId, athleteId, resolvedOrgId]);
+
+  useEffect(() => {
+    setAssignCampaignId(resolvedCampaignId || "");
+  }, [resolvedCampaignId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,14 +198,14 @@ export default function AthleteDetail() {
   }, [athlete?.teamId]);
 
   useEffect(() => {
-    if (!profile?.orgId || !athleteId) {
+    if (!resolvedOrgId || !athleteId) {
       setAthleteDonations([]);
       return;
     }
 
     const donorQuery = query(
       collection(db, "donations"),
-      where("orgId", "==", profile.orgId),
+      where("orgId", "==", resolvedOrgId),
       where("athleteId", "==", athleteId),
       where("status", "==", "paid"),
       orderBy("createdAt", "desc"),
@@ -169,7 +224,7 @@ export default function AthleteDetail() {
     );
 
     return () => unsubscribe();
-  }, [athleteId, profile?.orgId]);
+  }, [athleteId, resolvedOrgId]);
 
   useEffect(() => {
     if (!isSelf || !profile?.orgId || !athleteId) {
@@ -207,12 +262,12 @@ export default function AthleteDetail() {
   }, [athleteId, isSelf, profile?.orgId]);
 
   const donateLink = useMemo(() => {
-    if (!athlete?.campaignId) return "";
+    if (!resolvedCampaignId) return "";
     if (typeof window === "undefined") return "";
-    return `${window.location.origin}/donate/${athlete.campaignId}/athlete/${athlete.id}`;
-  }, [athlete?.campaignId, athlete?.id]);
+    return `${window.location.origin}/donate/${resolvedCampaignId}/athlete/${athlete.id}`;
+  }, [resolvedCampaignId, athlete?.id]);
 
-  const assignedCampaign = campaigns.find((c) => c.id === athlete?.campaignId);
+  const assignedCampaign = campaigns.find((c) => c.id === resolvedCampaignId);
   const totalRaisedCents = athleteDonations.reduce(
     (sum, donor) => sum + Number(donor.amount || 0),
     0
@@ -259,8 +314,8 @@ export default function AthleteDetail() {
     {
       key: "campaign",
       label: "Campaign assigned",
-      done: Boolean(athlete?.campaignId),
-      detail: athlete?.campaignId
+      done: Boolean(resolvedCampaignId),
+      detail: resolvedCampaignId
         ? "Ready for fundraising outreach"
         : "Coach/admin still needs to assign a campaign",
       actionLabel: "Review My Profile",
@@ -290,7 +345,7 @@ export default function AthleteDetail() {
     },
   ];
   const readinessBlocker = useMemo(() => {
-    if (!athlete?.campaignId) {
+    if (!resolvedCampaignId) {
       return {
         title: "You still need a campaign assignment",
         detail: "Your coach or admin must assign you to a campaign before you can start fundraising outreach.",
@@ -327,7 +382,7 @@ export default function AthleteDetail() {
       actionTo: "/messages",
       tone: "green",
     };
-  }, [athlete?.campaignId, athleteId, contactCount, messageCount]);
+  }, [resolvedCampaignId, athleteId, contactCount, messageCount]);
   const readinessBlockerClasses =
     readinessBlocker.tone === "green"
       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
@@ -577,7 +632,7 @@ export default function AthleteDetail() {
                 {assignedCampaign?.name || assignedCampaign?.title || "Not assigned"}
               </p>
             )}
-            {isSelf && !athlete?.campaignId && (
+            {isSelf && !resolvedCampaignId && (
               <p className="mt-2 text-xs text-amber-600">
                 Your coach or admin needs to assign you to a campaign before you can send fundraising outreach.
               </p>
