@@ -140,6 +140,7 @@ export default function Messages() {
   const [orgWeekSubjects, setOrgWeekSubjects] = useState({});
   const [orgWeekSubjectDrafts, setOrgWeekSubjectDrafts] = useState({});
   const [orgWeekSubjectDirty, setOrgWeekSubjectDirty] = useState({});
+  const [loadedTemplateOrgId, setLoadedTemplateOrgId] = useState("");
   const [orgTimeZone, setOrgTimeZone] = useState("");
   const [orgDripEnabled, setOrgDripEnabled] = useState(false);
 
@@ -331,6 +332,13 @@ export default function Messages() {
   }, [athleteId, isAthlete, orgId]);
 
   useEffect(() => {
+    setOrgTemplateDirty(false);
+    setOrgWeekDirty({});
+    setOrgWeekSubjectDirty({});
+    setLoadedTemplateOrgId("");
+  }, [orgId]);
+
+  useEffect(() => {
     if (!orgId) return;
 
     const loadOrgTemplate = async () => {
@@ -340,7 +348,8 @@ export default function Messages() {
         const nextTemplate =
           orgData.donorInviteTemplate || DEFAULT_DONOR_INVITE_TEMPLATE;
         setOrgTemplate(nextTemplate);
-        if (!orgTemplateDirty) {
+        const isFreshOrgLoad = loadedTemplateOrgId !== orgId;
+        if (isFreshOrgLoad || !orgTemplateDirty) {
           setOrgTemplateDraft(nextTemplate);
         }
 
@@ -349,7 +358,7 @@ export default function Messages() {
           ...(orgData.donorInviteTemplates || {}),
         };
         setOrgWeekTemplates(nextWeekTemplates);
-        if (Object.keys(orgWeekDirty).length === 0) {
+        if (isFreshOrgLoad || Object.keys(orgWeekDirty).length === 0) {
           setOrgWeekDrafts(nextWeekTemplates);
         }
 
@@ -358,7 +367,7 @@ export default function Messages() {
           ...(orgData.donorInviteSubjects || {}),
         };
         setOrgWeekSubjects(nextWeekSubjects);
-        if (Object.keys(orgWeekSubjectDirty).length === 0) {
+        if (isFreshOrgLoad || Object.keys(orgWeekSubjectDirty).length === 0) {
           setOrgWeekSubjectDrafts(nextWeekSubjects);
         }
 
@@ -366,13 +375,14 @@ export default function Messages() {
           orgData.orgTimeZone || orgData.timeZone || orgData.timezone || ""
         );
         setOrgDripEnabled(Boolean(orgData.dripGlobalEnabled));
+        setLoadedTemplateOrgId(orgId);
       } catch (err) {
         console.error("Failed to load org template:", err);
       }
     };
 
     loadOrgTemplate();
-  }, [orgId, orgTemplateDirty, orgWeekDirty]);
+  }, [orgId, orgTemplateDirty, orgWeekDirty, orgWeekSubjectDirty, loadedTemplateOrgId]);
 
   useEffect(() => {
     if (!isAdmin || !orgId) {
@@ -384,17 +394,51 @@ export default function Messages() {
     const loadOrgAthletes = async () => {
       try {
         const athletesRef = collection(db, "athletes");
-        const scopedQuery = activeCampaignId
-          ? query(
-              athletesRef,
+        let rows = [];
+
+        if (activeCampaignId) {
+          const scopedQuery = query(
+            athletesRef,
+            where("orgId", "==", orgId),
+            where("campaignId", "==", activeCampaignId)
+          );
+          const snap = await getDocs(scopedQuery);
+          rows = snap.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+        }
+
+        if (rows.length === 0 && activeCampaignId) {
+          const pivotsSnap = await getDocs(
+            query(
+              collection(db, "campaignAthletes"),
               where("orgId", "==", orgId),
               where("campaignId", "==", activeCampaignId)
             )
-          : query(athletesRef, where("orgId", "==", orgId));
+          ).catch(() => null);
 
-        const snap = await getDocs(scopedQuery);
-        const rows = snap.docs
-          .map((entry) => ({ id: entry.id, ...entry.data() }))
+          const athleteIds = Array.from(
+            new Set(
+              (pivotsSnap?.docs || [])
+                .map((entry) => String(entry.data()?.athleteId || "").trim())
+                .filter(Boolean)
+            )
+          );
+
+          if (athleteIds.length > 0) {
+            const athleteSnaps = await Promise.all(
+              athleteIds.map((id) => getDoc(doc(db, "athletes", id)).catch(() => null))
+            );
+            rows = athleteSnaps
+              .filter((snap) => snap?.exists?.())
+              .map((snap) => ({ id: snap.id, ...(snap.data() || {}) }));
+          }
+        }
+
+        if (rows.length === 0) {
+          const orgSnap = await getDocs(query(athletesRef, where("orgId", "==", orgId)));
+          rows = orgSnap.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+        }
+
+        rows = rows
           .sort((a, b) =>
             String(a.name || a.displayName || "").localeCompare(
               String(b.name || b.displayName || "")
@@ -416,7 +460,7 @@ export default function Messages() {
   }, [isAdmin, orgId, activeCampaignId, testAthleteId]);
 
   useEffect(() => {
-    if (!isAdmin || !orgId) {
+    if (!isAdmin) {
       setOrgTesters([]);
       setSelectedTesterKey("");
       return;
@@ -424,19 +468,68 @@ export default function Messages() {
 
     const loadOrgTesters = async () => {
       try {
-        const snap = await getDocs(
+        const fallbackCurrentUser =
+          String(profile?.email || "").trim()
+            ? [
+                {
+                  key: profile?.uid || "current-user",
+                  email: String(profile.email).trim(),
+                  name: String(profile.displayName || profile.name || profile.email || "").trim(),
+                  role: String(profile.role || "").toLowerCase(),
+                },
+              ]
+            : [];
+
+        if (!orgId) {
+          setOrgTesters(fallbackCurrentUser);
+          setSelectedTesterKey("");
+          return;
+        }
+
+        const usersSnap = await getDocs(
           query(collection(db, "users"), where("orgId", "==", orgId))
         );
 
-        const rows = snap.docs
+        let scopedTeamIds = [];
+        if (activeCampaignId) {
+          try {
+            const campaignSnap = await getDoc(doc(db, "campaigns", activeCampaignId));
+            if (campaignSnap.exists()) {
+              const campaignData = campaignSnap.data() || {};
+              const singleTeamId = String(campaignData.teamId || "").trim();
+              const multiTeamIds = Array.isArray(campaignData.teamIds)
+                ? campaignData.teamIds.map((id) => String(id || "").trim()).filter(Boolean)
+                : [];
+              scopedTeamIds = Array.from(new Set([singleTeamId, ...multiTeamIds].filter(Boolean)));
+            }
+          } catch {
+            scopedTeamIds = [];
+          }
+        }
+
+        const rows = usersSnap.docs
           .map((entry) => ({ id: entry.id, ...entry.data() }))
           .filter((user) => {
             const role = String(user.role || "").toLowerCase();
-            return (
+            const activeStatus =
               ["coach", "admin", "super-admin"].includes(role) &&
               String(user.status || "active").toLowerCase() === "active" &&
-              String(user.email || "").trim()
-            );
+              String(user.email || "").trim();
+            if (!activeStatus) return false;
+
+            if (scopedTeamIds.length === 0 || role === "admin" || role === "super-admin") {
+              return true;
+            }
+
+            const singleTeamId = String(user.teamId || "").trim();
+            const multiTeamIds = [
+              ...(Array.isArray(user.teamIds) ? user.teamIds : []),
+              ...(Array.isArray(user.assignedTeamIds) ? user.assignedTeamIds : []),
+            ]
+              .map((id) => String(id || "").trim())
+              .filter(Boolean);
+
+            return [singleTeamId, ...multiTeamIds].some((id) => scopedTeamIds.includes(id));
           })
           .map((user) => ({
             key: user.id,
@@ -447,14 +540,9 @@ export default function Messages() {
 
         const merged = new Map(rows.map((user) => [user.email.toLowerCase(), user]));
 
-        if (String(profile?.email || "").trim()) {
-          merged.set(String(profile.email).trim().toLowerCase(), {
-            key: profile?.uid || "current-user",
-            email: String(profile.email).trim(),
-            name: String(profile.displayName || profile.name || profile.email || "").trim(),
-            role: String(profile.role || "").toLowerCase(),
-          });
-        }
+        fallbackCurrentUser.forEach((user) => {
+          merged.set(user.email.toLowerCase(), user);
+        });
 
         const nextTesters = Array.from(merged.values()).sort((left, right) =>
           left.name.localeCompare(right.name)
@@ -475,6 +563,7 @@ export default function Messages() {
   }, [
     isAdmin,
     orgId,
+    activeCampaignId,
     selectedTesterKey,
     profile?.displayName,
     profile?.email,
