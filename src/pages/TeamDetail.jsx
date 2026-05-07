@@ -159,7 +159,11 @@ export default function TeamDetail() {
         if (!resolvedCoachUser) {
           const fallbackCoachName = String(teamData.coachName || teamData.coach || "").trim();
           if (fallbackCoachName) {
-            resolvedCoachUser = { id: "", displayName: fallbackCoachName };
+            resolvedCoachUser = {
+              id: String(teamData.coachId || "").trim(),
+              displayName: fallbackCoachName,
+              role: String(teamData.coachRole || "").trim(),
+            };
           }
         }
 

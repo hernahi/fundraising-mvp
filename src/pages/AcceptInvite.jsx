@@ -222,6 +222,13 @@ export default function AcceptInvite() {
 
         if (inviteRole === "coach") {
           const coachRef = doc(db, "coaches", user.uid);
+          const coachDisplayName = String(
+            user.displayName ||
+              existingUser.displayName ||
+              existingUser.name ||
+              user.email ||
+              "Coach"
+          ).trim();
           await setDoc(
             coachRef,
             {
@@ -229,12 +236,7 @@ export default function AcceptInvite() {
               userId: user.uid,
               orgId: inviteOrgId,
               role: "coach",
-              name:
-                user.displayName ||
-                existingUser.displayName ||
-                existingUser.name ||
-                user.email ||
-                "Coach",
+              name: coachDisplayName,
               email: user.email || existingUser.email || "",
               teamId: inviteTeamId || null,
               team: String(invite.teamName || inviteTeamId || "").trim(),
@@ -248,6 +250,15 @@ export default function AcceptInvite() {
             },
             { merge: true }
           );
+
+          if (inviteTeamId) {
+            await updateDoc(doc(db, "teams", inviteTeamId), {
+              coachId: user.uid,
+              coachName: coachDisplayName,
+              coachRole: "coach",
+              updatedAt: serverTimestamp(),
+            });
+          }
         }
       } catch (e) {
         console.warn("Invite update failed (non-fatal):", e);
