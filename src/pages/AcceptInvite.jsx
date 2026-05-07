@@ -112,42 +112,77 @@ export default function AcceptInvite() {
 
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
+      const existingUser = userSnap.exists() ? userSnap.data() || {} : {};
+      const existingOrgId = String(existingUser.orgId || "").trim();
+      const inviteOrgId = String(invite.orgId || "").trim();
+      const inviteTeamId = String(invite.teamId || "").trim();
+      const inviteRole = String(invite.role || "").trim().toLowerCase();
+      const inviteTeamIds = Array.isArray(invite.teamIds)
+        ? invite.teamIds
+        : inviteTeamId
+          ? [inviteTeamId]
+          : [];
+      const existingTeamIds = Array.isArray(existingUser.teamIds)
+        ? existingUser.teamIds
+        : Array.isArray(existingUser.assignedTeamIds)
+          ? existingUser.assignedTeamIds
+          : [];
+      const mergedTeamIds = Array.from(
+        new Set(
+          [...existingTeamIds, ...inviteTeamIds, inviteTeamId]
+            .map((id) => String(id || "").trim())
+            .filter(Boolean)
+        )
+      );
+
+      if (existingOrgId && existingOrgId !== inviteOrgId) {
+        setError(
+          "This account is already assigned to another organization. Sign in with the invited account or contact an administrator."
+        );
+        acceptingRef.current = false;
+        return;
+      }
+
+      const accessPayload = {
+        uid: user.uid,
+        email: user.email,
+        displayName:
+          user.displayName ||
+          existingUser.displayName ||
+          existingUser.name ||
+          user.email ||
+          "",
+        photoURL: user.photoURL || existingUser.photoURL || null,
+        role: inviteRole,
+        orgId: inviteOrgId,
+        orgName: String(invite.orgName || existingUser.orgName || inviteOrgId || "").trim(),
+        teamId: inviteTeamId || existingUser.teamId || null,
+        teamName: String(invite.teamName || existingUser.teamName || inviteTeamId || "").trim(),
+        teamIds: inviteRole === "coach" ? mergedTeamIds : [],
+        assignedTeamIds: inviteRole === "coach" ? mergedTeamIds : [],
+        inviteId: invite.id,
+        status: "active",
+        updatedAt: serverTimestamp(),
+      };
 
       if (!userSnap.exists()) {
         await setDoc(
           userRef,
           {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName || user.email || "",
-            photoURL: user.photoURL || null,
-            role: invite.role,
-            orgId: invite.orgId,
-            orgName: String(invite.orgName || invite.orgId || "").trim(),
-            teamId: invite.teamId || null,
-            teamName: String(invite.teamName || invite.teamId || "").trim(),
-            teamIds: invite.role === "coach" && invite.teamId ? [invite.teamId] : [],
-            assignedTeamIds: invite.role === "coach" && invite.teamId ? [invite.teamId] : [],
-            inviteId: invite.id,
-            status: "active",
+            ...accessPayload,
             createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
           },
           { merge: true }
         );
       } else {
         await setDoc(
           userRef,
-          {
-            displayName: user.displayName || user.email || "",
-            photoURL: user.photoURL || null,
-            updatedAt: serverTimestamp(),
-          },
+          accessPayload,
           { merge: true }
         );
       }
 
-      if (invite.role === "athlete") {
+      if (inviteRole === "athlete") {
         const athleteRef = doc(db, "athletes", user.uid);
         const athleteSnap = await getDoc(athleteRef);
 
@@ -158,8 +193,8 @@ export default function AcceptInvite() {
               userId: user.uid,
               email: user.email,
               displayName: user.displayName || user.email,
-              orgId: invite.orgId,
-              teamId: invite.teamId || null,
+              orgId: inviteOrgId,
+              teamId: inviteTeamId || null,
               campaignId: invite.campaignId || null,
               inviteId: invite.id,
               status: "active",
@@ -178,16 +213,31 @@ export default function AcceptInvite() {
           acceptedByUid: user.uid,
         });
 
-        if (invite.role === "coach") {
+        if (inviteRole === "coach") {
           const coachRef = doc(db, "coaches", user.uid);
           await setDoc(
             coachRef,
             {
               uid: user.uid,
               userId: user.uid,
-              orgId: invite.orgId,
+              orgId: inviteOrgId,
               role: "coach",
+              name:
+                user.displayName ||
+                existingUser.displayName ||
+                existingUser.name ||
+                user.email ||
+                "Coach",
+              email: user.email || existingUser.email || "",
+              teamId: inviteTeamId || null,
+              team: String(invite.teamName || inviteTeamId || "").trim(),
+              teamName: String(invite.teamName || inviteTeamId || "").trim(),
+              teamIds: mergedTeamIds,
+              assignedTeamIds: mergedTeamIds,
+              status: "active",
+              inviteId: invite.id,
               createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
             },
             { merge: true }
           );
@@ -206,10 +256,10 @@ export default function AcceptInvite() {
       setAccepted(true);
 
       const redirectTo =
-        invite.role === "coach" && invite.teamId
-          ? `/teams/${invite.teamId}`
-          : invite.role === "athlete" && invite.teamId
-          ? `/teams/${invite.teamId}`
+        inviteRole === "coach" && inviteTeamId
+          ? `/teams/${inviteTeamId}`
+          : inviteRole === "athlete" && inviteTeamId
+          ? `/teams/${inviteTeamId}`
           : "/";
 
       setTimeout(() => {

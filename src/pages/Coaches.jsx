@@ -55,6 +55,19 @@ async function fetchTeamsByIds(ids) {
   return teamRows.filter(Boolean);
 }
 
+async function safeGetDocs(queryRef, label) {
+  try {
+    return await getDocs(queryRef);
+  } catch (err) {
+    const code = String(err?.code || "").toLowerCase();
+    if (code === "permission-denied") {
+      console.warn(`${label} skipped:`, err?.message || err);
+      return { docs: [], size: 0 };
+    }
+    throw err;
+  }
+}
+
 function getNormalizedUserTeamIds(entry) {
   const fromArray = Array.isArray(entry?.teamIds)
     ? entry.teamIds
@@ -148,24 +161,38 @@ export default function Coaches() {
             campaignsSnap,
             teamsSnap,
           ] = await Promise.all([
-            getDocs(query(collection(db, "coaches"), where("orgId", "==", orgId))),
-            getDocs(
+            safeGetDocs(
+              query(collection(db, "coaches"), where("orgId", "==", orgId)),
+              "Coach profile query"
+            ),
+            safeGetDocs(
               query(
                 collection(db, "users"),
                 where("orgId", "==", orgId),
                 where("role", "==", "coach")
-              )
+              ),
+              "Coach users query"
             ),
             isSuperAdmin
-              ? getDocs(query(collection(db, "users"), where("role", "==", "coach")))
-              : Promise.resolve({ docs: [] }),
-            isAdmin
-              ? getDocs(
-                  query(collection(db, "donation_rollups"), where("orgId", "==", orgId))
+              ? safeGetDocs(
+                  query(collection(db, "users"), where("role", "==", "coach")),
+                  "Cross-org coach users query"
                 )
               : Promise.resolve({ docs: [] }),
-            getDocs(query(collection(db, "campaigns"), where("orgId", "==", orgId))),
-            getDocs(query(collection(db, "teams"), where("orgId", "==", orgId))),
+            isAdmin
+              ? safeGetDocs(
+                  query(collection(db, "donation_rollups"), where("orgId", "==", orgId)),
+                  "Coach rollups query"
+                )
+              : Promise.resolve({ docs: [] }),
+            safeGetDocs(
+              query(collection(db, "campaigns"), where("orgId", "==", orgId)),
+              "Coach campaigns query"
+            ),
+            safeGetDocs(
+              query(collection(db, "teams"), where("orgId", "==", orgId)),
+              "Coach teams query"
+            ),
           ]);
 
           const coachRowsFromDocs = coachesSnap.docs.map((d) => ({

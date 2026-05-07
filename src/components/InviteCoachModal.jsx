@@ -1,16 +1,80 @@
-import { useState } from "react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import {
+  collection,
+  addDoc,
+  Timestamp,
+  serverTimestamp,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 
 import { db, functions } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 
+const INVITE_EXPIRY_DAYS = 14;
+
 export default function InviteCoachModal({ onClose }) {
   const { profile, user, activeOrgId, isSuperAdmin } = useAuth();
   const [email, setEmail] = useState("");
+  const [teams, setTeams] = useState([]);
+  const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [teamsLoading, setTeamsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const inviteOrgId = (activeOrgId || profile?.orgId || "").trim();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTeams() {
+      if (!inviteOrgId) {
+        setTeams([]);
+        setSelectedTeamId("");
+        setTeamsLoading(false);
+        return;
+      }
+
+      setTeamsLoading(true);
+      try {
+        const snap = await getDocs(
+          query(collection(db, "teams"), where("orgId", "==", inviteOrgId))
+        );
+        const rows = snap.docs
+          .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }))
+          .sort((a, b) =>
+            String(a.name || a.teamName || a.id).localeCompare(
+              String(b.name || b.teamName || b.id)
+            )
+          );
+
+        if (!cancelled) {
+          setTeams(rows);
+          setSelectedTeamId((current) =>
+            current && rows.some((team) => team.id === current)
+              ? current
+              : rows[0]?.id || ""
+          );
+        }
+      } catch (err) {
+        console.error("Failed to load coach invite teams:", err);
+        if (!cancelled) {
+          setTeams([]);
+          setSelectedTeamId("");
+          setError("Unable to load teams for this organization.");
+        }
+      } finally {
+        if (!cancelled) setTeamsLoading(false);
+      }
+    }
+
+    loadTeams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteOrgId]);
 
   // Guard: profile not ready
   if (!inviteOrgId || !user?.uid) {
@@ -34,6 +98,12 @@ export default function InviteCoachModal({ onClose }) {
   async function sendInvite() {
     if (!email) return;
 
+    const selectedTeam = teams.find((team) => team.id === selectedTeamId) || null;
+    if (!selectedTeam) {
+      setError("Select a team before inviting a coach.");
+      return;
+    }
+
     if (!user) {
       setError("You must be signed in to send invites.");
       return;
@@ -51,7 +121,14 @@ export default function InviteCoachModal({ onClose }) {
         email: email.toLowerCase().trim(),
         role: "coach",
         orgId: inviteOrgId,
+        orgName: profile?.orgName || "",
+        teamId: selectedTeam.id,
+        teamName: selectedTeam.name || selectedTeam.teamName || selectedTeam.id,
+        teamIds: [selectedTeam.id],
         status: "pending",
+        expiresAt: Timestamp.fromDate(
+          new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+        ),
         invitedBy: user.uid,
         createdAt: serverTimestamp(),
       });
@@ -63,6 +140,7 @@ export default function InviteCoachModal({ onClose }) {
         toEmail: email,
         inviteId: inviteRef.id,
         appUrl,
+        mode: "initial",
       });
 
       onClose();
@@ -88,6 +166,31 @@ export default function InviteCoachModal({ onClose }) {
           {isSuperAdmin ? " (from active org selection)" : ""}
         </div>
 
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-700">Assigned Team</span>
+          <select
+            value={selectedTeamId}
+            onChange={(e) => setSelectedTeamId(e.target.value)}
+            disabled={teamsLoading || loading || teams.length === 0}
+            className="w-full rounded border p-2"
+          >
+            {teamsLoading ? (
+              <option value="">Loading teams...</option>
+            ) : teams.length === 0 ? (
+              <option value="">No teams available</option>
+            ) : (
+              teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name || team.teamName || team.id}
+                </option>
+              ))
+            )}
+          </select>
+          <span className="mt-1 block text-xs text-slate-500">
+            Coach access is scoped to the selected team and its campaigns.
+          </span>
+        </label>
+
         <input
           type="email"
           placeholder="coach@email.com"
@@ -102,7 +205,7 @@ export default function InviteCoachModal({ onClose }) {
           </button>
           <button
             onClick={sendInvite}
-            disabled={loading}
+            disabled={loading || teamsLoading || teams.length === 0}
             className="bg-blue-600 text-white px-4 py-2 rounded"
           >
             {loading ? "Sending..." : "Send Invite"}

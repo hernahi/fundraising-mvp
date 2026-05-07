@@ -200,15 +200,37 @@ service cloud.firestore {
       return !("orgId" in resource.data) || request.resource.data.orgId == resource.data.orgId;
     }
 
+    function validInviteForSignedInUser(inviteId, role, orgId) {
+      return isSignedIn()
+        && inviteId is string
+        && inviteId != ""
+        && exists(/databases/$(database)/documents/invites/$(inviteId))
+        && get(/databases/$(database)/documents/invites/$(inviteId)).data.email == request.auth.token.email
+        && get(/databases/$(database)/documents/invites/$(inviteId)).data.role == role
+        && get(/databases/$(database)/documents/invites/$(inviteId)).data.orgId == orgId
+        && (
+          get(/databases/$(database)/documents/invites/$(inviteId)).data.status == "pending"
+          || (
+            get(/databases/$(database)/documents/invites/$(inviteId)).data.status == "accepted"
+            && get(/databases/$(database)/documents/invites/$(inviteId)).data.acceptedByUid == request.auth.uid
+          )
+        );
+    }
+
     /* ===========================
        COACHES
        =========================== */
     match /coaches/{coachId} {
       allow read: if request.auth != null
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgId
-           == resource.data.orgId
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
-           in ["admin", "super-admin", "coach"];
+        && (
+          isSuperAdmin()
+          || (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgId
+               == resource.data.orgId
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+               in ["admin", "coach"]
+          )
+        );
 
       // Writes restricted to admins only
       allow create: if request.auth != null
@@ -217,11 +239,33 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
            in ["admin", "super-admin"];
 
+      // Invited coaches may create their own coach profile during invite acceptance only.
+      allow create: if request.auth != null
+        && request.auth.uid == coachId
+        && request.resource.data.orgId is string
+        && request.resource.data.role == "coach"
+        && validInviteForSignedInUser(
+          request.resource.data.inviteId,
+          request.resource.data.role,
+          request.resource.data.orgId
+        );
+
       allow update: if request.auth != null
         && orgIdUnchanged()
         && canAccessOrg(resource.data.orgId)
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
            in ["admin", "super-admin"];
+
+      // Invited coaches may merge invite-derived team data into their own coach profile.
+      allow update: if request.auth != null
+        && request.auth.uid == coachId
+        && orgIdUnchanged()
+        && request.resource.data.role == "coach"
+        && validInviteForSignedInUser(
+          request.resource.data.inviteId,
+          request.resource.data.role,
+          request.resource.data.orgId
+        );
 
       allow delete: if request.auth != null
         && canAccessOrg(resource.data.orgId)
@@ -260,6 +304,41 @@ service cloud.firestore {
         && request.auth.uid == uid
         && !("role" in request.resource.data)
         && !("orgId" in request.resource.data);
+
+      // Invite acceptance may assign role/org/team to an existing local auth account.
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.inviteId is string
+        && request.resource.data.role in ["admin", "coach", "athlete"]
+        && request.resource.data.orgId is string
+        && (
+          !("orgId" in resource.data)
+          || resource.data.orgId == request.resource.data.orgId
+        )
+        && validInviteForSignedInUser(
+          request.resource.data.inviteId,
+          request.resource.data.role,
+          request.resource.data.orgId
+        )
+        && request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly([
+            "uid",
+            "email",
+            "displayName",
+            "photoURL",
+            "role",
+            "orgId",
+            "orgName",
+            "teamId",
+            "teamName",
+            "teamIds",
+            "assignedTeamIds",
+            "inviteId",
+            "status",
+            "updatedAt"
+          ]);
 
       // ✅ Admins can manage users
       allow update: if request.auth != null
