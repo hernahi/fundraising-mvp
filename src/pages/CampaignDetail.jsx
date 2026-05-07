@@ -222,53 +222,56 @@ useEffect(() => {
         </Link>
 
         {/* Header */}
-        <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7 flex flex-col md:flex-row gap-4 md:gap-6">
-          <img
-            src={safeImageURL(campaignImageURL, campaignImageFallback)}
-            alt="Campaign"
-            className="w-full sm:w-56 md:w-52 lg:w-56 h-32 md:h-36 object-contain bg-slate-100 rounded-lg shrink-0 p-1"
-          />
+        <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7">
+          <div className="grid grid-cols-1 md:grid-cols-[14rem_minmax(0,1fr)] gap-4 md:gap-6">
+            <img
+              src={safeImageURL(campaignImageURL, campaignImageFallback)}
+              alt="Campaign"
+              className="w-full sm:w-56 md:w-56 h-32 md:h-36 object-contain bg-slate-100 rounded-lg shrink-0 p-1"
+            />
 
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-800 break-words">
-              {campaign.name}
-            </h1>
+            <div className="min-w-0">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 break-words">
+                {campaign.name}
+              </h1>
 
-            <div className="text-gray-600 mt-2">
-              <div className="font-medium">Participating Teams:</div>
+              <div className="text-gray-600 mt-2">
+                <div className="font-medium">Participating Teams:</div>
 
-              {teams.length === 0 && (
-                <div className="text-gray-500">No teams assigned yet.</div>
-              )}
+                {teams.length === 0 && (
+                  <div className="text-gray-500">No teams assigned yet.</div>
+                )}
 
-              <ul className="mt-1 space-y-1">
-                {teams.map((t) => (
-                  <li key={t.id}>
-                    <Link
-                      to={`/teams/${t.id}`}
-                      className="text-blue-600 hover:underline"
-                    >
-                      {t.name}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+                <ul className="mt-1 space-y-1">
+                  {teams.map((t) => (
+                    <li key={t.id}>
+                      <Link
+                        to={`/teams/${t.id}`}
+                        className="text-blue-600 hover:underline"
+                      >
+                        {t.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <p className="mt-4 text-gray-700 max-w-2xl">
+                {campaign.description}
+              </p>
             </div>
+          </div>
 
-	            <p className="mt-4 text-gray-700 max-w-2xl">
-	              {campaign.description}
-	            </p>
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <div className="font-medium text-slate-800">Public welcome line</div>
+            <div className="mt-1">
+              {campaign.showDefaultWelcomeMessage !== false
+                ? `${teams[0]?.name || campaign.teamName || "This team"} family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`
+                : "Off"}
+            </div>
+          </div>
 
-	            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-	              <div className="font-medium text-slate-800">Public welcome line</div>
-	              <div className="mt-1">
-	                {campaign.showDefaultWelcomeMessage !== false
-	                  ? `${teams[0]?.name || campaign.teamName || "This team"} family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`
-	                  : "Off"}
-	              </div>
-	            </div>
-
-	            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2 md:gap-3 mt-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2 md:gap-3 mt-6">
               {canManageCampaign && (
                 <Link
                   to={`/campaigns/${campaign.id}/edit`}
@@ -306,7 +309,6 @@ useEffect(() => {
               >
                 <FaShareAlt /> Copy Share Link
               </button>
-            </div>
           </div>
         </div>
 
