@@ -11,10 +11,15 @@ import {
 } from "firebase/firestore";
 import safeImageURL from "../utils/safeImage";
 import { useAuth } from "../context/AuthContext";
+import { avatarFallback } from "../utils/avatarFallback";
 
 // Utility
 function formatCurrency(value) {
   return `$${Number(value || 0).toLocaleString()}`;
+}
+
+function getTeamImageUrl(team = {}) {
+  return String(team.avatar || team.photoURL || team.imgUrl || team.logo || "").trim();
 }
 
 export default function CampaignOverview() {
@@ -26,6 +31,7 @@ export default function CampaignOverview() {
   const [donations, setDonations] = useState([]);
   const [athletes, setAthletes] = useState([]);
   const [resolvedTeamName, setResolvedTeamName] = useState("");
+  const [resolvedTeamImageURL, setResolvedTeamImageURL] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -70,6 +76,7 @@ export default function CampaignOverview() {
     async function loadResolvedTeamName() {
       if (!campaign) {
         setResolvedTeamName("");
+        setResolvedTeamImageURL("");
         return;
       }
 
@@ -86,6 +93,7 @@ export default function CampaignOverview() {
           if (teamSnap.exists()) {
             const teamData = teamSnap.data() || {};
             const liveTeamName = String(teamData.name || teamData.teamName || "").trim();
+            setResolvedTeamImageURL(getTeamImageUrl(teamData));
             if (liveTeamName) {
               setResolvedTeamName(liveTeamName);
               return;
@@ -97,6 +105,7 @@ export default function CampaignOverview() {
       }
 
       setResolvedTeamName(explicitName);
+      setResolvedTeamImageURL("");
     }
 
     loadResolvedTeamName();
@@ -116,6 +125,12 @@ export default function CampaignOverview() {
   const goal = Number(campaign.goalAmount || 0);
 
   const percent = goal > 0 ? Math.min(100, (totalRaised / goal) * 100) : 0;
+  const campaignImageURL = String(campaign.imageURL || "").trim() || resolvedTeamImageURL;
+  const campaignImageFallback = avatarFallback({
+    label: resolvedTeamName || campaign.teamName || campaign.name || "Team",
+    type: "team",
+    size: 256,
+  });
 
   const recent = donations
     .sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds)
@@ -148,7 +163,7 @@ export default function CampaignOverview() {
         }}
       >
         <img
-          src={safeImageURL(campaign.imageURL)}
+          src={safeImageURL(campaignImageURL, campaignImageFallback)}
           alt="Campaign"
           style={{
             width: "180px",

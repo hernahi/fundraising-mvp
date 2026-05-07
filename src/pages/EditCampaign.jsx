@@ -3,8 +3,13 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import safeImageURL from "../utils/safeImage";
+import { avatarFallback } from "../utils/avatarFallback";
 import { FaArrowLeft, FaSave, FaImage } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
+
+function getTeamImageUrl(team = {}) {
+  return String(team.avatar || team.photoURL || team.imgUrl || team.logo || "").trim();
+}
 
 export default function EditCampaign() {
   const { campaignId } = useParams();
@@ -29,6 +34,7 @@ export default function EditCampaign() {
   const [saving, setSaving] = useState(false);
   const [imagePreview, setImagePreview] = useState("");
   const [campaignTeamName, setCampaignTeamName] = useState("");
+  const [campaignTeamImageURL, setCampaignTeamImageURL] = useState("");
 
   // Load existing campaign
   useEffect(() => {
@@ -47,41 +53,45 @@ export default function EditCampaign() {
           return;
         }
 
-	        const data = snap.data();
-	        const explicitTeamName = String(
-	          data.teamName || (Array.isArray(data.teamNames) ? data.teamNames[0] : "") || ""
-	        ).trim();
-	        let nextTeamName = explicitTeamName;
-	        if (!nextTeamName) {
-	          const fallbackTeamId = String(
-	            data.teamId || (Array.isArray(data.teamIds) ? data.teamIds[0] : "") || ""
-	          ).trim();
-	          if (fallbackTeamId) {
-	            try {
-	              const teamSnap = await getDoc(doc(db, "teams", fallbackTeamId));
-	              if (teamSnap.exists()) {
-	                const teamData = teamSnap.data() || {};
-	                nextTeamName = String(teamData.name || teamData.teamName || "").trim();
-	              }
-	            } catch (teamErr) {
-	              console.warn("Failed to resolve campaign team name:", teamErr);
-	            }
-	          }
-	        }
+        const data = snap.data();
+        const explicitTeamName = String(
+          data.teamName || (Array.isArray(data.teamNames) ? data.teamNames[0] : "") || ""
+        ).trim();
+        let nextTeamName = explicitTeamName;
+        let nextTeamImageURL = "";
+        const fallbackTeamId = String(
+          data.teamId || (Array.isArray(data.teamIds) ? data.teamIds[0] : "") || ""
+        ).trim();
+        if (fallbackTeamId) {
+          try {
+            const teamSnap = await getDoc(doc(db, "teams", fallbackTeamId));
+            if (teamSnap.exists()) {
+              const teamData = teamSnap.data() || {};
+              if (!nextTeamName) {
+                nextTeamName = String(teamData.name || teamData.teamName || "").trim();
+              }
+              nextTeamImageURL = getTeamImageUrl(teamData);
+            }
+          } catch (teamErr) {
+            console.warn("Failed to resolve campaign team details:", teamErr);
+          }
+        }
+        const resolvedImageURL = String(data.imageURL || "").trim() || nextTeamImageURL;
 
-	        setForm({
+        setForm({
           name: data.name || "",
           description: data.description || "",
           goalAmount: data.goalAmount || "",
-          imageURL: data.imageURL || "",
+          imageURL: resolvedImageURL,
           videoUrl: data.videoUrl || data.youtubeUrl || "",
           startDate: data.startDate || "",
           endDate: data.endDate || "",
-	          isPublic: data.isPublic === true,
-	          showDefaultWelcomeMessage: data.showDefaultWelcomeMessage !== false,
-	        });
-	        setCampaignTeamName(nextTeamName);
-	        setImagePreview(data.imageURL || "");
+          isPublic: data.isPublic === true,
+          showDefaultWelcomeMessage: data.showDefaultWelcomeMessage !== false,
+        });
+        setCampaignTeamName(nextTeamName);
+        setCampaignTeamImageURL(nextTeamImageURL);
+        setImagePreview(resolvedImageURL);
 
         setLoading(false);
       } catch (err) {
@@ -100,6 +110,11 @@ export default function EditCampaign() {
 
   const welcomeTeamName = campaignTeamName || "This team";
   const welcomeExample = `${welcomeTeamName} family, friends, and fans - Thank you so much for taking the time to view our fundraiser page.`;
+  const imageFallback = avatarFallback({
+    label: campaignTeamName || form.name || "Team",
+    type: "team",
+    size: 256,
+  });
 
   // Save updates
   async function handleSave() {
@@ -166,7 +181,7 @@ export default function EditCampaign() {
         {/* Image Preview */}
         <div className="flex flex-col md:flex-row items-center gap-6">
           <img
-            src={safeImageURL(imagePreview || form.imageURL)}
+            src={safeImageURL(imagePreview || form.imageURL || campaignTeamImageURL, imageFallback)}
             alt="Campaign"
             className="w-full md:w-64 h-40 rounded-lg object-contain bg-slate-100 border p-1"
           />
@@ -185,7 +200,11 @@ export default function EditCampaign() {
                 placeholder="/campaigns/your-image.jpg"
               />
               <button
-                onClick={() => updateField("imageURL", "")}
+                type="button"
+                onClick={() => {
+                  updateField("imageURL", "");
+                  setImagePreview(campaignTeamImageURL);
+                }}
                 className="px-3 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
               >
                 <FaImage />

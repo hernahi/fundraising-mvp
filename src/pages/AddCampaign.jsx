@@ -44,6 +44,10 @@ async function fetchTeamsByIds(ids) {
   return teamRows.filter(Boolean);
 }
 
+function getTeamImageUrl(team = {}) {
+  return String(team.avatar || team.photoURL || team.imgUrl || team.logo || "").trim();
+}
+
 export default function AddCampaign() {
   const navigate = useNavigate();
   const { push } = useToast();
@@ -174,6 +178,7 @@ export default function AddCampaign() {
     setLoading(true);
     try {
       const selectedTeam = teamOptions.find((team) => team.id === form.teamId);
+      const resolvedImageURL = form.imageURL.trim() || getTeamImageUrl(selectedTeam);
       const ref = await addDoc(collection(db, "campaigns"), {
         name: form.name.trim(),
         orgId: resolvedOrgId,
@@ -187,7 +192,7 @@ export default function AddCampaign() {
         startDate: form.startDate || null,
         endDate: form.endDate || null,
         videoUrl: form.videoUrl.trim(),
-        imageURL: form.imageURL.trim(),
+        imageURL: resolvedImageURL,
         isPublic: Boolean(form.isPublic),
         donations: 0,
         status: "draft",

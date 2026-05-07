@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 import AssignTeamsToCampaignModal from "../components/AssignTeamsToCampaignModal";
 import AnalyticsCard from "../components/AnalyticsCard";
 import { normalizeDonationAmount } from "../utils/normalizeDonation";
+import { avatarFallback } from "../utils/avatarFallback";
 
 function getCoachScopedTeamIds(profile) {
   if (!profile) return [];
@@ -24,6 +25,10 @@ function getCoachScopedTeamIds(profile) {
   const single = String(profile.teamId || "").trim();
   if (single) normalized.push(single);
   return Array.from(new Set(normalized));
+}
+
+function getTeamImageUrl(team = {}) {
+  return String(team.avatar || team.photoURL || team.imgUrl || team.logo || "").trim();
 }
 
 export default function CampaignDetail() {
@@ -194,23 +199,32 @@ useEffect(() => {
   if (loading) return <div className="p-4 md:p-6 text-gray-600">Loading campaign...</div>;
   if (!campaign) return <div className="p-4 md:p-6 text-red-600">Campaign not found.</div>;
 
-    return (
+  const primaryTeam = teams[0] || {};
+  const campaignImageURL =
+    String(campaign.imageURL || "").trim() || getTeamImageUrl(primaryTeam);
+  const campaignImageFallback = avatarFallback({
+    label: primaryTeam.name || primaryTeam.teamName || campaign.teamName || campaign.name || "Team",
+    type: "team",
+    size: 256,
+  });
+
+  return (
     <>
       {/* ===============================
           Campaign Detail Page
          =============================== */}
       <div className="space-y-6 md:space-y-8">
-	        <Link
-	          to={backTo}
-	          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
-	        >
-	          <FaArrowLeft /> {backLabel}
-	        </Link>
+        <Link
+          to={backTo}
+          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
+        >
+          <FaArrowLeft /> {backLabel}
+        </Link>
 
         {/* Header */}
         <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7 flex flex-col md:flex-row gap-4 md:gap-6">
           <img
-            src={safeImageURL(campaign.imageURL)}
+            src={safeImageURL(campaignImageURL, campaignImageFallback)}
             alt="Campaign"
             className="w-full sm:w-56 md:w-52 lg:w-56 h-32 md:h-36 object-contain bg-slate-100 rounded-lg shrink-0 p-1"
           />

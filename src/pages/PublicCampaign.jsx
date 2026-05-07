@@ -181,6 +181,7 @@ export default function PublicCampaign() {
   const [athlete, setAthlete] = useState(null);
   const [campaignAthletes, setCampaignAthletes] = useState([]);
   const [resolvedTeamName, setResolvedTeamName] = useState("");
+  const [resolvedTeamImageURL, setResolvedTeamImageURL] = useState("");
 
   const [amountDollars, setAmountDollars] = useState("250");
   const [selectedAmountOption, setSelectedAmountOption] = useState("250");
@@ -268,6 +269,7 @@ export default function PublicCampaign() {
     async function loadResolvedTeamName() {
       if (!campaign) {
         setResolvedTeamName("");
+        setResolvedTeamImageURL("");
         return;
       }
 
@@ -284,6 +286,9 @@ export default function PublicCampaign() {
           if (teamSnap.exists()) {
             const teamData = teamSnap.data() || {};
             const liveTeamName = String(teamData.name || teamData.teamName || "").trim();
+            setResolvedTeamImageURL(
+              String(teamData.avatar || teamData.photoURL || teamData.imgUrl || teamData.logo || "").trim()
+            );
             if (liveTeamName) {
               setResolvedTeamName(liveTeamName);
               return;
@@ -295,6 +300,7 @@ export default function PublicCampaign() {
       }
 
       setResolvedTeamName(explicitName);
+      setResolvedTeamImageURL("");
     }
 
     loadResolvedTeamName();
@@ -497,6 +503,7 @@ export default function PublicCampaign() {
     }
     return `${window.location.origin}/donate/${campaign.id}`;
   })();
+  const campaignImageURL = String(campaign.imageURL || "").trim() || resolvedTeamImageURL;
   // ---------------------------------------------------
   // Render
   // ---------------------------------------------------
@@ -506,9 +513,9 @@ export default function PublicCampaign() {
         <section className="public-hero">
           <div className="public-hero-inner">
             <div className="flex items-center gap-4 min-w-0">
-              {campaign.imageURL && (
+              {campaignImageURL && (
                 <img
-                  src={campaign.imageURL}
+                  src={safeImageURL(campaignImageURL)}
                   alt={displayTeamName || campaign.name || "Team logo"}
                   className="h-12 w-12 rounded-xl object-contain border border-slate-200 bg-white"
                 />
