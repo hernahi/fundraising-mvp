@@ -185,25 +185,32 @@ export default function AcceptInvite() {
       if (inviteRole === "athlete") {
         const athleteRef = doc(db, "athletes", user.uid);
         const athleteSnap = await getDoc(athleteRef);
+        const athletePayload = {
+          userId: user.uid,
+          email: user.email,
+          displayName: user.displayName || user.email,
+          orgId: inviteOrgId,
+          inviteId: invite.id,
+          status: "active",
+          updatedAt: serverTimestamp(),
+        };
+
+        if (inviteTeamId) {
+          athletePayload.teamId = inviteTeamId;
+          athletePayload.teamName = String(invite.teamName || inviteTeamId).trim();
+        }
+
+        if (invite.campaignId) {
+          athletePayload.campaignId = String(invite.campaignId || "").trim();
+        }
 
         if (!athleteSnap.exists()) {
-          await setDoc(
-            athleteRef,
-            {
-              userId: user.uid,
-              email: user.email,
-              displayName: user.displayName || user.email,
-              orgId: inviteOrgId,
-              teamId: inviteTeamId || null,
-              campaignId: invite.campaignId || null,
-              inviteId: invite.id,
-              status: "active",
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
+          athletePayload.createdAt = serverTimestamp();
+          if (!inviteTeamId) athletePayload.teamId = null;
+          if (!invite.campaignId) athletePayload.campaignId = null;
         }
+
+        await setDoc(athleteRef, athletePayload, { merge: true });
       }
 
       try {

@@ -446,6 +446,39 @@ service cloud.firestore {
         && canAccessOrg(resource.data.orgId)
         && orgIdUnchanged();
 
+      // Invited athletes may merge valid invite scope onto an existing athlete doc
+      // during acceptance. This supports re-invites that add team/campaign context.
+      allow update: if isSignedIn()
+        && request.auth.uid == athleteId
+        && ("inviteId" in request.resource.data)
+        && request.resource.data.inviteId is string
+        && exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteId))
+        && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data.status == "pending"
+        && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data.role == "athlete"
+        && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data.email == request.auth.token.email
+        && request.resource.data.orgId == get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data.orgId
+        && (
+          !request.resource.data.diff(resource.data).changedKeys().hasAny(["teamId"])
+          || request.resource.data.teamId == get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data.teamId
+        )
+        && (
+          !request.resource.data.diff(resource.data).changedKeys().hasAny(["campaignId"])
+          || request.resource.data.campaignId == get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data.campaignId
+        )
+        && request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly([
+            "userId",
+            "email",
+            "displayName",
+            "orgId",
+            "teamId",
+            "teamName",
+            "campaignId",
+            "inviteId",
+            "status",
+            "updatedAt"
+          ]);
+
       // ✅ Athlete can update their own profile-facing fields.
       // Legacy athlete docs may be missing orgId, so self-edit should not fail on that shape.
       allow update: if isSignedIn()

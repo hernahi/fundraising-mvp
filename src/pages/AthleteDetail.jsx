@@ -99,21 +99,65 @@ export default function AthleteDetail() {
           setCampaigns([]);
           return;
         }
-        const snap = await getDocs(
-          query(collection(db, "campaigns"), where("orgId", "==", resolvedOrgId))
-        );
-        const rows = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((campaign) => {
-            if (!athleteTeamId) return !isCoach;
-            const primaryTeamId = String(campaign.teamId || "").trim();
-            const linkedTeamIds = Array.isArray(campaign.teamIds)
-              ? campaign.teamIds.map((id) => String(id || "").trim()).filter(Boolean)
-              : [];
-            if (primaryTeamId === athleteTeamId) return true;
-            if (linkedTeamIds.includes(athleteTeamId)) return true;
-            return false;
+
+        let campaignRows = [];
+
+        if (isCoach) {
+          const [directResult, multiTeamResult] = await Promise.allSettled([
+            getDocs(
+              query(
+                collection(db, "campaigns"),
+                where("orgId", "==", resolvedOrgId),
+                where("teamId", "==", athleteTeamId)
+              )
+            ),
+            getDocs(
+              query(
+                collection(db, "campaigns"),
+                where("orgId", "==", resolvedOrgId),
+                where("teamIds", "array-contains", athleteTeamId)
+              )
+            ),
+          ]);
+
+          if (directResult.status === "rejected") {
+            console.warn(
+              "Direct athlete campaign query skipped:",
+              directResult.reason?.message || directResult.reason
+            );
+          }
+          if (multiTeamResult.status === "rejected") {
+            console.warn(
+              "Multi-team athlete campaign query skipped:",
+              multiTeamResult.reason?.message || multiTeamResult.reason
+            );
+          }
+
+          const rowsById = new Map();
+          const directDocs = directResult.status === "fulfilled" ? directResult.value.docs : [];
+          const multiTeamDocs =
+            multiTeamResult.status === "fulfilled" ? multiTeamResult.value.docs : [];
+          [...directDocs, ...multiTeamDocs].forEach((d) => {
+            rowsById.set(d.id, { id: d.id, ...d.data() });
           });
+          campaignRows = Array.from(rowsById.values());
+        } else {
+          const snap = await getDocs(
+            query(collection(db, "campaigns"), where("orgId", "==", resolvedOrgId))
+          );
+          campaignRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        }
+
+        const rows = campaignRows.filter((campaign) => {
+          if (!athleteTeamId) return !isCoach;
+          const primaryTeamId = String(campaign.teamId || "").trim();
+          const linkedTeamIds = Array.isArray(campaign.teamIds)
+            ? campaign.teamIds.map((id) => String(id || "").trim()).filter(Boolean)
+            : [];
+          if (primaryTeamId === athleteTeamId) return true;
+          if (linkedTeamIds.includes(athleteTeamId)) return true;
+          return false;
+        });
         setCampaigns(rows);
       } catch (err) {
         console.error("Failed to load campaigns:", err);
@@ -622,13 +666,23 @@ export default function AthleteDetail() {
                     if (!athlete?.id) return;
                     try {
                       setSavingCampaign(true);
-                      await updateDoc(doc(db, "athletes", athlete.id), {
-                        campaignId: assignCampaignId || null,
-                        updatedAt: serverTimestamp(),
-                      });
-                    } catch (err) {
-                      console.error("Failed to assign campaign:", err);
-                    } finally {
+	                      await updateDoc(doc(db, "athletes", athlete.id), {
+	                        campaignId: assignCampaignId || null,
+	                        updatedAt: serverTimestamp(),
+	                      });
+	                      setAthlete((prev) =>
+	                        prev
+	                          ? {
+	                              ...prev,
+	                              campaignId: assignCampaignId || null,
+	                              updatedAt: new Date(),
+	                            }
+	                          : prev
+	                      );
+	                      setResolvedCampaignId(assignCampaignId || "");
+	                    } catch (err) {
+	                      console.error("Failed to assign campaign:", err);
+	                    } finally {
                       setSavingCampaign(false);
                     }
                   }}
