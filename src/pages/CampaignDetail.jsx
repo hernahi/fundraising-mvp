@@ -9,6 +9,23 @@ import AssignTeamsToCampaignModal from "../components/AssignTeamsToCampaignModal
 import AnalyticsCard from "../components/AnalyticsCard";
 import { normalizeDonationAmount } from "../utils/normalizeDonation";
 
+function getCoachScopedTeamIds(profile) {
+  if (!profile) return [];
+  const role = String(profile.role || "").toLowerCase();
+  if (role !== "coach") return [];
+  const fromArray = Array.isArray(profile.teamIds)
+    ? profile.teamIds
+    : Array.isArray(profile.assignedTeamIds)
+      ? profile.assignedTeamIds
+      : [];
+  const normalized = fromArray
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const single = String(profile.teamId || "").trim();
+  if (single) normalized.push(single);
+  return Array.from(new Set(normalized));
+}
+
 export default function CampaignDetail() {
   const { campaignId } = useParams();
 
@@ -88,17 +105,19 @@ export default function CampaignDetail() {
         let athleteRows = [];
 
         if (normalizedTeamIds.length === 1) {
-          const athletesQ = query(
-            collection(db, "athletes"),
-            where("teamId", "==", normalizedTeamIds[0])
-          );
+          const athleteConstraints = [where("teamId", "==", normalizedTeamIds[0])];
+          if (campaignData.orgId) {
+            athleteConstraints.unshift(where("orgId", "==", campaignData.orgId));
+          }
+          const athletesQ = query(collection(db, "athletes"), ...athleteConstraints);
           const snap = await getDocs(athletesQ);
           athleteRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         } else if (normalizedTeamIds.length > 1) {
-          const athletesQ = query(
-            collection(db, "athletes"),
-            where("teamId", "in", normalizedTeamIds.slice(0, 10))
-          );
+          const athleteConstraints = [where("teamId", "in", normalizedTeamIds.slice(0, 10))];
+          if (campaignData.orgId) {
+            athleteConstraints.unshift(where("orgId", "==", campaignData.orgId));
+          }
+          const athletesQ = query(collection(db, "athletes"), ...athleteConstraints);
           const snap = await getDocs(athletesQ);
           athleteRows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         }
@@ -145,32 +164,21 @@ useEffect(() => {
   if (profile?.role !== "coach") return;
   if (!campaign?.teamIds?.length) return;
 
-  async function validateCoachAccess() {
-    try {
-      const teamsQ = query(
-        collection(db, "teams"),
-        where("orgId", "==", campaign.orgId),
-        where("coachId", "==", profile.uid)
-      );
+  const coachTeamIds = getCoachScopedTeamIds(profile);
+  const hasAccess = campaign.teamIds.some((id) =>
+    coachTeamIds.includes(String(id || "").trim())
+  );
 
-      const snap = await getDocs(teamsQ);
-      const coachTeamIds = snap.docs.map((d) => d.id);
-
-      const hasAccess = campaign.teamIds.some((id) =>
-        coachTeamIds.includes(id)
-      );
-
-      if (!hasAccess) {
-        navigate("/campaigns");
-      }
-    } catch (err) {
-      console.error("Campaign access check failed:", err);
-      navigate("/campaigns");
-    }
+  if (!hasAccess) {
+    navigate("/campaigns");
   }
-
-  validateCoachAccess();
-}, [profile?.role, profile?.uid, campaign?.teamIds, campaign?.orgId, navigate]);
+}, [
+  profile?.role,
+  profile?.teamId,
+  JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || []),
+  campaign?.teamIds,
+  navigate,
+]);
 
   if (loading) return <div className="p-4 md:p-6 text-gray-600">Loading campaign...</div>;
   if (!campaign) return <div className="p-4 md:p-6 text-red-600">Campaign not found.</div>;

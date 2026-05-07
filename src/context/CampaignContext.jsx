@@ -28,21 +28,24 @@ async function fetchCoachCampaignsByTeamIds(orgId, teamIds) {
   );
   if (!orgId || uniqueTeamIds.length === 0) return [];
 
-  const snaps = await Promise.all(
-    uniqueTeamIds.map(async (teamId) => {
-      try {
-        return await getDocs(
-          query(
-            collection(db, "campaigns"),
-            where("orgId", "==", orgId),
-            where("teamId", "==", teamId)
-          )
-        );
-      } catch {
-        return null;
-      }
-    })
-  );
+  const queryJobs = uniqueTeamIds.flatMap((teamId) => [
+    getDocs(
+      query(
+        collection(db, "campaigns"),
+        where("orgId", "==", orgId),
+        where("teamId", "==", teamId)
+      )
+    ).catch(() => null),
+    getDocs(
+      query(
+        collection(db, "campaigns"),
+        where("orgId", "==", orgId),
+        where("teamIds", "array-contains", teamId)
+      )
+    ).catch(() => null),
+  ]);
+
+  const snaps = await Promise.all(queryJobs);
 
   const merged = new Map();
   snaps.forEach((snap) => {
