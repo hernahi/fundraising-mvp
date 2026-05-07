@@ -111,6 +111,31 @@ export default function AthleteOnboardingPanel({
 
     async function loadCampaigns() {
       try {
+        const maybeAddDefaultCampaign = async (rowsById) => {
+          const normalizedDefaultCampaignId = String(defaultCampaignId || "").trim();
+          if (!normalizedDefaultCampaignId || rowsById.has(normalizedDefaultCampaignId)) return;
+
+          try {
+            const campaignSnap = await getDoc(doc(db, "campaigns", normalizedDefaultCampaignId));
+            if (!campaignSnap.exists()) return;
+
+            const campaign = { id: campaignSnap.id, ...(campaignSnap.data() || {}) };
+            const campaignOrgId = String(campaign.orgId || "").trim();
+            const directTeamId = String(campaign.teamId || "").trim();
+            const multiTeamIds = Array.isArray(campaign.teamIds)
+              ? campaign.teamIds.map((id) => String(id || "").trim()).filter(Boolean)
+              : [];
+            const belongsToOrg = !orgId || campaignOrgId === orgId;
+            const belongsToTeam = !teamId || directTeamId === teamId || multiTeamIds.includes(teamId);
+
+            if (belongsToOrg && belongsToTeam) {
+              rowsById.set(campaign.id, campaign);
+            }
+          } catch (err) {
+            console.warn("Default invite campaign lookup skipped:", err?.message || err);
+          }
+        };
+
         if (teamId) {
           const [directResult, multiTeamResult] = await Promise.allSettled([
             getDocs(
@@ -149,6 +174,7 @@ export default function AthleteOnboardingPanel({
           (multiTeamSnap?.docs || []).forEach((d) => {
             rowsById.set(d.id, { id: d.id, ...d.data() });
           });
+          await maybeAddDefaultCampaign(rowsById);
           const scopedRows = Array.from(rowsById.values()).filter((entry) => {
             if (String(entry?.orgId || "").trim() !== orgId) return false;
             const directTeamId = String(entry?.teamId || "").trim();
@@ -168,27 +194,40 @@ export default function AthleteOnboardingPanel({
         }
         const q = query(collection(db, "campaigns"), where("orgId", "==", orgId));
         const snap = await getDocs(q);
-        setCampaigns(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const rowsById = new Map();
+        snap.docs.forEach((d) => rowsById.set(d.id, { id: d.id, ...d.data() }));
+        await maybeAddDefaultCampaign(rowsById);
+        setCampaigns(Array.from(rowsById.values()));
       } catch (err) {
         console.error("Failed to load campaigns:", err);
       }
     }
 
     loadCampaigns();
-  }, [orgId, profile?.role, teamId]);
+  }, [orgId, profile?.role, teamId, defaultCampaignId]);
 
   useEffect(() => {
     if (!campaignId) return;
     if (campaigns.some((campaign) => campaign.id === campaignId)) return;
+    if (lockCampaign && defaultCampaignId && campaignId === defaultCampaignId) return;
     setCampaignId("");
-  }, [campaignId, campaigns]);
+  }, [campaignId, campaigns, defaultCampaignId, lockCampaign]);
+
+  useEffect(() => {
+    if (campaignId || !teamId || campaigns.length !== 1) return;
+    setCampaignId(campaigns[0].id);
+  }, [campaignId, campaigns, teamId]);
+
+  const effectiveInviteCampaignId =
+    String(campaignId || "").trim() ||
+    (teamId && campaigns.length === 1 ? String(campaigns[0].id || "").trim() : "");
 
   const helperText = useMemo(() => {
-    if (teamId && campaignId) return "Invites will include both team and campaign context.";
+    if (teamId && effectiveInviteCampaignId) return "Invites will include both team and campaign context.";
     if (teamId) return "Invites will assign athletes to this team.";
-    if (campaignId) return "Invites will include campaign context.";
+    if (effectiveInviteCampaignId) return "Invites will include campaign context.";
     return "You can invite first, then assign team/campaign later if needed.";
-  }, [teamId, campaignId]);
+  }, [teamId, effectiveInviteCampaignId]);
 
   const sendInvites = async () => {
     setError("");
@@ -258,7 +297,7 @@ export default function AthleteOnboardingPanel({
             orgName: inviteOrgName || orgId,
             teamId: teamId || null,
             teamName: inviteTeamName || "",
-            campaignId: campaignId || null,
+	            campaignId: effectiveInviteCampaignId || null,
             status: "pending",
             expiresAt: Timestamp.fromDate(
               new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000)

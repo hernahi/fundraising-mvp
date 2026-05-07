@@ -1857,14 +1857,18 @@ export default function DashboardHome() {
 	                    : `${coachFlow.athleteCount} athlete${
 	                        coachFlow.athleteCount === 1 ? "" : "s"
 	                      }`,
-		                  to:
+	                  to:
 	                        coachFlow.teamCount === 1 && coachFlow.primaryTeamId
 	                          ? `/coach/invite?teamId=${encodeURIComponent(
                               coachFlow.primaryTeamId
                             )}&teamName=${encodeURIComponent(
                               coachFlow.primaryTeamName || ""
-                            )}`
-                          : "/teams",
+                            )}${
+                              activeCampaign?.id
+                                ? `&campaignId=${encodeURIComponent(activeCampaign.id)}&lockCampaign=1`
+                                : ""
+                            }`
+	                          : "/teams",
 		                  cta:
                         coachFlow.teamCount === 1 && coachFlow.primaryTeamId
                           ? "Onboard Athletes"
