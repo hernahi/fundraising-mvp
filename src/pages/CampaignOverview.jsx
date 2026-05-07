@@ -10,6 +10,7 @@ import {
   getDocs,
 } from "firebase/firestore";
 import safeImageURL from "../utils/safeImage";
+import { useAuth } from "../context/AuthContext";
 
 // Utility
 function formatCurrency(value) {
@@ -18,6 +19,9 @@ function formatCurrency(value) {
 
 export default function CampaignOverview() {
   const { campaignId } = useParams();
+  const { profile } = useAuth();
+  const role = String(profile?.role || "").toLowerCase();
+  const canManageCampaign = role === "admin" || role === "super-admin" || role === "coach";
   const [campaign, setCampaign] = useState(null);
   const [donations, setDonations] = useState([]);
   const [athletes, setAthletes] = useState([]);
@@ -206,20 +210,21 @@ export default function CampaignOverview() {
             View Donation Table
           </Link>
 
-          {/* FIXED to match correct route: /campaigns/:id/edit */}
-          <Link
-            to={`/campaigns/${campaignId}/edit`}
-            style={{
-              padding: "8px 14px",
-              background: "#555",
-              color: "#fff",
-              borderRadius: "6px",
-              textAlign: "center",
-              textDecoration: "none",
-            }}
-          >
-            Edit Campaign
-          </Link>
+          {canManageCampaign && (
+            <Link
+              to={`/campaigns/${campaignId}/edit`}
+              style={{
+                padding: "8px 14px",
+                background: "#555",
+                color: "#fff",
+                borderRadius: "6px",
+                textAlign: "center",
+                textDecoration: "none",
+              }}
+            >
+              Edit Campaign
+            </Link>
+          )}
         </div>
       </div>
 

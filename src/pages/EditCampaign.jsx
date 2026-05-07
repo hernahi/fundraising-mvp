@@ -4,10 +4,14 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import safeImageURL from "../utils/safeImage";
 import { FaArrowLeft, FaSave, FaImage } from "react-icons/fa";
+import { useAuth } from "../context/AuthContext";
 
 export default function EditCampaign() {
   const { campaignId } = useParams();
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const role = String(profile?.role || "").toLowerCase();
+  const canManageCampaign = role === "admin" || role === "super-admin" || role === "coach";
 
   const [form, setForm] = useState({
     name: "",
@@ -28,6 +32,11 @@ export default function EditCampaign() {
 
   // Load existing campaign
   useEffect(() => {
+    if (!canManageCampaign) {
+      setLoading(false);
+      return;
+    }
+
     async function loadCampaign() {
       try {
         const ref = doc(db, "campaigns", campaignId);
@@ -82,7 +91,7 @@ export default function EditCampaign() {
     }
 
     loadCampaign();
-  }, [campaignId]);
+  }, [campaignId, canManageCampaign]);
 
   // Update form fields
   const updateField = (key, value) => {
@@ -117,6 +126,21 @@ export default function EditCampaign() {
   }
 
   if (loading) return <div className="p-6">Loading campaign...</div>;
+  if (!canManageCampaign) {
+    return (
+      <div className="p-6 max-w-3xl">
+        <Link
+          to={`/campaigns/${campaignId}`}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+        >
+          <FaArrowLeft /> Back to Campaign
+        </Link>
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+          You can view this campaign, but only coaches and administrators can edit it.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

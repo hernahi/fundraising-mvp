@@ -38,8 +38,10 @@ export default function CampaignDetail() {
   const [showAssignTeams, setShowAssignTeams] = useState(false);
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const role = String(profile?.role || "").toLowerCase();
+  const canManageCampaign = role === "admin" || role === "super-admin" || role === "coach";
   const canEditTeams =
-    profile?.role === "admin" || profile?.role === "super-admin";
+    role === "admin" || role === "super-admin";
   const primaryActionClass =
     "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-flex items-center justify-center gap-2 text-sm";
   const secondaryActionClass =
@@ -244,12 +246,14 @@ useEffect(() => {
 	            </div>
 
 	            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2 md:gap-3 mt-6">
-              <Link
-                to={`/campaigns/${campaign.id}/edit`}
-                className={primaryActionClass}
-              >
-                <FaEdit /> Edit Campaign
-              </Link>
+              {canManageCampaign && (
+                <Link
+                  to={`/campaigns/${campaign.id}/edit`}
+                  className={primaryActionClass}
+                >
+                  <FaEdit /> Edit Campaign
+                </Link>
+              )}
 
               {canEditTeams && (
                 <button
@@ -260,12 +264,14 @@ useEffect(() => {
                 </button>
               )}
 
-              <Link
-                to={`/coach/invite?campaignId=${encodeURIComponent(campaign.id)}&lockCampaign=1`}
-                className={secondaryActionClass}
-              >
-                Add Athletes to Campaign
-              </Link>
+              {canManageCampaign && (
+                <Link
+                  to={`/coach/invite?campaignId=${encodeURIComponent(campaign.id)}&lockCampaign=1`}
+                  className={secondaryActionClass}
+                >
+                  Add Athletes to Campaign
+                </Link>
+              )}
 
               <button
                 onClick={() =>
