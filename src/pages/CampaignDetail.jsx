@@ -40,6 +40,15 @@ export default function CampaignDetail() {
   const navigate = useNavigate();
   const role = String(profile?.role || "").toLowerCase();
   const canManageCampaign = role === "admin" || role === "super-admin" || role === "coach";
+  const isAthlete = role === "athlete";
+  const athleteBackTo =
+    profile?.uid
+      ? `/athletes/${profile.uid}`
+      : teams[0]?.id
+        ? `/teams/${teams[0].id}`
+        : "/";
+  const backTo = isAthlete ? athleteBackTo : "/campaigns";
+  const backLabel = isAthlete ? "Back to My Athlete Page" : "Back to Campaigns";
   const canEditTeams =
     role === "admin" || role === "super-admin";
   const primaryActionClass =
@@ -191,12 +200,12 @@ useEffect(() => {
           Campaign Detail Page
          =============================== */}
       <div className="space-y-6 md:space-y-8">
-        <Link
-          to="/campaigns"
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
-        >
-          <FaArrowLeft /> Back to Campaigns
-        </Link>
+	        <Link
+	          to={backTo}
+	          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800"
+	        >
+	          <FaArrowLeft /> {backLabel}
+	        </Link>
 
         {/* Header */}
         <div className="bg-white rounded-xl shadow p-4 md:p-6 lg:p-7 flex flex-col md:flex-row gap-4 md:gap-6">
