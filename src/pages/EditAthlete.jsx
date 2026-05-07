@@ -75,7 +75,7 @@ function getScopedTeamIds(profile) {
 export default function EditAthlete() {
   const { athleteId } = useParams();
   const navigate = useNavigate();
-  const { profile, user } = useAuth();
+  const { profile, user, activeOrgId, isSuperAdmin } = useAuth();
 
   const [athlete, setAthlete] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -85,12 +85,18 @@ export default function EditAthlete() {
   const [goalValidationMessage, setGoalValidationMessage] = useState("");
   const [teamOptions, setTeamOptions] = useState([]);
   const [resolvedTeamMinimum, setResolvedTeamMinimum] = useState(0);
+  const [originalTeamScope, setOriginalTeamScope] = useState({ teamId: "", teamName: "" });
 
   const role = String(profile?.role || "").toLowerCase();
   const canManageAnyAthlete = role === "admin" || role === "super-admin" || role === "coach";
   const canEditSelf = role === "athlete" && profile?.uid === athleteId;
   const canEditAthlete = canManageAnyAthlete || canEditSelf;
   const canAssignTeam = role === "admin" || role === "super-admin" || role === "coach";
+  const teamOptionsOrgId = String(
+    (isSuperAdmin ? activeOrgId || athlete?.orgId : profile?.orgId) ||
+      athlete?.orgId ||
+      ""
+  ).trim();
   const scopedTeamIds = useMemo(() => getScopedTeamIds(profile), [profile]);
   const selectedTeam = useMemo(() => {
     const normalizedTeamId = String(athlete?.teamId || "").trim();
@@ -134,6 +140,10 @@ export default function EditAthlete() {
         if (snap.exists()) {
           const normalized = normalizeAthleteForEdit(snap.id, snap.data() || {});
           setAthlete(normalized);
+          setOriginalTeamScope({
+            teamId: normalized.teamId,
+            teamName: normalized.teamName,
+          });
         }
       } catch (err) {
         console.error("Error loading athlete:", err);
@@ -147,7 +157,7 @@ export default function EditAthlete() {
 
   useEffect(() => {
     async function loadTeamOptions() {
-      if (!canAssignTeam || !profile?.orgId) {
+      if (!canAssignTeam || !teamOptionsOrgId) {
         setTeamOptions([]);
         return;
       }
@@ -155,7 +165,7 @@ export default function EditAthlete() {
       try {
         if (role === "admin" || role === "super-admin") {
           const snap = await getDocs(
-            query(collection(db, "teams"), where("orgId", "==", profile.orgId))
+            query(collection(db, "teams"), where("orgId", "==", teamOptionsOrgId))
           );
           setTeamOptions(
             snap.docs.map((teamDoc) => ({
@@ -198,7 +208,7 @@ export default function EditAthlete() {
     }
 
     loadTeamOptions();
-  }, [canAssignTeam, profile?.orgId, role, scopedTeamIds]);
+  }, [canAssignTeam, role, scopedTeamIds, teamOptionsOrgId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -298,11 +308,11 @@ export default function EditAthlete() {
         return;
       }
 
-      await updateDoc(ref, {
-        name: athlete.name || "",
-        displayName: athlete.name || "",
-        age: athlete.age || "",
-        position: athlete.position || "",
+	      const nextPayload = {
+	        name: athlete.name || "",
+	        displayName: athlete.name || "",
+	        age: athlete.age || "",
+	        position: athlete.position || "",
         grade: formatGradeLabel(athlete.grade),
         jerseyNumber: athlete.jerseyNumber || "",
         goal: normalizedGoal,
@@ -310,14 +320,33 @@ export default function EditAthlete() {
           ? (athlete.goalMinimum === "" ? null : Math.max(0, Number(athlete.goalMinimum) || 0))
           : athlete.goalMinimum ?? null,
         photoURL: athlete.photoURL || "",
-        avatar: athlete.photoURL || "",
-        bio: athlete.bio || "",
-        supporterMessage: athlete.supporterMessage || "",
-        teamId: normalizedTeamId || null,
-        teamName: normalizedTeamId
-          ? String(nextSelectedTeam?.name || nextSelectedTeam?.teamName || athlete.teamName || normalizedTeamId).trim()
-          : "",
-      });
+	        avatar: athlete.photoURL || "",
+	        bio: athlete.bio || "",
+	        supporterMessage: athlete.supporterMessage || "",
+	      };
+
+	      if (canAssignTeam) {
+	        const originalTeamId = String(originalTeamScope.teamId || "").trim();
+	        const canSafelyWriteTeam =
+	          Boolean(normalizedTeamId) || teamOptions.length > 0 || !originalTeamId;
+
+	        // Avoid detaching an athlete from a team when the staff editor could not
+	        // load the current team option, for example super-admin cross-org edits.
+	        if (canSafelyWriteTeam) {
+	          nextPayload.teamId = normalizedTeamId || null;
+	          nextPayload.teamName = normalizedTeamId
+	            ? String(
+	                nextSelectedTeam?.name ||
+	                  nextSelectedTeam?.teamName ||
+	                  athlete.teamName ||
+	                  originalTeamScope.teamName ||
+	                  normalizedTeamId
+	              ).trim()
+	            : "";
+	        }
+	      }
+
+	      await updateDoc(ref, nextPayload);
 
       navigate(`/athletes/${athlete.id}`);
     } catch (err) {
