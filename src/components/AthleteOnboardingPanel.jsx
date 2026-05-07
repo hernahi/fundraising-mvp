@@ -112,7 +112,7 @@ export default function AthleteOnboardingPanel({
     async function loadCampaigns() {
       try {
         if (teamId) {
-          const [directSnap, multiTeamSnap] = await Promise.all([
+          const [directResult, multiTeamResult] = await Promise.allSettled([
             getDocs(
               query(
                 collection(db, "campaigns"),
@@ -128,17 +128,33 @@ export default function AthleteOnboardingPanel({
               )
             ),
           ]);
+          const directSnap = directResult.status === "fulfilled" ? directResult.value : null;
+          const multiTeamSnap =
+            multiTeamResult.status === "fulfilled" ? multiTeamResult.value : null;
+
+          if (directResult.status === "rejected") {
+            console.warn("Direct team campaign query skipped:", directResult.reason?.message || directResult.reason);
+          }
+          if (multiTeamResult.status === "rejected") {
+            console.warn(
+              "Multi-team campaign query skipped:",
+              multiTeamResult.reason?.message || multiTeamResult.reason
+            );
+          }
+
           const rowsById = new Map();
-          directSnap.docs.forEach((d) => {
+          (directSnap?.docs || []).forEach((d) => {
             rowsById.set(d.id, { id: d.id, ...d.data() });
           });
-          multiTeamSnap.docs.forEach((d) => {
+          (multiTeamSnap?.docs || []).forEach((d) => {
             rowsById.set(d.id, { id: d.id, ...d.data() });
           });
           const scopedRows = Array.from(rowsById.values()).filter((entry) => {
             if (String(entry?.orgId || "").trim() !== orgId) return false;
             const directTeamId = String(entry?.teamId || "").trim();
-            const multiTeamIds = Array.isArray(entry?.teamIds) ? entry.teamIds : [];
+            const multiTeamIds = Array.isArray(entry?.teamIds)
+              ? entry.teamIds.map((id) => String(id || "").trim()).filter(Boolean)
+              : [];
             return directTeamId === teamId || multiTeamIds.includes(teamId);
           });
           setCampaigns(scopedRows);

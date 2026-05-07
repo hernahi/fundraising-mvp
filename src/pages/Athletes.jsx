@@ -118,6 +118,17 @@ export default function Athletes() {
     () => getCoachScopedTeamIds(profile),
     [profile?.role, profile?.teamId, JSON.stringify(profile?.teamIds || profile?.assignedTeamIds || [])]
   );
+  const onboardingPath = useMemo(() => {
+    const teamContext =
+      teamFilter && teamFilter !== "all" && teamFilter !== "unassigned"
+        ? teamFilter
+        : isCoach && coachTeamIds.length === 1
+          ? coachTeamIds[0]
+          : "";
+    return teamContext
+      ? `/coach/invite?teamId=${encodeURIComponent(teamContext)}`
+      : "/coach/invite";
+  }, [coachTeamIds, isCoach, teamFilter]);
 
   // ---------------------------------------------------
   // LOAD ATHLETES + TEAMS
@@ -384,7 +395,7 @@ if (isCoach && teamRows.length > 0) {
 
           {(isAdmin || isCoach) && (
             <Link
-              to="/coach/invite"
+              to={onboardingPath}
               className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow text-center w-full sm:w-auto"
             >
               + Onboard Athlete
@@ -461,7 +472,7 @@ if (isCoach && teamRows.length > 0) {
                 Open Teams
               </Link>
               <Link
-                to="/coach/invite"
+                to={onboardingPath}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 Onboard Athlete
