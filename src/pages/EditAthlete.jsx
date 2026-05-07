@@ -133,9 +133,6 @@ export default function EditAthlete() {
 
         if (snap.exists()) {
           const normalized = normalizeAthleteForEdit(snap.id, snap.data() || {});
-          if (!normalized.photoURL && canEditSelf && user?.photoURL) {
-            normalized.photoURL = user.photoURL;
-          }
           setAthlete(normalized);
         }
       } catch (err) {
@@ -146,7 +143,7 @@ export default function EditAthlete() {
     }
 
     fetchAthlete();
-  }, [athleteId, canEditSelf, user?.photoURL]);
+  }, [athleteId]);
 
   useEffect(() => {
     async function loadTeamOptions() {
@@ -566,6 +563,20 @@ export default function EditAthlete() {
                 disabled={uploadingImage}
               />
             </label>
+            <button
+              type="button"
+              onClick={() => {
+                setAthlete((prev) => ({
+                  ...prev,
+                  photoURL: "",
+                }));
+                setImageStatus("Photo removed. Save changes to use the default avatar.");
+              }}
+              disabled={uploadingImage || !athlete.photoURL}
+              className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Remove Photo
+            </button>
             {canEditSelf && user?.photoURL ? (
               <button
                 type="button"
