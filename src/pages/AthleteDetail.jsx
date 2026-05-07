@@ -87,6 +87,58 @@ export default function AthleteDetail() {
   }, [athleteId]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function mergeInviteScopeForDisplay() {
+      const inviteId = String(athlete?.inviteId || "").trim();
+      if (!inviteId) return;
+
+      const needsInviteScope =
+        !String(athlete?.orgName || "").trim() ||
+        !String(athlete?.orgId || "").trim() ||
+        !String(athlete?.campaignId || "").trim() ||
+        !String(athlete?.teamId || "").trim();
+
+      if (!needsInviteScope) return;
+
+      try {
+        const inviteSnap = await getDoc(doc(db, "invites", inviteId));
+        if (!inviteSnap.exists() || cancelled) return;
+
+        const invite = inviteSnap.data() || {};
+        setAthlete((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            orgId: String(prev.orgId || invite.orgId || "").trim(),
+            orgName: String(prev.orgName || invite.orgName || "").trim(),
+            teamId: String(prev.teamId || invite.teamId || "").trim(),
+            teamName: String(prev.teamName || invite.teamName || "").trim(),
+            campaignId: String(prev.campaignId || invite.campaignId || "").trim(),
+            campaignName: String(prev.campaignName || invite.campaignName || "").trim(),
+          };
+        });
+      } catch (err) {
+        const code = String(err?.code || "").trim();
+        if (code !== "permission-denied") {
+          console.warn("Invite scope fallback skipped:", err?.message || err);
+        }
+      }
+    }
+
+    mergeInviteScopeForDisplay();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    athlete?.inviteId,
+    athlete?.orgId,
+    athlete?.orgName,
+    athlete?.teamId,
+    athlete?.campaignId,
+  ]);
+
+  useEffect(() => {
     if (!resolvedOrgId || !canAssignCampaign) {
       setCampaigns([]);
       return;
@@ -221,6 +273,35 @@ export default function AthleteDetail() {
   useEffect(() => {
     setAssignCampaignId(resolvedCampaignId || "");
   }, [resolvedCampaignId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAssignedCampaign() {
+      if (!resolvedCampaignId) return;
+      if (campaigns.some((campaign) => campaign.id === resolvedCampaignId)) return;
+
+      try {
+        const campaignSnap = await getDoc(doc(db, "campaigns", resolvedCampaignId));
+        if (!cancelled && campaignSnap.exists()) {
+          setCampaigns((prev) => {
+            if (prev.some((campaign) => campaign.id === campaignSnap.id)) return prev;
+            return [{ id: campaignSnap.id, ...campaignSnap.data() }, ...prev];
+          });
+        }
+      } catch (err) {
+        const code = String(err?.code || "").trim();
+        if (code !== "permission-denied") {
+          console.error("Failed to load assigned campaign:", err);
+        }
+      }
+    }
+
+    loadAssignedCampaign();
+    return () => {
+      cancelled = true;
+    };
+  }, [campaigns, resolvedCampaignId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -694,7 +775,10 @@ export default function AthleteDetail() {
               </div>
             ) : (
               <p className="text-gray-700">
-                {assignedCampaign?.name || assignedCampaign?.title || "Not assigned"}
+	                {assignedCampaign?.name ||
+                    assignedCampaign?.title ||
+                    athlete?.campaignName ||
+                    (resolvedCampaignId ? resolvedCampaignId : "Not assigned")}
               </p>
             )}
             {isSelf && !resolvedCampaignId && (
@@ -706,7 +790,7 @@ export default function AthleteDetail() {
 
           <div>
             <h3 className="font-semibold text-gray-700 mb-1">Organization</h3>
-            <p>{athlete.orgName || "Unknown organization"}</p>
+            <p>{athlete.orgName || team?.orgName || team?.orgId || athlete.orgId || "Unknown organization"}</p>
           </div>
 
 	          <div>

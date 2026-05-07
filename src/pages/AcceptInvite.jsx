@@ -185,11 +185,27 @@ export default function AcceptInvite() {
       if (inviteRole === "athlete") {
         const athleteRef = doc(db, "athletes", user.uid);
         const athleteSnap = await getDoc(athleteRef);
+        let inviteCampaignName = "";
+        const inviteCampaignId = String(invite.campaignId || "").trim();
+        if (inviteCampaignId) {
+          try {
+            const campaignSnap = await getDoc(doc(db, "campaigns", inviteCampaignId));
+            if (campaignSnap.exists()) {
+              inviteCampaignName = String(
+                campaignSnap.data()?.name || campaignSnap.data()?.title || inviteCampaignId
+              ).trim();
+            }
+          } catch (campaignErr) {
+            console.warn("Invite campaign name resolution skipped:", campaignErr?.message || campaignErr);
+          }
+        }
+
         const athletePayload = {
           userId: user.uid,
           email: user.email,
           displayName: user.displayName || user.email,
           orgId: inviteOrgId,
+          orgName: String(invite.orgName || existingUser.orgName || inviteOrgId || "").trim(),
           inviteId: invite.id,
           status: "active",
           updatedAt: serverTimestamp(),
@@ -200,14 +216,15 @@ export default function AcceptInvite() {
           athletePayload.teamName = String(invite.teamName || inviteTeamId).trim();
         }
 
-        if (invite.campaignId) {
-          athletePayload.campaignId = String(invite.campaignId || "").trim();
+        if (inviteCampaignId) {
+          athletePayload.campaignId = inviteCampaignId;
+          athletePayload.campaignName = inviteCampaignName || inviteCampaignId;
         }
 
         if (!athleteSnap.exists()) {
           athletePayload.createdAt = serverTimestamp();
           if (!inviteTeamId) athletePayload.teamId = null;
-          if (!invite.campaignId) athletePayload.campaignId = null;
+          if (!inviteCampaignId) athletePayload.campaignId = null;
         }
 
         await setDoc(athleteRef, athletePayload, { merge: true });
