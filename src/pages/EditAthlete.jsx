@@ -313,17 +313,19 @@ export default function EditAthlete() {
 	        displayName: athlete.name || "",
 	        age: athlete.age || "",
 	        position: athlete.position || "",
-        grade: formatGradeLabel(athlete.grade),
-        jerseyNumber: athlete.jerseyNumber || "",
-        goal: normalizedGoal,
-        goalMinimum: canManageAnyAthlete
-          ? (athlete.goalMinimum === "" ? null : Math.max(0, Number(athlete.goalMinimum) || 0))
-          : athlete.goalMinimum ?? null,
-        photoURL: athlete.photoURL || "",
+	        grade: formatGradeLabel(athlete.grade),
+	        jerseyNumber: athlete.jerseyNumber || "",
+	        goal: normalizedGoal,
+	        photoURL: athlete.photoURL || "",
 	        avatar: athlete.photoURL || "",
 	        bio: athlete.bio || "",
 	        supporterMessage: athlete.supporterMessage || "",
 	      };
+
+	      if (canManageAnyAthlete) {
+	        nextPayload.goalMinimum =
+	          athlete.goalMinimum === "" ? null : Math.max(0, Number(athlete.goalMinimum) || 0);
+	      }
 
 	      if (canAssignTeam) {
 	        const originalTeamId = String(originalTeamScope.teamId || "").trim();
