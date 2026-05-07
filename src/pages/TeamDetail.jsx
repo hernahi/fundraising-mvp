@@ -418,9 +418,9 @@ export default function TeamDetail() {
         </div>
       )}
 
-      {/* TEAM AVATAR */}
-	        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
-	          <img
+	      {/* TEAM AVATAR */}
+		        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
+		          <img
 	            src={safeImageURL(
 	            team.avatar || team.photoURL || team.imgUrl || team.logo,
 	            avatarFallback({ label: team.name || "Team", type: "team", size: 192 })
@@ -433,10 +433,10 @@ export default function TeamDetail() {
 	            });
 	          }}
 	          alt="Team Avatar"
-	          className="w-20 h-20 rounded-full border bg-white p-1 object-contain shadow"
-	        />
-        <div>
-          <p className="text-gray-600">{team.description || "No team description added yet."}</p>
+		          className="w-20 h-20 rounded-full border bg-white p-1 object-contain shadow shrink-0 self-center"
+		        />
+	        <div className="min-h-20 flex flex-col justify-center text-center sm:text-left">
+	          <p className="text-gray-600">{team.description || "No team description added yet."}</p>
 	          <div className="mt-2 text-sm text-slate-600">
 	            <span className="font-medium">Coach:</span>{" "}
 	            {coachUser ? (
