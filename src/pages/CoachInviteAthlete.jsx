@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import AthleteOnboardingPanel from "../components/AthleteOnboardingPanel";
@@ -32,6 +32,7 @@ export default function CoachInviteAthlete() {
   const lockCampaign = searchParams.get("lockCampaign") === "1";
   const role = String(profile?.role || "").toLowerCase();
   const isCoach = role === "coach";
+  const isAdmin = role === "admin" || role === "super-admin";
   const resolvedOrgId = isSuperAdmin
     ? String(activeOrgId || "").trim()
     : String(profile?.orgId || "").trim();
@@ -53,14 +54,19 @@ export default function CoachInviteAthlete() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadCoachTeams() {
-      if (!isCoach || prefillTeamId) {
+    async function loadInviteTeams() {
+      if ((!isCoach && !isAdmin) || prefillTeamId) {
         setTeamOptions([]);
         setSelectedTeamId("");
         return;
       }
 
-      if (coachTeamIds.length === 0) {
+      if (isCoach && coachTeamIds.length === 0) {
+        setTeamOptions([]);
+        setSelectedTeamId("");
+        return;
+      }
+      if (isAdmin && !resolvedOrgId) {
         setTeamOptions([]);
         setSelectedTeamId("");
         return;
@@ -68,21 +74,32 @@ export default function CoachInviteAthlete() {
 
       setTeamOptionsLoading(true);
       try {
-        const rows = await Promise.all(
-          coachTeamIds.map(async (teamId) => {
-            try {
-              const snap = await getDoc(doc(db, "teams", teamId));
-              return snap.exists() ? { id: snap.id, ...(snap.data() || {}) } : null;
-            } catch {
-              return null;
-            }
-          })
-        );
+        const rows = isCoach
+          ? await Promise.all(
+              coachTeamIds.map(async (teamId) => {
+                try {
+                  const snap = await getDoc(doc(db, "teams", teamId));
+                  return snap.exists() ? { id: snap.id, ...(snap.data() || {}) } : null;
+                } catch {
+                  return null;
+                }
+              })
+            )
+          : (
+              await getDocs(
+                query(collection(db, "teams"), where("orgId", "==", resolvedOrgId))
+              )
+            ).docs.map((entry) => ({ id: entry.id, ...(entry.data() || {}) }));
         if (cancelled) return;
 
         const scopedRows = rows
           .filter(Boolean)
           .filter((team) => !resolvedOrgId || String(team?.orgId || "").trim() === resolvedOrgId);
+        scopedRows.sort((a, b) =>
+          String(a.name || a.teamName || a.id).localeCompare(
+            String(b.name || b.teamName || b.id)
+          )
+        );
         setTeamOptions(scopedRows);
         setSelectedTeamId((current) => {
           if (current && scopedRows.some((team) => team.id === current)) return current;
@@ -93,11 +110,11 @@ export default function CoachInviteAthlete() {
       }
     }
 
-    loadCoachTeams();
+    loadInviteTeams();
     return () => {
       cancelled = true;
     };
-  }, [coachTeamIds, isCoach, prefillTeamId, resolvedOrgId]);
+  }, [coachTeamIds, isAdmin, isCoach, prefillTeamId, resolvedOrgId]);
 
   const effectiveTeamId = prefillTeamId || selectedTeamId;
   const selectedTeam = teamOptions.find((team) => team.id === effectiveTeamId);
@@ -135,7 +152,7 @@ export default function CoachInviteAthlete() {
         <p className="text-xs text-slate-500 mt-2">{pageHint}</p>
       </div>
 
-      {isCoach && !prefillTeamId && (
+      {(isCoach || isAdmin) && !prefillTeamId && (
         <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3">
           <label className="block text-sm font-medium mb-1">Invite to Team</label>
           <select
@@ -156,7 +173,7 @@ export default function CoachInviteAthlete() {
           </select>
           {teamOptions.length === 0 && !teamOptionsLoading ? (
             <p className="mt-2 text-xs text-amber-700">
-              A coach must be assigned to a team before athlete invites can be campaign-scoped.
+              Select or create a team before sending athlete invites so the athlete account is assigned correctly.
             </p>
           ) : null}
         </div>
