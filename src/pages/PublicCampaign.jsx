@@ -517,7 +517,7 @@ export default function PublicCampaign() {
                 <img
                   src={safeImageURL(campaignImageURL)}
                   alt={displayTeamName || campaign.name || "Team logo"}
-                  className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl object-contain border border-slate-200 bg-white p-1 shrink-0"
+                  className="public-campaign-logo"
                 />
               )}
 	              <div className="min-w-0">

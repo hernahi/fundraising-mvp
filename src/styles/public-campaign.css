@@ -53,6 +53,17 @@
   margin: 8px 0 4px;
 }
 
+.public-campaign-logo {
+  width: 104px;
+  height: 104px;
+  flex: 0 0 104px;
+  border-radius: 22px;
+  object-fit: contain;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  background: #ffffff;
+  padding: 6px;
+}
+
 .public-welcome-line {
   margin: 10px 0 0;
   color: #475569;
@@ -498,6 +509,13 @@
 
   .public-title {
     line-height: 1.1;
+  }
+
+  .public-campaign-logo {
+    width: 76px;
+    height: 76px;
+    flex-basis: 76px;
+    border-radius: 18px;
   }
 
   .public-hero-grid {

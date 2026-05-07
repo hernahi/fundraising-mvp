@@ -227,7 +227,7 @@ useEffect(() => {
             <img
               src={safeImageURL(campaignImageURL, campaignImageFallback)}
               alt="Campaign"
-              className="w-full sm:w-56 md:w-56 h-32 md:h-36 object-contain bg-white border border-slate-200 rounded-lg shrink-0 p-1"
+              className="w-full sm:w-48 md:w-48 h-32 object-contain bg-white border border-slate-200 rounded-lg shrink-0 p-1"
             />
 
             <div className="min-w-0">
