@@ -109,10 +109,10 @@ export default function TeamDetail() {
             ? query(collection(db, "athletes"), where("orgId", "==", orgId), where("teamId", "==", id))
             : query(collection(db, "athletes"), where("teamId", "==", id));
 
-        const [athletesSnap, campaignsSnapByTeamId, campaignsSnapByTeamIds, coachSnap] = await Promise.all([
-          getDocs(athletesQuery),
-          orgId
-            ? getDocs(
+	        const [athletesResult, campaignsByTeamIdResult, campaignsByTeamIdsResult, coachResult] = await Promise.allSettled([
+	          getDocs(athletesQuery),
+	          orgId
+	            ? getDocs(
                 query(collection(db, "campaigns"), where("orgId", "==", orgId), where("teamId", "==", id))
               )
             : getDocs(query(collection(db, "campaigns"), where("teamId", "==", id))),
@@ -123,14 +123,35 @@ export default function TeamDetail() {
                   where("orgId", "==", orgId),
                   where("teamIds", "array-contains", id)
                 )
-              )
-            : Promise.resolve({ docs: [] }),
-          teamData.coachId ? getDoc(doc(db, "users", teamData.coachId)) : Promise.resolve(null),
-        ]);
+	              )
+	            : Promise.resolve({ docs: [] }),
+	          teamData.coachId && !isAthlete
+	            ? getDoc(doc(db, "users", teamData.coachId))
+	            : Promise.resolve(null),
+	        ]);
+	
+	        if (athletesResult.status === "rejected") {
+	          console.warn("Team athlete list query skipped:", athletesResult.reason?.message || athletesResult.reason);
+	        }
+	        if (campaignsByTeamIdResult.status === "rejected") {
+	          console.warn(
+	            "Team campaign query skipped:",
+	            campaignsByTeamIdResult.reason?.message || campaignsByTeamIdResult.reason
+	          );
+	        }
+	        if (campaignsByTeamIdsResult.status === "rejected") {
+	          console.warn(
+	            "Team multi-campaign query skipped:",
+	            campaignsByTeamIdsResult.reason?.message || campaignsByTeamIdsResult.reason
+	          );
+	        }
 
-        let athleteRows = athletesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (!athleteRows.length && profile?.uid && isAthlete) {
-          try {
+	        let athleteRows =
+	          athletesResult.status === "fulfilled"
+	            ? athletesResult.value.docs.map((d) => ({ id: d.id, ...d.data() }))
+	            : [];
+	        if (!athleteRows.length && profile?.uid && isAthlete) {
+	          try {
             const selfAthleteSnap = await getDoc(doc(db, "athletes", profile.uid));
             if (selfAthleteSnap.exists()) {
               const selfAthlete = { id: selfAthleteSnap.id, ...selfAthleteSnap.data() };
@@ -142,19 +163,30 @@ export default function TeamDetail() {
             console.warn("Athlete self fallback skipped:", selfErr?.message || selfErr);
           }
         }
-
-        const campaignRowsById = new Map();
-        campaignsSnapByTeamId.docs.forEach((entry) => {
-          campaignRowsById.set(entry.id, { id: entry.id, ...entry.data() });
-        });
-        campaignsSnapByTeamIds.docs.forEach((entry) => {
-          campaignRowsById.set(entry.id, { id: entry.id, ...entry.data() });
-        });
-
-        let resolvedCoachUser =
-          coachSnap && coachSnap.exists && coachSnap.exists()
-            ? { id: coachSnap.id, ...coachSnap.data() }
-            : null;
+	
+	        const campaignRowsById = new Map();
+	        const campaignsByTeamIdDocs =
+	          campaignsByTeamIdResult.status === "fulfilled"
+	            ? campaignsByTeamIdResult.value.docs
+	            : [];
+	        const campaignsByTeamIdsDocs =
+	          campaignsByTeamIdsResult.status === "fulfilled"
+	            ? campaignsByTeamIdsResult.value.docs
+	            : [];
+	        campaignsByTeamIdDocs.forEach((entry) => {
+	          campaignRowsById.set(entry.id, { id: entry.id, ...entry.data() });
+	        });
+	        campaignsByTeamIdsDocs.forEach((entry) => {
+	          campaignRowsById.set(entry.id, { id: entry.id, ...entry.data() });
+	        });
+	
+	        let resolvedCoachUser =
+	          coachResult.status === "fulfilled" &&
+	          coachResult.value &&
+	          coachResult.value.exists &&
+	          coachResult.value.exists()
+	            ? { id: coachResult.value.id, ...coachResult.value.data() }
+	            : null;
 
         if (!resolvedCoachUser) {
           const fallbackCoachName = String(teamData.coachName || teamData.coach || "").trim();
@@ -318,17 +350,21 @@ export default function TeamDetail() {
             </>
           )}
 
-          <Link to={`/teams/${id}/edit`} className={primaryActionClass}>
-            Edit Team
-          </Link>
-
-          <Link
-            to={`/coach/invite?teamId=${encodeURIComponent(id)}&campaignId=${encodeURIComponent(activeCampaign?.id || "")}&lockCampaign=1`}
-            className={secondaryActionClass}
-          >
-            Onboard Athlete
-          </Link>
-        </div>
+	          {canManage && (
+	            <>
+	              <Link to={`/teams/${id}/edit`} className={primaryActionClass}>
+	                Edit Team
+	              </Link>
+	
+	              <Link
+	                to={`/coach/invite?teamId=${encodeURIComponent(id)}&campaignId=${encodeURIComponent(activeCampaign?.id || "")}&lockCampaign=1`}
+	                className={secondaryActionClass}
+	              >
+	                Onboard Athlete
+	              </Link>
+	            </>
+	          )}
+	        </div>
       </div>
 
       {/* INVITE BLOCK (coach/admin) */}

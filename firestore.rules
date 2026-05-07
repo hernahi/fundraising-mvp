@@ -149,17 +149,39 @@ service cloud.firestore {
         );
     }
 
-    function canCoachReadByAthlete(orgId, athleteId) {
-      return isSignedIn()
-        && isCoach()
+	    function canCoachReadByAthlete(orgId, athleteId) {
+	      return isSignedIn()
+	        && isCoach()
         && userOrgId() == orgId
         && athleteId is string
         && athleteId != ""
         && exists(/databases/$(database)/documents/athletes/$(athleteId))
-        && coachHasTeam(
-          get(/databases/$(database)/documents/athletes/$(athleteId)).data.teamId
-        );
-    }
+	        && coachHasTeam(
+	          get(/databases/$(database)/documents/athletes/$(athleteId)).data.teamId
+	        );
+	    }
+
+	    function signedInAthleteTeamId() {
+	      return isSignedIn()
+	        && exists(/databases/$(database)/documents/athletes/$(request.auth.uid))
+	        ? get(/databases/$(database)/documents/athletes/$(request.auth.uid)).data.teamId
+	        : null;
+	    }
+
+	    function isSignedInAthleteOnTeam(teamId) {
+	      return isSignedIn()
+	        && teamId is string
+	        && teamId != ""
+	        && signedInAthleteTeamId() == teamId;
+	    }
+
+	    function signedInAthleteHasTeamIn(teamIds) {
+	      return isSignedIn()
+	        && signedInAthleteTeamId() is string
+	        && signedInAthleteTeamId() != ""
+	        && teamIds is list
+	        && teamIds.hasAny([signedInAthleteTeamId()]);
+	    }
 
     function canCoachReadScopedResource(resourceData) {
       return isSignedIn()
@@ -428,11 +450,12 @@ service cloud.firestore {
       // ✅ Public read when athlete is tied to a public campaign
       allow read: if (isSignedIn()
           && (
-            (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
-            || canCoachReadByTeam(resource.data.orgId, resource.data.teamId)
-            || canCoachReadByCampaign(resource.data.orgId, resource.data.campaignId)
-            || request.auth.uid == athleteId
-          ))
+	            (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+	            || canCoachReadByTeam(resource.data.orgId, resource.data.teamId)
+	            || canCoachReadByCampaign(resource.data.orgId, resource.data.campaignId)
+	            || isSignedInAthleteOnTeam(resource.data.teamId)
+	            || request.auth.uid == athleteId
+	          ))
         || (resource.data.campaignId is string
             && get(/databases/$(database)/documents/campaigns/$(resource.data.campaignId)).data.isPublic == true);
 
@@ -551,16 +574,21 @@ service cloud.firestore {
       allow read: if resource.data.isPublic == true
         || (isSignedIn()
           && (
-            (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
-            || canCoachReadByTeam(resource.data.orgId, resource.data.teamId)
-            || (
-              isCoach()
+	            (isPrivilegedOrgReader() && canAccessOrg(resource.data.orgId))
+	            || canCoachReadByTeam(resource.data.orgId, resource.data.teamId)
+	            || isSignedInAthleteOnTeam(resource.data.teamId)
+	            || (
+	              isCoach()
               && userOrgId() == resource.data.orgId
               && ("teamIds" in resource.data)
               && resource.data.teamIds is list
-              && resource.data.teamIds.hasAny(coachAssignedTeamIds())
-            )
-          ));
+	              && resource.data.teamIds.hasAny(coachAssignedTeamIds())
+	            )
+		            || (
+		              ("teamIds" in resource.data)
+		              && signedInAthleteHasTeamIn(resource.data.teamIds)
+		            )
+	          ));
 
       // ✅ Admins/super-admins may write; coaches may manage campaigns for assigned teams
       allow create: if isSignedIn()
