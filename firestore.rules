@@ -492,6 +492,7 @@ service cloud.firestore {
           .hasOnly([
             "userId",
             "email",
+            "name",
             "displayName",
             "orgId",
             "teamId",

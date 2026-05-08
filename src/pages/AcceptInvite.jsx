@@ -7,8 +7,22 @@ import {
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { updateProfile } from "firebase/auth";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
+
+function normalizeFullName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function isUsablePersonName(value, email = "") {
+  const name = normalizeFullName(value);
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (name.length < 2) return false;
+  if (normalizedEmail && name.toLowerCase() === normalizedEmail) return false;
+  if (normalizedEmail && name.toLowerCase() === normalizedEmail.split("@")[0]) return false;
+  return /[a-zA-Z]/.test(name);
+}
 
 export default function AcceptInvite() {
   const [params] = useSearchParams();
@@ -20,6 +34,7 @@ export default function AcceptInvite() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [accepted, setAccepted] = useState(false);
+  const [athleteFullName, setAthleteFullName] = useState("");
 
   const acceptingRef = useRef(false);
   const inviteId = params.get("invite");
@@ -87,6 +102,14 @@ export default function AcceptInvite() {
     loadInvite();
   }, [inviteId]);
 
+  useEffect(() => {
+    if (String(invite?.role || "").toLowerCase() !== "athlete") return;
+    if (athleteFullName) return;
+    if (isUsablePersonName(user?.displayName, user?.email)) {
+      setAthleteFullName(normalizeFullName(user.displayName));
+    }
+  }, [invite?.role, athleteFullName, user?.displayName, user?.email]);
+
   const acceptInvite = async () => {
     if (acceptingRef.current) return;
     acceptingRef.current = true;
@@ -117,6 +140,22 @@ export default function AcceptInvite() {
       const inviteOrgId = String(invite.orgId || "").trim();
       const inviteTeamId = String(invite.teamId || "").trim();
       const inviteRole = String(invite.role || "").trim().toLowerCase();
+      const normalizedAthleteFullName = normalizeFullName(athleteFullName);
+      if (inviteRole === "athlete" && !isUsablePersonName(normalizedAthleteFullName, user.email)) {
+        setError("Enter the athlete's full name before accepting the invite.");
+        acceptingRef.current = false;
+        return;
+      }
+      const resolvedDisplayName =
+        inviteRole === "athlete"
+          ? normalizedAthleteFullName
+          : normalizeFullName(
+              user.displayName ||
+                existingUser.displayName ||
+                existingUser.name ||
+                user.email ||
+                ""
+            );
       const inviteTeamIds = Array.isArray(invite.teamIds)
         ? invite.teamIds
         : inviteTeamId
@@ -146,12 +185,8 @@ export default function AcceptInvite() {
       const accessPayload = {
         uid: user.uid,
         email: user.email,
-        displayName:
-          user.displayName ||
-          existingUser.displayName ||
-          existingUser.name ||
-          user.email ||
-          "",
+        displayName: resolvedDisplayName,
+        name: resolvedDisplayName,
         photoURL: user.photoURL || existingUser.photoURL || null,
         role: inviteRole,
         orgId: inviteOrgId,
@@ -164,6 +199,18 @@ export default function AcceptInvite() {
         status: "active",
         updatedAt: serverTimestamp(),
       };
+
+      if (
+        inviteRole === "athlete" &&
+        normalizedAthleteFullName &&
+        normalizeFullName(user.displayName) !== normalizedAthleteFullName
+      ) {
+        try {
+          await updateProfile(user, { displayName: normalizedAthleteFullName });
+        } catch (profileErr) {
+          console.warn("Auth display name update skipped:", profileErr?.message || profileErr);
+        }
+      }
 
       if (!userSnap.exists()) {
         await setDoc(
@@ -203,7 +250,8 @@ export default function AcceptInvite() {
         const athletePayload = {
           userId: user.uid,
           email: user.email,
-          displayName: user.displayName || user.email,
+          name: normalizedAthleteFullName,
+          displayName: normalizedAthleteFullName,
           orgId: inviteOrgId,
           orgName: String(invite.orgName || existingUser.orgName || inviteOrgId || "").trim(),
           inviteId: invite.id,
@@ -399,6 +447,25 @@ export default function AcceptInvite() {
           <div><span className="font-semibold">Role:</span> {invite?.role || "Unknown"}</div>
           <div><span className="font-semibold">Organization:</span> {invite?.orgId || "Unknown"}</div>
         </div>
+
+        {String(invite?.role || "").toLowerCase() === "athlete" ? (
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-slate-800">
+              Athlete Full Name
+            </label>
+            <input
+              type="text"
+              value={athleteFullName}
+              onChange={(e) => setAthleteFullName(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+              placeholder="Enter athlete full name"
+              autoComplete="name"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              This is the name shown on the athlete profile and fundraising pages. Do not use an email address.
+            </p>
+          </div>
+        ) : null}
 
         {emailMismatch ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 space-y-3">
