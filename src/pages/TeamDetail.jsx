@@ -1,6 +1,6 @@
 // src/pages/TeamDetail.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   doc,
   getDoc,
@@ -11,7 +11,8 @@ import {
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "../firebase/config";
 
 import { useAuth } from "../context/AuthContext";
 import { safeImageURL } from "../utils/safeImage";
@@ -32,6 +33,7 @@ function generateJoinCode() {
 export default function TeamDetail() {
   const { teamId } = useParams();
   const id = teamId;
+  const navigate = useNavigate();
 
   const { profile, activeOrgId, isSuperAdmin } = useAuth();
 
@@ -45,6 +47,7 @@ export default function TeamDetail() {
   const [showAssignCoach, setShowAssignCoach] = useState(false);
   const [showManageAthletes, setShowManageAthletes] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [deletingTeam, setDeletingTeam] = useState(false);
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super-admin";
   const isCoach = profile?.role === "coach";
@@ -312,6 +315,27 @@ export default function TeamDetail() {
 
     setTeam((prev) => ({ ...prev, joinEnabled: !prev.joinEnabled }));
   };
+
+  const deleteTeam = async () => {
+    if (!team || !isSuperAdmin) return;
+    const confirmation = window.prompt(
+      `Permanently delete team "${team.name || team.id}"?\n\nThis will fail if campaigns or paid donations still reference this team. Type DELETE to confirm.`
+    );
+    if (confirmation !== "DELETE") return;
+
+    try {
+      setDeletingTeam(true);
+      const deleteEntity = httpsCallable(functions, "deleteSuperAdminEntity");
+      await deleteEntity({ type: "team", id: team.id, confirmation });
+      navigate("/teams");
+    } catch (err) {
+      console.error("Delete team failed:", err);
+      alert(err?.message || "Failed to delete team.");
+    } finally {
+      setDeletingTeam(false);
+    }
+  };
+
   if (loading) return <div className="p-4 md:p-6 text-gray-600 text-lg">Loading team details...</div>;
   if (!team) return <div className="p-4 md:p-6 text-gray-600 text-lg">Team not found (or access restricted).</div>;
 
@@ -356,14 +380,25 @@ export default function TeamDetail() {
 	                Edit Team
 	              </Link>
 	
-	              <Link
-	                to={`/coach/invite?teamId=${encodeURIComponent(id)}&campaignId=${encodeURIComponent(activeCampaign?.id || "")}&lockCampaign=1`}
-	                className={secondaryActionClass}
-	              >
-	                Onboard Athlete
-	              </Link>
-	            </>
-	          )}
+              <Link
+                to={`/coach/invite?teamId=${encodeURIComponent(id)}&campaignId=${encodeURIComponent(activeCampaign?.id || "")}&lockCampaign=1`}
+                className={secondaryActionClass}
+              >
+                Onboard Athlete
+              </Link>
+            </>
+          )}
+
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={deleteTeam}
+              disabled={deletingTeam}
+              className="px-4 py-2 rounded-lg border border-red-300 bg-white text-red-700 hover:bg-red-50 text-sm text-center disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deletingTeam ? "Deleting..." : "Delete Team"}
+            </button>
+          )}
 	        </div>
       </div>
 

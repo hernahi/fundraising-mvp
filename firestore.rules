@@ -431,7 +431,7 @@ service cloud.firestore {
         && orgIdUnchanged();
 
       allow delete: if isSignedIn()
-        && (isOrgAdmin() || isSuperAdmin())
+        && isSuperAdmin()
         && canAccessOrg(resource.data.orgId);
     }
 
@@ -612,10 +612,8 @@ service cloud.firestore {
         && orgIdUnchanged();
 
       allow delete: if isSignedIn()
-        && (
-          ((isOrgAdmin() || isSuperAdmin()) && canAccessOrg(resource.data.orgId))
-          || canCoachManageCampaignData(resource.data)
-        );
+        && isSuperAdmin()
+        && canAccessOrg(resource.data.orgId);
     }
 
     match /campaigns/{campaignId}/comments/{commentId} {

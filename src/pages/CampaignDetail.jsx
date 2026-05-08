@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "../firebase/config";
 import safeImageURL from "../utils/safeImage";
 import { FaArrowLeft, FaEdit, FaShareAlt } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
@@ -41,6 +42,7 @@ export default function CampaignDetail() {
   const [fundsRaised, setFundsRaised] = useState(0);
   const [giftCount, setGiftCount] = useState(0);
   const [showAssignTeams, setShowAssignTeams] = useState(false);
+  const [deletingCampaign, setDeletingCampaign] = useState(false);
   const { profile } = useAuth();
   const navigate = useNavigate();
   const role = String(profile?.role || "").toLowerCase();
@@ -56,6 +58,7 @@ export default function CampaignDetail() {
   const backLabel = isAthlete ? "Back to My Athlete Page" : "Back to Campaigns";
   const canEditTeams =
     role === "admin" || role === "super-admin";
+  const isSuperAdmin = role === "super-admin";
   const primaryActionClass =
     "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-flex items-center justify-center gap-2 text-sm";
   const secondaryActionClass =
@@ -196,6 +199,26 @@ useEffect(() => {
   navigate,
 ]);
 
+  const deleteCampaign = async () => {
+    if (!campaign || !isSuperAdmin) return;
+    const confirmation = window.prompt(
+      `Permanently delete campaign "${campaign.name || campaign.id}"?\n\nThis will fail if paid donations still reference this campaign. Type DELETE to confirm.`
+    );
+    if (confirmation !== "DELETE") return;
+
+    try {
+      setDeletingCampaign(true);
+      const deleteEntity = httpsCallable(functions, "deleteSuperAdminEntity");
+      await deleteEntity({ type: "campaign", id: campaign.id, confirmation });
+      navigate("/campaigns");
+    } catch (err) {
+      console.error("Delete campaign failed:", err);
+      alert(err?.message || "Failed to delete campaign.");
+    } finally {
+      setDeletingCampaign(false);
+    }
+  };
+
   if (loading) return <div className="p-4 md:p-6 text-gray-600">Loading campaign...</div>;
   if (!campaign) return <div className="p-4 md:p-6 text-red-600">Campaign not found.</div>;
 
@@ -309,6 +332,17 @@ useEffect(() => {
               >
                 <FaShareAlt /> Copy Share Link
               </button>
+
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={deleteCampaign}
+                  disabled={deletingCampaign}
+                  className="px-4 py-2 bg-white border border-red-300 text-red-700 rounded-lg hover:bg-red-50 inline-flex items-center justify-center gap-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deletingCampaign ? "Deleting..." : "Delete Campaign"}
+                </button>
+              )}
           </div>
         </div>
 

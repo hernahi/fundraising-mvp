@@ -180,6 +180,7 @@ export default function AdminUsers() {
   const [inviteStatus, setInviteStatus] = useState("");
   const [resendingInviteId, setResendingInviteId] = useState("");
   const [cleaningInviteId, setCleaningInviteId] = useState("");
+  const [deletingUserId, setDeletingUserId] = useState("");
   const [createForm, setCreateForm] = useState({
     email: "",
     displayName: "",
@@ -561,6 +562,30 @@ export default function AdminUsers() {
     });
   }
 
+  async function handleDeleteAccount(targetUser) {
+    const targetId = String(targetUser?.id || "").trim();
+    if (!isSuperAdmin || !targetId || targetId === currentUser?.uid) return;
+
+    const label = targetUser?.email || targetUser?.displayName || targetUser?.name || targetId;
+    const confirmation = window.prompt(
+      `Permanently delete account "${label}"?\n\nThis removes the Firebase Auth account and local profile records. Type DELETE to confirm.`
+    );
+    if (confirmation !== "DELETE") return;
+
+    try {
+      setDeletingUserId(targetId);
+      setInviteStatus("");
+      const deleteEntity = httpsCallable(functions, "deleteSuperAdminEntity");
+      await deleteEntity({ type: "user", id: targetId, confirmation });
+      setInviteStatus(`Deleted account ${label}.`);
+    } catch (err) {
+      console.error("Delete account failed:", err);
+      setInviteStatus(err?.message || "Failed to delete account.");
+    } finally {
+      setDeletingUserId("");
+    }
+  }
+
   async function handleRoleChange(userId, nextRole) {
     await updateDoc(doc(db, "users", userId), {
       role: nextRole,
@@ -937,6 +962,16 @@ export default function AdminUsers() {
                               className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700"
                             >
                               Reactivate
+                            </button>
+                          ) : null}
+                          {isSuperAdmin && !isSelf ? (
+                            <button
+                              type="button"
+                              disabled={deletingUserId === u.id}
+                              onClick={() => handleDeleteAccount(u)}
+                              className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingUserId === u.id ? "Deleting..." : "Delete Account"}
                             </button>
                           ) : null}
                         </div>

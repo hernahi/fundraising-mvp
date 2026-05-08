@@ -57,6 +57,76 @@ async function assertAdmin(request) {
   return profile;
 }
 
+async function assertSuperAdmin(request) {
+  const uid = request?.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "Login required");
+  }
+
+  const profile = await getUserProfile(uid);
+  if (!profile) {
+    throw new HttpsError("permission-denied", "User profile not found");
+  }
+
+  if (profile.status && profile.status !== "active") {
+    throw new HttpsError("permission-denied", "User is not active");
+  }
+
+  if (String(profile.role || "").toLowerCase() !== "super-admin") {
+    throw new HttpsError("permission-denied", "Super-admin access required");
+  }
+
+  return profile;
+}
+
+async function deleteQueryDocs(db, snap) {
+  if (!snap || snap.empty) return 0;
+  let count = 0;
+  let batch = db.batch();
+  let batchSize = 0;
+
+  for (const entry of snap.docs) {
+    batch.delete(entry.ref);
+    count += 1;
+    batchSize += 1;
+    if (batchSize >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      batchSize = 0;
+    }
+  }
+
+  if (batchSize > 0) {
+    await batch.commit();
+  }
+
+  return count;
+}
+
+async function updateQueryDocs(db, snap, data) {
+  if (!snap || snap.empty) return 0;
+  let count = 0;
+  let batch = db.batch();
+  let batchSize = 0;
+
+  for (const entry of snap.docs) {
+    batch.update(entry.ref, data);
+    count += 1;
+    batchSize += 1;
+    if (batchSize >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      batchSize = 0;
+    }
+  }
+
+  if (batchSize > 0) {
+    await batch.commit();
+  }
+
+  return count;
+}
+
 // Initialize Admin
 try {
   admin.initializeApp();
@@ -1456,6 +1526,226 @@ exports.cleanupInvite = onCall(async (request) => {
     previousStatus: invite.status || null,
   });
   return { ok: true, inviteId, deleted: true };
+});
+
+/* ============================================================
+   SUPER-ADMIN DESTRUCTIVE CLEANUP
+   - Confirmation is enforced server-side with exact DELETE token
+   - Blocks deletion of campaigns/teams with paid donation history
+   ============================================================ */
+exports.deleteSuperAdminEntity = onCall({ timeoutSeconds: 60 }, async (request) => {
+  const profile = await assertSuperAdmin(request);
+  const actorUid = request.auth.uid;
+  const db = admin.firestore();
+  const fieldValue = admin.firestore.FieldValue;
+
+  const type = String(request.data?.type || "").trim().toLowerCase();
+  const id = String(request.data?.id || "").trim();
+  const confirmation = String(request.data?.confirmation || "").trim();
+
+  if (confirmation !== "DELETE") {
+    throw new HttpsError("invalid-argument", "Type DELETE to confirm this action");
+  }
+  if (!["user", "campaign", "team"].includes(type)) {
+    throw new HttpsError("invalid-argument", "Unsupported delete type");
+  }
+  if (!id) {
+    throw new HttpsError("invalid-argument", "id is required");
+  }
+  if (type === "user" && id === actorUid) {
+    throw new HttpsError("failed-precondition", "You cannot delete your own account");
+  }
+
+  const result = { ok: true, type, id, deleted: {}, updated: {} };
+
+  if (type === "user") {
+    const paidDonationSnap = await db
+      .collection("donations")
+      .where("athleteId", "==", id)
+      .where("status", "==", "paid")
+      .limit(1)
+      .get();
+    if (!paidDonationSnap.empty) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cannot delete an account with paid donation history"
+      );
+    }
+
+    try {
+      await admin.auth().deleteUser(id);
+      result.deleted.authUser = 1;
+    } catch (err) {
+      if (err?.code !== "auth/user-not-found") {
+        throw err;
+      }
+      result.deleted.authUser = 0;
+    }
+
+    const directDocs = ["users", "athletes", "coaches"].map((collectionName) =>
+      db.collection(collectionName).doc(id)
+    );
+    const directBatch = db.batch();
+    directDocs.forEach((ref) => directBatch.delete(ref));
+    await directBatch.commit();
+    result.deleted.profileDocs = directDocs.length;
+
+    result.deleted.invitesAccepted = await deleteQueryDocs(
+      db,
+      await db.collection("invites").where("acceptedByUid", "==", id).get()
+    );
+    result.deleted.invitesCreated = await deleteQueryDocs(
+      db,
+      await db.collection("invites").where("createdByUid", "==", id).get()
+    );
+    result.deleted.contacts = await deleteQueryDocs(
+      db,
+      await db.collection("athlete_contacts").where("athleteId", "==", id).get()
+    );
+    result.deleted.messages = await deleteQueryDocs(
+      db,
+      await db.collection("messages").where("athleteId", "==", id).get()
+    );
+  }
+
+  if (type === "campaign") {
+    const campaignRef = db.collection("campaigns").doc(id);
+    const campaignSnap = await campaignRef.get();
+    if (!campaignSnap.exists) {
+      throw new HttpsError("not-found", "Campaign not found");
+    }
+
+    const paidDonationSnap = await db
+      .collection("donations")
+      .where("campaignId", "==", id)
+      .where("status", "==", "paid")
+      .limit(1)
+      .get();
+    if (!paidDonationSnap.empty) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cannot delete a campaign with paid donation history"
+      );
+    }
+
+    result.deleted.campaignAthletes = await deleteQueryDocs(
+      db,
+      await db.collection("campaignAthletes").where("campaignId", "==", id).get()
+    );
+    result.deleted.invites = await deleteQueryDocs(
+      db,
+      await db.collection("invites").where("campaignId", "==", id).get()
+    );
+    result.deleted.comments = await deleteQueryDocs(
+      db,
+      await campaignRef.collection("comments").get()
+    );
+    result.deleted.publicDonors = await deleteQueryDocs(
+      db,
+      await campaignRef.collection("public_donors").get()
+    );
+    result.updated.athletes = await updateQueryDocs(
+      db,
+      await db.collection("athletes").where("campaignId", "==", id).get(),
+      {
+        campaignId: null,
+        campaignName: fieldValue.delete(),
+        updatedAt: fieldValue.serverTimestamp(),
+      }
+    );
+
+    await campaignRef.delete();
+    result.deleted.campaign = 1;
+  }
+
+  if (type === "team") {
+    const teamRef = db.collection("teams").doc(id);
+    const teamSnap = await teamRef.get();
+    if (!teamSnap.exists) {
+      throw new HttpsError("not-found", "Team not found");
+    }
+
+    const paidDonationSnap = await db
+      .collection("donations")
+      .where("teamId", "==", id)
+      .where("status", "==", "paid")
+      .limit(1)
+      .get();
+    if (!paidDonationSnap.empty) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cannot delete a team with paid donation history"
+      );
+    }
+
+    const directCampaignsSnap = await db
+      .collection("campaigns")
+      .where("teamId", "==", id)
+      .limit(1)
+      .get();
+    const multiCampaignsSnap = await db
+      .collection("campaigns")
+      .where("teamIds", "array-contains", id)
+      .limit(1)
+      .get();
+    if (!directCampaignsSnap.empty || !multiCampaignsSnap.empty) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Delete or reassign campaigns before deleting this team"
+      );
+    }
+
+    const clearPrimaryTeam = {
+      teamId: null,
+      teamName: "",
+      updatedAt: fieldValue.serverTimestamp(),
+    };
+    const removeAssignedTeam = {
+      teamIds: fieldValue.arrayRemove(id),
+      assignedTeamIds: fieldValue.arrayRemove(id),
+      updatedAt: fieldValue.serverTimestamp(),
+    };
+
+    for (const collectionName of ["users", "athletes", "coaches"]) {
+      result.updated[`${collectionName}PrimaryTeam`] = await updateQueryDocs(
+        db,
+        await db.collection(collectionName).where("teamId", "==", id).get(),
+        clearPrimaryTeam
+      );
+      result.updated[`${collectionName}TeamArrays`] = await updateQueryDocs(
+        db,
+        await db.collection(collectionName).where("teamIds", "array-contains", id).get(),
+        removeAssignedTeam
+      );
+      result.updated[`${collectionName}AssignedTeamArrays`] = await updateQueryDocs(
+        db,
+        await db.collection(collectionName).where("assignedTeamIds", "array-contains", id).get(),
+        removeAssignedTeam
+      );
+    }
+
+    result.deleted.teamAthletes = await deleteQueryDocs(
+      db,
+      await db.collection("teamAthletes").where("teamId", "==", id).get()
+    );
+    result.deleted.invites = await deleteQueryDocs(
+      db,
+      await db.collection("invites").where("teamId", "==", id).get()
+    );
+
+    await teamRef.delete();
+    result.deleted.team = 1;
+  }
+
+  logger.warn("deleteSuperAdminEntity: success", {
+    byUid: actorUid,
+    byEmail: profile.email || null,
+    type,
+    id,
+    result,
+  });
+
+  return result;
 });
 
 /* ============================================================
