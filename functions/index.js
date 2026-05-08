@@ -493,6 +493,74 @@ function renderTransactionalShell({
   `;
 }
 
+function buildInviteQuickStartText(invite = {}) {
+  const role = String(invite.role || "").trim().toLowerCase();
+  const orgName = String(invite.orgName || invite.orgId || "your organization").trim();
+  const teamName = String(invite.teamName || "").trim();
+  const campaignName = String(invite.campaignName || "").trim();
+  const teamLine = teamName ? `Team: ${teamName}` : "";
+  const campaignLine = campaignName ? `Campaign: ${campaignName}` : "";
+
+  if (role === "athlete") {
+    return [
+      "Quick start for athletes:",
+      "1. Open the invite link and sign in or create your account.",
+      "2. Enter your full name when prompted, then accept the invitation.",
+      "3. Open My Athlete Page and complete your profile.",
+      "4. Review your assigned team and campaign.",
+      "5. Go to Messages, add supporter contacts, and send your fundraising message.",
+      "",
+      `Organization: ${orgName}`,
+      teamLine,
+      campaignLine,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (role === "coach") {
+    return [
+      "Quick start for coaches:",
+      "1. Open the invite link and sign in or create your account.",
+      "2. Accept the invitation.",
+      "3. Confirm you can see your assigned team.",
+      "4. Review the roster, team logo, campaign, and coach details.",
+      "5. Use Onboard Athlete to invite athletes into the correct team and campaign.",
+      "6. Ask athletes to complete their profiles, add contacts, and send messages.",
+      "",
+      `Organization: ${orgName}`,
+      teamLine,
+      campaignLine,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (role === "admin" || role === "super-admin") {
+    return [
+      "Quick start for admins:",
+      "1. Open the invite link and sign in or create your account.",
+      "2. Accept the invitation.",
+      "3. Confirm the organization, team, and active campaign are correct.",
+      "4. Use Teams to review team setup.",
+      "5. Use Campaigns to review or manage fundraising campaigns.",
+      "6. Use Athlete Onboarding to invite athletes to the correct team and campaign.",
+      "7. Use Coaches or Users to confirm staff access.",
+      "",
+      `Organization: ${orgName}`,
+      teamLine,
+      campaignLine,
+    ].filter(Boolean).join("\n");
+  }
+
+  return [
+    "Quick start:",
+    "1. Open the invite link and sign in or create your account.",
+    "2. Accept the invitation.",
+    "3. Follow the dashboard prompts to finish setup.",
+    "",
+    `Organization: ${orgName}`,
+    teamLine,
+    campaignLine,
+  ].filter(Boolean).join("\n");
+}
+
 async function resolveTeamName(db, { athlete = {}, campaign = {} }) {
   const teamId = String(athlete.teamId || campaign.teamId || "").trim();
   const explicitTeamName =
@@ -1321,9 +1389,33 @@ exports.sendInviteEmail = onCall(
 
     try {
       const brandedSubject = "You've been invited to join Fundraising MVP";
+      let inviteCampaignName = String(invite.campaignName || "").trim();
+      const inviteCampaignId = String(invite.campaignId || "").trim();
+      if (!inviteCampaignName && inviteCampaignId) {
+        try {
+          const campaignSnap = await db.collection("campaigns").doc(inviteCampaignId).get();
+          if (campaignSnap.exists) {
+            inviteCampaignName = String(
+              campaignSnap.data()?.name || campaignSnap.data()?.title || ""
+            ).trim();
+          }
+        } catch (campaignErr) {
+          logger.warn("sendInviteEmail: campaign name lookup skipped", {
+            inviteId: normalizedInviteId,
+            campaignId: inviteCampaignId,
+            message: campaignErr?.message,
+          });
+        }
+      }
+      const inviteForEmail = {
+        ...invite,
+        campaignName: inviteCampaignName || invite.campaignName || "",
+      };
+      const quickStartText = buildInviteQuickStartText(inviteForEmail);
       const brandedBodyText =
         "You've been invited to join Fundraising MVP.\n\n" +
-        "Use the button below to accept your invite and finish setup.";
+        "Use the button below to accept your invite and finish setup.\n\n" +
+        quickStartText;
       await client.messages.create(domain, {
         from: "Fundraising MVP <no-reply@mail.inetsphere.com>",
         to: [normalizedEmail],
@@ -1371,9 +1463,9 @@ exports.sendInviteEmail = onCall(
         to: normalizedEmail,
         recipientCount: 1,
         orgId: senderProfile?.orgId || null,
-        campaignId: null,
+        campaignId: inviteCampaignId || null,
         athleteId: null,
-        templateVersion: "invite-v1",
+        templateVersion: "invite-v2-role-quickstart",
         subject: brandedSubject,
       });
       return { ok: true };
